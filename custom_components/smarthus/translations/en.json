@@ -287,6 +287,36 @@
       },
       "ev_charge_power": {
         "name": "EV: charging power"
+      },
+      "battery_charge_from": {
+        "name": "Battery: charge between (from)"
+      },
+      "battery_charge_to": {
+        "name": "Battery: charge between (to)"
+      },
+      "battery_discharge_from": {
+        "name": "Battery: discharge between (from)"
+      },
+      "battery_discharge_to": {
+        "name": "Battery: discharge between (to)"
+      },
+      "hotwater_from": {
+        "name": "Hot water: heat between (from)"
+      },
+      "hotwater_to": {
+        "name": "Hot water: heat between (to)"
+      },
+      "heating_boost_from": {
+        "name": "Heating: raise between (from)"
+      },
+      "heating_boost_to": {
+        "name": "Heating: raise between (to)"
+      },
+      "heating_reduce_from": {
+        "name": "Heating: lower between (from)"
+      },
+      "heating_reduce_to": {
+        "name": "Heating: lower between (to)"
       }
     }
   }

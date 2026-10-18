@@ -75,6 +75,20 @@ def local_days(slots: list[Slot], tz: tzinfo) -> dict[str, list[Slot]]:
     return days
 
 
+def in_window(slots: list[Slot], tz: tzinfo, start_h: float, end_h: float) -> list[Slot]:
+    """Tidsrum inden for et dagligt tidsvindue, fx 22–6 (går over midnat) eller 0–24 (hele døgnet)."""
+    if end_h - start_h >= 24 or start_h == end_h:
+        return list(slots)
+    out = []
+    for s in slots:
+        lt = s.start.astimezone(tz)
+        h = lt.hour + lt.minute / 60
+        ok = start_h <= h < end_h if start_h < end_h else (h >= start_h or h < end_h)
+        if ok:
+            out.append(s)
+    return out
+
+
 def avg(slots: list[Slot]) -> float | None:
     return sum(s.price for s in slots) / len(slots) if slots else None
 
@@ -162,19 +176,21 @@ def build_plan(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
             continue
         d = days[key]
         # Batteri: lad billigst, aflad dyrest – kun hvis prisforskellen er stor nok
-        ch = cheapest(d, settings["battery_charge_hours"])
-        dis_pool = [s for s in d if s not in ch]
+        g = lambda k, dflt: float(settings.get(k, dflt))  # noqa: E731
+        win = lambda name: in_window(d, tz, g(f"{name}_from", 0), g(f"{name}_to", 24))  # noqa: E731
+        ch = cheapest(win("battery_charge"), settings["battery_charge_hours"])
+        dis_pool = [s for s in win("battery_discharge") if s not in ch]
         dis = cheapest(dis_pool, settings["battery_discharge_hours"], most_expensive=True)
         if ch and dis and (avg(dis) or 0) - (avg(ch) or 0) >= settings["battery_min_spread"]:
             plan.battery_charge += ch
             plan.battery_discharge += dis
         # Varmt vand: sammenhængende billigste blok
-        plan.hotwater_slots += cheapest(d, settings["hotwater_hours"], contiguous=True)
+        plan.hotwater_slots += cheapest(win("hotwater"), settings["hotwater_hours"], contiguous=True)
         # Varme: hæv i billigste timer, sænk i dyreste timer
-        boost = cheapest(d, settings["heating_boost_hours"])
+        boost = cheapest(win("heating_boost"), settings["heating_boost_hours"])
         plan.heating_boost += boost
         if settings["heating_reduce_degrees"] > 0:
-            pool = [s for s in d if s not in boost]
+            pool = [s for s in win("heating_reduce") if s not in boost]
             plan.heating_reduce += cheapest(pool, settings["heating_reduce_hours"], most_expensive=True)
 
     # Elbil: billigste timer i 24 timer op til klar-tidspunktet

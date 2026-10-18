@@ -192,3 +192,22 @@ def test_ev_cost_compare():
     assert p.ev_cost_now > p.ev_cost_planned > 0
     p = planner.build_plan(slots, now, TZ, s, ev_soc=90)
     assert p.ev_cost_now == 0 and p.ev_cost_planned == 0
+
+
+def test_time_windows():
+    slots = model().build_slots(records("2026-10-18", CURVE))
+    s = dict(const.DEFAULT_SETTINGS)
+    # Varmt vand kun 05–09: billigste blok skal ligge der
+    s["hotwater_from"], s["hotwater_to"] = 5, 9
+    # Varme må kun hæves 10–16
+    s["heating_boost_from"], s["heating_boost_to"] = 10, 16
+    # Batteri aflader kun 17–20, lader 22–06 (over midnat)
+    s["battery_discharge_from"], s["battery_discharge_to"] = 17, 20
+    s["battery_charge_from"], s["battery_charge_to"] = 22, 6
+    p = planner.build_plan(slots, slots[0].start, TZ, s)
+    hrs = lambda xs: {x.start.astimezone(TZ).hour for x in xs}
+    assert hrs(p.hotwater_slots) <= {5, 6, 7, 8}
+    assert hrs(p.heating_boost) <= set(range(10, 16))
+    assert hrs(p.battery_discharge) <= {17, 18, 19}
+    assert hrs(p.battery_charge) <= {22, 23, 0, 1, 2, 3, 4, 5}
+    assert planner.in_window(slots, TZ, 0, 24) == slots

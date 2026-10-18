@@ -56,6 +56,15 @@ Slår du et modul fra, sættes enheden tilbage til normal drift (batteri i norma
 
 ---
 
+### Tidsrum
+Batteri, varmt vand og varme har hvert sit **tidsrum** (fra–til kl.), så kunden kan bestemme, hvornår SmartHus må handle:
+
+- **Batteri:** fx kun lade fra nettet kl. 22–06 og kun aflade kl. 17–21.
+- **Varmt vand:** fx kun opvarme kl. 00–07, så vandet er varmt om morgenen.
+- **Varme:** fx kun hæve kl. 06–16 og kun sænke kl. 17–21.
+
+Fra 0 til 24 betyder hele døgnet (standard). Et tidsrum som 22–06 går hen over midnat. SmartHus vælger stadig de billigste (eller dyreste) timer – men kun inden for tidsrummet.
+
 ## Entiteter
 
 Alle entiteter har faste id'er, uanset sprog:

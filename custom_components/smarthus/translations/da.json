@@ -287,6 +287,36 @@
       },
       "ev_charge_power": {
         "name": "Elbil: ladeeffekt"
+      },
+      "battery_charge_from": {
+        "name": "Batteri: lad mellem kl. (fra)"
+      },
+      "battery_charge_to": {
+        "name": "Batteri: lad mellem kl. (til)"
+      },
+      "battery_discharge_from": {
+        "name": "Batteri: aflad mellem kl. (fra)"
+      },
+      "battery_discharge_to": {
+        "name": "Batteri: aflad mellem kl. (til)"
+      },
+      "hotwater_from": {
+        "name": "Varmt vand: opvarm mellem kl. (fra)"
+      },
+      "hotwater_to": {
+        "name": "Varmt vand: opvarm mellem kl. (til)"
+      },
+      "heating_boost_from": {
+        "name": "Varme: hæv mellem kl. (fra)"
+      },
+      "heating_boost_to": {
+        "name": "Varme: hæv mellem kl. (til)"
+      },
+      "heating_reduce_from": {
+        "name": "Varme: sænk mellem kl. (fra)"
+      },
+      "heating_reduce_to": {
+        "name": "Varme: sænk mellem kl. (til)"
       }
     }
   }

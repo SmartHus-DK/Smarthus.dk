@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.2.0";
+const SMARTHUS_CARD_VERSION = "1.3.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -26,24 +26,39 @@ const LANES = [
   { key: "heating_reduce_now", label: "Sparer på varmen", color: COLORS.heating_reduce, module: "control_heating" },
 ];
 
+// Indstillinger pr. modul, i grupper. ["a_from","a_to"] vises som ét tidsrum.
 const MODULES = [
   {
     id: "ev", name: "Elbil", icon: "mdi:car-electric", sw: "control_ev",
-    numbers: ["ev_target_soc", "ev_ready_hour", "ev_charge_power", "ev_battery_capacity", "ev_hours"],
+    groups: [
+      { title: null, items: ["ev_target_soc", "ev_ready_hour", "ev_hours"] },
+      { title: "Bil og lader", items: ["ev_battery_capacity", "ev_charge_power"] },
+    ],
   },
   {
     id: "battery", name: "Batteri", icon: "mdi:home-battery", sw: "control_battery",
-    numbers: ["battery_charge_hours", "battery_discharge_hours", "battery_min_spread", "battery_min_soc", "battery_max_soc"],
+    groups: [
+      { title: "Opladning fra nettet", items: ["battery_charge_hours", ["battery_charge_from", "battery_charge_to"]] },
+      { title: "Brug af batteriet", items: ["battery_discharge_hours", ["battery_discharge_from", "battery_discharge_to"]] },
+      { title: "Grænser", items: ["battery_min_spread", "battery_min_soc", "battery_max_soc"] },
+    ],
   },
   {
     id: "hotwater", name: "Varmt vand", icon: "mdi:water-boiler", sw: "control_hotwater",
-    numbers: ["hotwater_hours", "hotwater_boost_temp", "hotwater_normal_temp"],
+    groups: [
+      { title: null, items: ["hotwater_hours", ["hotwater_from", "hotwater_to"]] },
+      { title: "Temperatur", items: ["hotwater_boost_temp", "hotwater_normal_temp"] },
+    ],
   },
   {
     id: "heating", name: "Varme", icon: "mdi:heat-pump", sw: "control_heating",
-    numbers: ["heating_base_temp", "heating_boost_degrees", "heating_boost_hours", "heating_reduce_degrees", "heating_reduce_hours"],
+    groups: [
+      { title: null, items: ["heating_base_temp"] },
+      { title: "Ekstra varme i billige timer", items: ["heating_boost_degrees", "heating_boost_hours", ["heating_boost_from", "heating_boost_to"]] },
+      { title: "Spar i dyre timer", items: ["heating_reduce_degrees", "heating_reduce_hours", ["heating_reduce_from", "heating_reduce_to"]] },
+    ],
   },
-  { id: "solar", name: "Solceller", icon: "mdi:solar-power", sw: "control_solar", numbers: [] },
+  { id: "solar", name: "Solceller", icon: "mdi:solar-power", sw: "control_solar", groups: [] },
 ];
 
 const NUMBER_LABELS = {
@@ -391,12 +406,21 @@ class SmartHusCard extends HTMLElement {
   _moduleBody(m) {
     let extra = "";
     if (m.id === "ev") extra = this._evCompare();
+    if (m.id === "solar") extra = `<div class="hint">Når salgsprisen er negativ, begrænses eksporten automatisk. Der er ingen indstillinger.</div>`;
     const evHasSoc = this._st("sensor", "ev_smart_saving")?.attributes?.soc != null;
-    const nums = m.numbers
-      .filter((k) => this._st("number", k))
-      .filter((k) => !(m.id === "ev" && evHasSoc && k === "ev_hours"))
-      .filter((k) => !(m.id === "ev" && !evHasSoc && ["ev_target_soc", "ev_battery_capacity"].includes(k)))
-      .map((k) => this._stepper(k))
+    const hide = (k) =>
+      (m.id === "ev" && evHasSoc && k === "ev_hours") ||
+      (m.id === "ev" && !evHasSoc && ["ev_target_soc", "ev_battery_capacity"].includes(k));
+    const groups = m.groups
+      .map((g) => {
+        const rows = g.items
+          .map((it) => {
+            if (Array.isArray(it)) return this._st("number", it[0]) && this._st("number", it[1]) ? this._window(it[0], it[1]) : "";
+            return this._st("number", it) && !hide(it) ? this._stepper(it) : "";
+          })
+          .join("");
+        return rows ? `<div class="grp">${g.title ? `<div class="grp-title">${g.title}</div>` : ""}${rows}</div>` : "";
+      })
       .join("");
     let actions = "";
     const force = this._st("switch", "ev_force");
@@ -405,7 +429,25 @@ class SmartHusCard extends HTMLElement {
       actions = `<button class="action ${fon ? "active" : ""}" data-action="toggle" data-entity="${force.entity_id}">
         <ha-icon icon="mdi:lightning-bolt"></ha-icon>${fon ? "Stop opladning nu" : "Lad elbil nu"}</button>`;
     }
-    return `<div class="mod-body">${extra}${nums ? `<div class="steppers">${nums}</div>` : ""}${actions}</div>`;
+    return `<div class="mod-body">${extra}${groups}${actions}</div>`;
+  }
+
+  _window(fromKey, toKey) {
+    const a = this._st("number", fromKey), b = this._st("number", toKey);
+    const fa = parseFloat(a.state), fb = parseFloat(b.state);
+    const all = fb - fa >= 24 || fa === fb;
+    const p2 = (v) => String(Math.round(v)).padStart(2, "0");
+    const mini = (st, v) => `
+      <span class="mini">
+        <button data-action="step" data-entity="${st.entity_id}" data-dir="-1" aria-label="Tidligere">−</button>
+        <span class="mini-val">${p2(v)}</span>
+        <button data-action="step" data-entity="${st.entity_id}" data-dir="1" aria-label="Senere">+</button>
+      </span>`;
+    return `
+      <div class="step win">
+        <span class="step-lbl">Tidsrum<span class="win-note">${all ? "Hele døgnet" : fa > fb ? "Hen over midnat" : `${Math.round(fb - fa)} timer`}</span></span>
+        <span class="win-ctl">${mini(a, fa)}<span class="dash">–</span>${mini(b, fb)}</span>
+      </div>`;
   }
 
   _evCompare() {
@@ -445,7 +487,11 @@ class SmartHusCard extends HTMLElement {
     const unit = s.attributes.unit_of_measurement || "";
     const step = s.attributes.step || 1;
     const dec = step < 0.1 ? 2 : step < 1 ? (step % 0.5 === 0 ? 1 : 2) : 0;
-    const shown = unit === "kl." ? `kl. ${String(v).padStart(2, "0")}` : `${nf(v, dec)} ${esc(unit)}`;
+    const trim = (x) => Number(x.toFixed(2)).toLocaleString("da-DK", { maximumFractionDigits: 2 });
+    const shown =
+      unit === "kl." ? `kl. ${String(v).padStart(2, "0")}` :
+      unit === "h" ? `${trim(v)} t` :
+      `${nf(v, dec)} ${esc(unit)}`;
     return `
       <div class="step">
         <span class="step-lbl">${NUMBER_LABELS[key] || esc(s.attributes.friendly_name)}</span>
@@ -571,7 +617,18 @@ class SmartHusCard extends HTMLElement {
       .cmp-result { margin-top: 2px; font-size: 14px; }
       .cmp-result b { color: ${COLORS.cheap}; font-variant-numeric: tabular-nums; }
 
-      .steppers { display: grid; gap: 2px; }
+      .grp { padding-top: 6px; }
+      .grp + .grp { margin-top: 6px; border-top: 1px dashed var(--sh-line); }
+      .grp-title { font-size: 12px; font-weight: 600; color: var(--secondary-text-color); padding: 6px 0 0; }
+      .hint { font-size: 13px; color: var(--secondary-text-color); }
+      .win-note { display: block; font-size: 11px; color: var(--secondary-text-color); }
+      .win-ctl { display: flex; align-items: center; gap: 2px; }
+      .dash { color: var(--secondary-text-color); padding: 0 2px; }
+      .mini { display: flex; align-items: center; }
+      .mini button { width: 28px; height: 28px; border-radius: 50%; font-size: 16px; line-height: 1; box-shadow: inset 0 0 0 1px var(--sh-line); }
+      .mini button:active { background: var(--sh-track); }
+      .mini-val { min-width: 26px; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
+      @media (max-width: 420px) { .mod-body { padding-left: 16px; } }
       .step { display: flex; justify-content: space-between; align-items: center; min-height: 40px; font-size: 14px; }
       .step-ctl { display: flex; align-items: center; gap: 4px; }
       .step-ctl button { width: 32px; height: 32px; border-radius: 50%; font-size: 18px; line-height: 1;

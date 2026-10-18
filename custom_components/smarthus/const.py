@@ -10,7 +10,7 @@ MANUFACTURER: Final = "SmartHus.dk"
 API_URL: Final = "https://api.energidataservice.dk/dataset/DayAheadPrices"
 
 CARD_URL: Final = "/smarthus_static/smarthus-card.js"
-CARD_VERSION: Final = "1.2.0"
+CARD_VERSION: Final = "1.3.0"
 
 PLATFORMS: Final = ["sensor", "binary_sensor", "switch", "number"]
 
@@ -124,6 +124,17 @@ S_HEATING_BOOST_HOURS: Final = "heating_boost_hours"
 S_HEATING_REDUCE_DEG: Final = "heating_reduce_degrees"
 S_HEATING_REDUCE_HOURS: Final = "heating_reduce_hours"
 
+S_BATTERY_CHARGE_FROM: Final = "battery_charge_from"
+S_BATTERY_CHARGE_TO: Final = "battery_charge_to"
+S_BATTERY_DISCHARGE_FROM: Final = "battery_discharge_from"
+S_BATTERY_DISCHARGE_TO: Final = "battery_discharge_to"
+S_HOTWATER_FROM: Final = "hotwater_from"
+S_HOTWATER_TO: Final = "hotwater_to"
+S_HEATING_BOOST_FROM: Final = "heating_boost_from"
+S_HEATING_BOOST_TO: Final = "heating_boost_to"
+S_HEATING_REDUCE_FROM: Final = "heating_reduce_from"
+S_HEATING_REDUCE_TO: Final = "heating_reduce_to"
+
 DEFAULT_SETTINGS: Final = {
     S_BATTERY_CHARGE_HOURS: 3.0,
     S_BATTERY_DISCHARGE_HOURS: 3.0,
@@ -143,6 +154,16 @@ DEFAULT_SETTINGS: Final = {
     S_HEATING_BOOST_HOURS: 4.0,
     S_HEATING_REDUCE_DEG: 1.0,
     S_HEATING_REDUCE_HOURS: 3.0,
+    S_BATTERY_CHARGE_FROM: 0.0,
+    S_BATTERY_CHARGE_TO: 24.0,
+    S_BATTERY_DISCHARGE_FROM: 0.0,
+    S_BATTERY_DISCHARGE_TO: 24.0,
+    S_HOTWATER_FROM: 0.0,
+    S_HOTWATER_TO: 24.0,
+    S_HEATING_BOOST_FROM: 0.0,
+    S_HEATING_BOOST_TO: 24.0,
+    S_HEATING_REDUCE_FROM: 0.0,
+    S_HEATING_REDUCE_TO: 24.0,
 }
 
 # --- Handlinger ------------------------------------------------------------
