@@ -178,3 +178,17 @@ def test_ev_target_soc():
     # Lad nu under målet
     p = planner.build_plan(slots, now, TZ, s, ev_soc=40, ev_force=True)
     assert p.ev_on
+
+
+def test_ev_cost_compare():
+    recs = records("2026-10-18", CURVE) + records("2026-10-19", CURVE)
+    slots = model().build_slots(recs)
+    s = dict(const.DEFAULT_SETTINGS)
+    now = datetime(2026, 10, 18, 17, 0, tzinfo=TZ).astimezone(timezone.utc)  # dyr spidslast
+    p = planner.build_plan(slots, now, TZ, s, ev_soc=50)
+    energy = 0.30 * 60 / 0.9
+    assert abs(p.ev_energy - round(energy, 2)) < 0.01
+    assert p.ev_cost_now is not None and p.ev_cost_planned is not None
+    assert p.ev_cost_now > p.ev_cost_planned > 0
+    p = planner.build_plan(slots, now, TZ, s, ev_soc=90)
+    assert p.ev_cost_now == 0 and p.ev_cost_planned == 0

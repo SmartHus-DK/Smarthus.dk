@@ -115,6 +115,10 @@ class Plan:
     ev_on: bool = False
     ev_hours_needed: float | None = None
     ev_target_reached: bool = False
+    ev_soc: float | None = None
+    ev_energy: float | None = None  # kWh fra nettet
+    ev_cost_now: float | None = None  # kr hvis der lades med det samme
+    ev_cost_planned: float | None = None  # kr i de planlagte billigste timer
     hotwater_slots: list[Slot] = field(default_factory=list)
     hotwater_on: bool = False
     heating_boost: list[Slot] = field(default_factory=list)
@@ -198,8 +202,44 @@ def build_plan(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
             plan.heating_mode = "boost"
         elif cur in plan.heating_reduce:
             plan.heating_mode = "reduce"
+    plan.ev_soc = ev_soc
+    _ev_costs(plan, slots, now, settings)
     plan.ev_on = (ev_force or any(s.start <= now < s.end for s in plan.ev_slots)) and not plan.ev_target_reached
     return plan
+
+
+def charge_cost(seq: list[Slot], energy: float, kw: float) -> float | None:
+    """Pris for at lade `energy` kWh ved `kw` gennem tidsrummene i rækkefølge."""
+    remaining, total = energy, 0.0
+    for s in seq:
+        if remaining <= 1e-6:
+            break
+        e = min(remaining, kw * s.hours)
+        total += e * s.price
+        remaining -= e
+    return None if remaining > 1e-3 else round(total, 2)
+
+
+def _ev_costs(plan: "Plan", slots: list[Slot], now: datetime, settings: dict) -> None:
+    kw = max(settings["ev_charge_power"], 0.1)
+    if plan.ev_hours_needed is not None:
+        missing = max(0.0, settings["ev_target_soc"] - (plan.ev_soc or 0)) / 100
+        energy = missing * settings["ev_battery_capacity"] / CHARGE_EFFICIENCY
+    else:
+        energy = settings["ev_hours"] * kw
+    plan.ev_energy = round(energy, 2)
+    if energy <= 0:
+        plan.ev_cost_now = plan.ev_cost_planned = 0.0
+        return
+    future = sorted((s for s in slots if s.end > now), key=lambda s: s.start)
+    plan.ev_cost_now = charge_cost(future, energy, kw)
+    real = [find_slot(slots, s.start) for s in plan.ev_slots if s.end > now]
+    if real and all(real):
+        plan.ev_cost_planned = charge_cost(sorted(real, key=lambda s: s.start), energy, kw)
+        if plan.ev_cost_planned is None:
+            # Planen dækker lidt mindre pga. afrunding til 15 min – brug gennemsnitsprisen
+            avg_p = sum(s.price for s in real) / len(real)
+            plan.ev_cost_planned = round(energy * avg_p, 2)
 
 
 CHARGE_EFFICIENCY = 0.9  # ladetab i lader og bil

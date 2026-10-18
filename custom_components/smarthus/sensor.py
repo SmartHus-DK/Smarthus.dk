@@ -111,6 +111,29 @@ def _status(c: SmartHusController) -> str:
     return " · ".join(parts)
 
 
+def _ev_saving(c: SmartHusController) -> float | None:
+    p = c.plan
+    if p.ev_cost_now is None or p.ev_cost_planned is None:
+        return None
+    return round(p.ev_cost_now - p.ev_cost_planned, 2)
+
+
+def _ev_attrs(c: SmartHusController) -> dict:
+    p = c.plan
+    e = p.ev_energy or 0
+    return {
+        "cost_now": p.ev_cost_now,
+        "cost_planned": p.ev_cost_planned,
+        "energy_kwh": p.ev_energy,
+        "price_now": round(p.ev_cost_now / e, 3) if e and p.ev_cost_now is not None else None,
+        "price_planned": round(p.ev_cost_planned / e, 3) if e and p.ev_cost_planned is not None else None,
+        "soc": p.ev_soc,
+        "target_soc": c.settings.get("ev_target_soc"),
+        "hours_needed": p.ev_hours_needed,
+        "target_reached": p.ev_target_reached,
+    }
+
+
 def _savings(bucket: str, category: str | None = None):
     return lambda c: c.savings.value(bucket, category)
 
@@ -140,6 +163,8 @@ SENSORS: tuple[SmartHusSensorDescription, ...] = (
                               options=["charge", "discharge", "normal", "off"], value_fn=_battery_status),
     SmartHusSensorDescription(key="ev_hours_needed", icon="mdi:timer-sand", native_unit_of_measurement="h",
                               suggested_display_precision=1, value_fn=lambda c: c.plan.ev_hours_needed),
+    SmartHusSensorDescription(key="ev_smart_saving", icon="mdi:cash-plus", value_fn=_ev_saving,
+                              attrs_fn=_ev_attrs, **MONEY),
     SmartHusSensorDescription(key="status", icon="mdi:home-lightning-bolt", value_fn=_status),
     SmartHusSensorDescription(key="savings_today", icon="mdi:piggy-bank", value_fn=_savings("today"),
                               attrs_fn=_savings_attrs("today"), **MONEY),

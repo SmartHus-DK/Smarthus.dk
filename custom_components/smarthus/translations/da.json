@@ -176,6 +176,9 @@
       },
       "ev_hours_needed": {
         "name": "Elbil: ladetid tilbage"
+      },
+      "ev_smart_saving": {
+        "name": "Elbil: spar ved smart opladning"
       }
     },
     "binary_sensor": {

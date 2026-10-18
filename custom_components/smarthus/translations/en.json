@@ -176,6 +176,9 @@
       },
       "ev_hours_needed": {
         "name": "EV: charge time left"
+      },
+      "ev_smart_saving": {
+        "name": "EV: smart charging saving"
       }
     },
     "binary_sensor": {

@@ -67,8 +67,24 @@ Alle entiteter har faste id'er, uanset sprog:
 - `switch.smarthus_control_*` – slå styring til/fra pr. modul
 - `number.smarthus_*` – antal timer, grader og temperaturer, kan ændres direkte fra dashboardet
 
+## SmartHus-kortet
+Integrationen har sit eget kort, som installeres automatisk – der skal ikke installeres noget ekstra.
+
+1. Åbn et dashboard → **Rediger** → **Tilføj kort**.
+2. Søg efter **SmartHus** og vælg kortet. Eller indsæt i YAML:
+
+```yaml
+type: custom:smarthus-card
+```
+
+Kortet viser elprisen nu, besparelser, en prisgraf for i dag og i morgen med et spor for hver enhed (hvornår elbil, batteri, varmt vand og varme kører), og styring af hvert modul med +/− knapper. For elbilen ser kunden, hvad det koster at lade **nu** sammenlignet med i de **billigste timer**, og hvor meget der spares.
+
+Valgfrit: `title: Mit hus` ændrer overskriften. Har du flere SmartHus-opsætninger, kan `prefix` pege på en anden (standard `smarthus`).
+
+Ser du ikke kortet efter en opdatering, så genindlæs siden (træk ned i appen eller tryk Ctrl+F5).
+
 ## Dashboard
-Se `dashboards/smarthus-dashboard.yaml`. Prisgrafen bruger [ApexCharts Card](https://github.com/RomRider/apexcharts-card) fra HACS.
+Et komplet eksempel-dashboard med standardkort findes i `dashboards/smarthus-dashboard.yaml`. Prisgrafen bruger [ApexCharts Card](https://github.com/RomRider/apexcharts-card) fra HACS.
 
 ---
 
@@ -81,6 +97,7 @@ Se `dashboards/smarthus-dashboard.yaml`. Prisgrafen bruger [ApexCharts Card](htt
 - **Elbil med SoC:** vælg bilens batteriniveau-sensor i opsætningen og indstil "Elbil: lad til" (mål-SoC), batteristørrelse og ladeeffekt. Ladetiden beregnes som (mål − nu) × batteri ÷ ladeeffekt ÷ 0,9 (ladetab), og laderen slukkes, når mål-SoC er nået – også ved "Lad elbil nu". Planen genberegnes hvert minut, så den følger bilens faktiske niveau.
 - **Elbil uden SoC:** lader et fast antal timer ("Elbil: timer at lade") og vælger de billigste tidsrum i de 24 timer op til "klar kl.". Hvis morgendagens priser endnu ikke er kendt, venter den – men lader altid i de sidste timer før klar-tidspunktet som sikkerhed.
 - **Besparelse (elbil, varmepumpe)** = kWh × (dagens gennemsnitspris − prisen da strømmen blev brugt).
+- **Elbil – lad nu vs. billigste timer:** sensoren `sensor.smarthus_ev_smart_saving` viser forskellen i kr. Attributterne `cost_now` og `cost_planned` er prisen for den samme mængde strøm (kWh) ladet med det samme eller i de planlagte timer.
 - **Besparelse (batteri)** = afladet kWh × pris − opladet kWh × pris.
 - **Værdi af solceller** = egetforbrug × købspris + eksport × salgspris.
 

@@ -12,6 +12,11 @@ views:
     max_columns: 3
     sections:
       - type: grid
+        column_span: 2
+        cards:
+          - type: custom:smarthus-card
+            grid_options: { columns: full }
+      - type: grid
         cards:
           - type: heading
             heading: Lige nu

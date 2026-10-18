@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
+from pathlib import Path
 
+from homeassistant.components.frontend import add_extra_js_url
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.typing import ConfigType
 
-from .const import PLATFORMS
+from .const import CARD_URL, CARD_VERSION, DOMAIN, PLATFORMS
 from .controller import SmartHusController
 from .coordinator import SmartHusPriceCoordinator
 
@@ -19,6 +25,20 @@ class SmartHusData:
 
 
 type SmartHusConfigEntry = ConfigEntry[SmartHusData]
+
+_LOGGER = logging.getLogger(__name__)
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Gør SmartHus-kortet tilgængeligt i alle dashboards (type: custom:smarthus-card)."""
+    card = Path(__file__).parent / "www" / "smarthus-card.js"
+    try:
+        await hass.http.async_register_static_paths([StaticPathConfig(CARD_URL, str(card), False)])
+        add_extra_js_url(hass, f"{CARD_URL}?v={CARD_VERSION}")
+    except Exception as err:  # noqa: BLE001 – kortet må aldrig stoppe integrationen
+        _LOGGER.warning("Kunne ikke registrere SmartHus-kortet: %s", err)
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry) -> bool:
