@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.6.0";
+const SMARTHUS_CARD_VERSION = "1.7.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -17,7 +17,26 @@ const COLORS = {
   hotwater: "#2BA3C9",
   heating_boost: "#E0902F",
   heating_reduce: "#7B8794",
+  solar_self: "#3FA88F",
+  solar_sold: "#E0A21B",
 };
+
+// Kategorier i SmartHus-besparelsen (solceller vises for sig)
+const SAVING_PARTS = [
+  { key: "ev", label: "Elbil", icon: "mdi:car-electric" },
+  { key: "battery", label: "Batteri", icon: "mdi:home-battery" },
+  { key: "heatpump", label: "Varme", icon: "mdi:heat-pump" },
+  { key: "hotwater", label: "Varmt vand", icon: "mdi:water-boiler" },
+];
+
+const SOLAR_TABS = [
+  { id: "today", label: "I dag" },
+  { id: "month", label: "Måned" },
+  { id: "year", label: "År" },
+  { id: "total", label: "I alt" },
+];
+
+const MONTHS = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "okt", "nov", "dec"];
 
 const LANES = [
   { key: "battery_charge_now", label: "Batteri lader", color: COLORS.battery_charge, module: "control_battery" },
@@ -133,6 +152,11 @@ class SmartHusCard extends HTMLElement {
     this.attachShadow({ mode: "open" });
     this._closed = new Set(); // alle felter er foldet ud fra start
     this._sel = null;
+    this._solarSel = null;
+    this._solarTab = "month";
+    try {
+      this._solarTab = localStorage.getItem("smarthus-card-solar-tab") || "month";
+    } catch (e) { /* ingen lagring */ }
     this.shadowRoot.addEventListener("click", (ev) => this._onClick(ev));
   }
 
@@ -150,7 +174,7 @@ class SmartHusCard extends HTMLElement {
   }
 
   getGridOptions() {
-    return { columns: 12, min_columns: 6 };
+    return { columns: "full", min_columns: 6 };
   }
 
   set hass(hass) {
@@ -241,7 +265,10 @@ class SmartHusCard extends HTMLElement {
     this.shadowRoot.innerHTML = `
       ${this._css()}
       <ha-card>
-        ${this._renderHeader()}
+        <div class="top">
+          ${this._renderHeader()}
+          ${this._renderSolar()}
+        </div>
         ${this._renderStrip()}
         <div class="modules">
           ${this._modules().map((m) => this._renderModule(m)).join("")}
@@ -277,11 +304,130 @@ class SmartHusCard extends HTMLElement {
           </div>
         </div>
         <div class="status" data-action="more" data-entity="${this._id("sensor", "status")}">${esc(status)}</div>
+        <div class="sec-title">SmartHus-styringen har sparet dig</div>
         <div class="savings">
           ${this._saving("I dag", sv("savings_today"), "savings_today")}
           ${this._saving("Denne måned", sv("savings_month"), "savings_month")}
           ${this._saving("I alt", sv("savings_total"), "savings_total")}
         </div>
+        ${this._savingParts()}
+      </div>`;
+  }
+
+  /** Fordeling af månedens SmartHus-besparelse på elbil, batteri, varme og varmt vand. */
+  _savingParts() {
+    const month = this._st("sensor", "savings_month")?.attributes || {};
+    const parts = SAVING_PARTS.filter((p) => this._st("sensor", `savings_month_${p.key}`) && month[p.key] != null)
+      .map((p) => ({ ...p, v: month[p.key] }))
+      .filter((p) => Math.abs(p.v) >= 0.005 || this._partConfigured(p.key));
+    if (!parts.length) return "";
+    return `<div class="parts" aria-label="Denne måned fordelt">
+      ${parts.map((p) => `<button class="part" data-action="more" data-entity="${this._id("sensor", `savings_month_${p.key}`)}">
+        <ha-icon icon="${p.icon}"></ha-icon><span class="p-lbl">${p.label}</span><span class="p-val ${p.v < 0 ? "neg" : ""}">${nf(p.v, 0)} kr</span></button>`).join("")}
+    </div>`;
+  }
+
+  _partConfigured(key) {
+    if (key === "ev") return this._cars().length > 0;
+    return !!this._st("switch", `control_${key === "heatpump" ? "heating" : key}`);
+  }
+
+  // --- Solceller --------------------------------------------------------
+  _renderSolar() {
+    const tab = SOLAR_TABS.some((t) => t.id === this._solarTab) ? this._solarTab : "month";
+    const st = this._st("sensor", `solar_value_${tab}`);
+    if (!st) return "";
+    const a = st.attributes || {};
+    const total = (a.self_value || 0) + (a.export_income || 0);
+    const produced = a.produced || 0;
+    const selfShare = produced > 0 ? (a.self_kwh || 0) / produced : 0;
+    const tabs = SOLAR_TABS.map((t) => `<button class="tab ${t.id === tab ? "on" : ""}" data-action="solar-tab" data-tab="${t.id}" aria-pressed="${t.id === tab}">${t.label}</button>`).join("");
+    const noExport = a.has_export_meter === false;
+    return `
+      <div class="solar">
+        <div class="solar-head">
+          <div class="sec-title"><ha-icon icon="mdi:solar-power-variant"></ha-icon>Solceller</div>
+          <div class="tabs" role="group" aria-label="Periode">${tabs}</div>
+        </div>
+        <button class="solar-big" data-action="more" data-entity="${st.entity_id}">
+          <span class="value">${nf(total, 0)}</span><span class="unit">kr</span>
+          <span class="big-lbl">samlet værdi af din solcellestrøm</span>
+        </button>
+        <div class="kpis">
+          ${this._kpi("Produceret", `${nf(produced, produced >= 100 ? 0 : 1)} kWh`, null, `solar_produced_${tab}`)}
+          ${this._kpi("Sparet", `${nf(a.self_value, 0)} kr`, `${nf(a.self_kwh, 0)} kWh brugt selv`, `solar_saved_${tab}`, COLORS.solar_self)}
+          ${this._kpi("Tjent ved salg", noExport ? "–" : `${nf(a.export_income, 0)} kr`, noExport ? "Kræver eksportmåler" : `${nf(a.export_kwh, 0)} kWh solgt`, `solar_sold_${tab}`, COLORS.solar_sold)}
+        </div>
+        ${produced > 0 && !noExport ? `
+        <div class="share" aria-label="Egetforbrug ${Math.round(selfShare * 100)} procent">
+          <i style="width:${selfShare * 100}%;background:${COLORS.solar_self}"></i><i style="width:${(1 - selfShare) * 100}%;background:${COLORS.solar_sold}"></i>
+        </div>
+        <div class="share-lbl"><span>${Math.round(selfShare * 100)} % brugt selv</span><span>${Math.round((1 - selfShare) * 100)} % solgt</span></div>` : ""}
+        ${this._solarChart(tab)}
+      </div>`;
+  }
+
+  _kpi(label, value, sub, key, color) {
+    const ent = this._st("sensor", key);
+    return `<button class="kpi" ${ent ? `data-action="more" data-entity="${ent.entity_id}"` : ""}>
+      <span class="k-lbl">${color ? `<i style="background:${color}"></i>` : ""}${label}</span>
+      <span class="k-val">${value}</span>${sub ? `<span class="k-sub">${sub}</span>` : ""}</button>`;
+  }
+
+  /** Søjler: dage (i dag/måned) eller måneder (år/i alt), delt i sparet og solgt. */
+  _solarChart(tab) {
+    const hist = this._st("sensor", "solar_value_total")?.attributes || {};
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    let rows;
+    if (tab === "today" || tab === "month") {
+      const map = new Map((hist.days || []).map((d) => [d.period, d]));
+      rows = [];
+      for (let i = 29; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+        const k = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        rows.push({ k, label: `${d.getDate()}/${d.getMonth() + 1}`, tick: d.getDate() === 1 || i === 29 || i === 0 ? `${d.getDate()}/${d.getMonth() + 1}` : "", ...(map.get(k) || {}) });
+      }
+    } else if (tab === "year") {
+      const map = new Map((hist.months || []).map((d) => [d.period, d]));
+      rows = MONTHS.map((m, i) => {
+        const k = `${now.getFullYear()}-${pad(i + 1)}`;
+        return { k, label: `${m} ${now.getFullYear()}`, tick: m, ...(map.get(k) || {}) };
+      });
+    } else {
+      const list = hist.months || [];
+      const step = Math.ceil(list.length / 12);
+      rows = list.map((d, i) => {
+        const [y, m] = d.period.split("-");
+        const show = i === 0 || m === "01" || i % step === 0;
+        return { k: d.period, label: `${MONTHS[+m - 1]} ${y}`, tick: show ? (i === 0 || m === "01" ? `${MONTHS[+m - 1]} ${y.slice(2)}` : MONTHS[+m - 1]) : "", ...d };
+      });
+    }
+    if (!rows.length || !rows.some((r) => r.produced)) {
+      return `<div class="solar-empty">Historikken bygges op fra nu af – her kommer et søjlediagram over ${tab === "year" || tab === "total" ? "månederne" : "dagene"}.</div>`;
+    }
+    const W = rows.length * 10, H = 70;
+    const max = Math.max(...rows.map((r) => (r.self_value || 0) + Math.max(r.export_income || 0, 0)), 0.01);
+    const bars = rows.map((r, i) => {
+      const a = Math.max(r.self_value || 0, 0) / max * H;
+      const b = Math.max(r.export_income || 0, 0) / max * H;
+      const sel = this._solarSel === r.k;
+      return `<g data-action="solar-bar" data-k="${r.k}" class="sbar${sel ? " sel" : ""}">
+        <rect x="${i * 10}" y="0" width="10" height="${H}" fill="transparent"></rect>
+        <rect x="${i * 10 + 1.5}" y="${H - a}" width="7" height="${a}" fill="${COLORS.solar_self}"></rect>
+        <rect x="${i * 10 + 1.5}" y="${H - a - b}" width="7" height="${b}" fill="${COLORS.solar_sold}"></rect>
+      </g>`;
+    }).join("");
+    const picked = rows.find((r) => r.k === this._solarSel);
+    const info = picked
+      ? `${picked.label}: <b>${nf(picked.produced, 1)} kWh</b> · sparet <b>${nf(picked.self_value)} kr</b> · solgt <b>${nf(picked.export_income)} kr</b>`
+      : `<span class="lg-dot" style="background:${COLORS.solar_self}"></span>Sparet <span class="lg-dot" style="background:${COLORS.solar_sold}"></span>Solgt <span class="muted">· tryk på en søjle</span>`;
+    const ticks = rows.map((r, i) => (r.tick ? `<span style="left:${((i * 10 + 5) / W) * 100}%">${r.tick}</span>` : "")).join("");
+    return `
+      <div class="schart">
+        <div class="strip-info">${info}</div>
+        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Solcellernes værdi pr. ${tab === "year" || tab === "total" ? "måned" : "dag"}">${bars}</svg>
+        <div class="ticks c">${ticks}</div>
       </div>`;
   }
 
@@ -566,6 +712,14 @@ class SmartHusCard extends HTMLElement {
       const id = el.dataset.mod;
       this._closed.has(id) ? this._closed.delete(id) : this._closed.add(id);
       this._render();
+    } else if (action === "solar-tab") {
+      this._solarTab = el.dataset.tab;
+      this._solarSel = null;
+      try { localStorage.setItem("smarthus-card-solar-tab", this._solarTab); } catch (e) { /* ingen lagring */ }
+      this._render();
+    } else if (action === "solar-bar") {
+      this._solarSel = this._solarSel === el.dataset.k ? null : el.dataset.k;
+      this._render();
     } else if (action === "bar") {
       const i = parseInt(el.dataset.i, 10);
       this._sel = this._sel === i ? null : i;
@@ -588,7 +742,65 @@ class SmartHusCard extends HTMLElement {
     return `<style>
       :host { --sh-track: color-mix(in srgb, var(--primary-text-color) 7%, transparent);
               --sh-line: var(--divider-color, rgba(127,127,127,.2)); }
-      ha-card { padding: 16px 0 6px; overflow: hidden; color: var(--primary-text-color); }
+      ha-card { display: block; padding: 16px 0 6px; overflow: hidden; color: var(--primary-text-color); container-type: inline-size; }
+      .top { display: grid; grid-template-columns: minmax(0, 1fr); }
+      .sec-title { display: flex; align-items: center; gap: 6px; margin-top: 14px; font-size: 12px; font-weight: 600;
+                   letter-spacing: .04em; text-transform: uppercase; color: var(--secondary-text-color); }
+      .sec-title ha-icon { --mdc-icon-size: 18px; color: ${COLORS.solar_sold}; }
+      .parts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+      .part { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px 5px 8px; border-radius: 999px;
+              background: var(--sh-track); font-size: 12px; }
+      .part ha-icon { --mdc-icon-size: 16px; color: var(--secondary-text-color); }
+      .p-lbl { color: var(--secondary-text-color); }
+      .p-val { font-weight: 600; font-variant-numeric: tabular-nums; }
+      .p-val.neg { color: ${COLORS.expensive}; }
+
+      .solar { padding: 4px 16px 14px; border-top: 1px solid var(--sh-line); }
+      .solar-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+      .solar-head .sec-title { margin-top: 10px; }
+      .tabs { display: inline-flex; margin-top: 10px; padding: 2px; border-radius: 999px; background: var(--sh-track); }
+      .tab { padding: 4px 11px; border-radius: 999px; font-size: 12px; color: var(--secondary-text-color); }
+      .tab.on { background: var(--card-background-color, #fff); color: var(--primary-text-color); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.15); }
+      .solar-big { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 6px; margin-top: 8px; text-align: left; }
+      .solar-big .value { font-size: 36px; line-height: 1.05; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+      .solar-big .unit { font-size: 14px; color: var(--secondary-text-color); }
+      .big-lbl { flex-basis: 100%; font-size: 12px; color: var(--secondary-text-color); }
+      .kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 12px; border-top: 1px solid var(--sh-line); }
+      .kpi { display: flex; flex-direction: column; align-items: flex-start; padding: 10px 0 0; text-align: left; min-width: 0; }
+      .kpi + .kpi { padding-left: 12px; border-left: 1px solid var(--sh-line); }
+      .k-lbl { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--secondary-text-color); }
+      .k-lbl i, .lg-dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; }
+      .lg-dot { margin: 0 4px 0 8px; vertical-align: -1px; }
+      .lg-dot:first-child { margin-left: 0; }
+      .k-val { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+      .k-sub { font-size: 11px; color: var(--secondary-text-color); }
+      .share { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 14px; gap: 2px; }
+      .share i { display: block; height: 100%; }
+      .share-lbl { display: flex; justify-content: space-between; font-size: 11px; color: var(--secondary-text-color); margin-top: 4px; }
+      .schart { margin-top: 14px; }
+      .schart svg { display: block; width: 100%; height: 80px; }
+      .sbar { cursor: pointer; }
+      .sbar:not(.sel) rect + rect { opacity: .85; }
+      .sbar.sel rect + rect { stroke: var(--primary-text-color); stroke-width: 1; vector-effect: non-scaling-stroke; }
+      .muted { color: var(--secondary-text-color); }
+      .ticks.c span { transform: translateX(-50%); white-space: nowrap; }
+      .solar-empty { margin-top: 12px; padding: 12px; border-radius: 10px; background: var(--sh-track); font-size: 13px; color: var(--secondary-text-color); }
+
+      /* Fuld bredde: pris og besparelse ved siden af solcellerne, moduler i kolonner */
+      @container (min-width: 760px) {
+        .top { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); }
+        .top > .solar { border-top: 0; border-left: 1px solid var(--sh-line); padding-top: 0; padding-left: 20px; }
+        .top > .solar .solar-head .sec-title, .top > .solar .tabs { margin-top: 0; }
+        .modules { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .mod { border-bottom: 1px solid var(--sh-line); }
+        .mod:nth-child(odd) { border-right: 1px solid var(--sh-line); }
+        .mod:last-child { border-bottom: 1px solid var(--sh-line); }
+      }
+      @container (min-width: 1200px) {
+        .modules { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .mod:nth-child(odd) { border-right: 0; }
+        .mod:not(:nth-child(3n)) { border-right: 1px solid var(--sh-line); }
+      }
       button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
       button:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; border-radius: 6px; }
       .empty { padding: 16px; color: var(--secondary-text-color); }

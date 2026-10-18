@@ -11,8 +11,9 @@ views:
     type: sections
     max_columns: 3
     sections:
+      # SmartHus-kortet fylder hele bredden (pris, besparelse og solceller side om side)
       - type: grid
-        column_span: 2
+        column_span: 3
         cards:
           - type: custom:smarthus-card
             grid_options: { columns: full }
@@ -48,7 +49,7 @@ views:
       - type: grid
         cards:
           - type: heading
-            heading: Besparelser
+            heading: SmartHus-besparelse
             icon: mdi:piggy-bank
           - type: tile
             entity: sensor.smarthus_savings_today
@@ -65,12 +66,30 @@ views:
             entities:
               - entity: sensor.smarthus_savings_month_battery
                 name: Batteri
-              - entity: sensor.smarthus_savings_month_solar
-                name: Solceller
               - entity: sensor.smarthus_savings_month_ev
                 name: Elbil
               - entity: sensor.smarthus_savings_month_heatpump
-                name: Varmepumpe
+                name: Varme
+              - entity: sensor.smarthus_savings_month_hotwater
+                name: Varmt vand
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Solceller
+            icon: mdi:solar-power-variant
+          - type: tile
+            entity: sensor.smarthus_solar_produced_year
+            name: Produceret i år
+          - type: tile
+            entity: sensor.smarthus_solar_value_year
+            name: Samlet værdi i år
+          - type: tile
+            entity: sensor.smarthus_solar_saved_year
+            name: Sparet i år
+          - type: tile
+            entity: sensor.smarthus_solar_sold_year
+            name: Tjent ved salg i år
 
       - type: grid
         cards:

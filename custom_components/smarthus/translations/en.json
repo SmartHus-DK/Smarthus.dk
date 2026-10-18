@@ -86,7 +86,8 @@
         "title": "Hot water",
         "description": "A switch is turned on in the cheapest continuous period of the day. For a water_heater or climate entity the temperature is raised instead.",
         "data": {
-          "hotwater_entity": "Water heater / heat pump"
+          "hotwater_entity": "Water heater / heat pump",
+          "hotwater_energy_sensor": "Energy meter: hot water (kWh) – optional"
         }
       },
       "heating": {
@@ -185,19 +186,16 @@
         "name": "Status"
       },
       "savings_today": {
-        "name": "Savings today"
+        "name": "SmartHus savings today"
       },
       "savings_month": {
-        "name": "Savings this month"
+        "name": "SmartHus savings this month"
       },
       "savings_total": {
-        "name": "Savings total"
+        "name": "SmartHus savings total"
       },
       "savings_month_battery": {
         "name": "Battery savings (month)"
-      },
-      "savings_month_solar": {
-        "name": "Solar value (month)"
       },
       "savings_month_ev": {
         "name": "EV savings (month)"
@@ -210,6 +208,57 @@
       },
       "ev_smart_saving": {
         "name": "{car}: smart charging saving"
+      },
+      "savings_month_hotwater": {
+        "name": "Savings hot water (month)"
+      },
+      "solar_produced_today": {
+        "name": "Solar: produced today"
+      },
+      "solar_value_today": {
+        "name": "Solar: total value today"
+      },
+      "solar_saved_today": {
+        "name": "Solar: saved today"
+      },
+      "solar_sold_today": {
+        "name": "Solar: earned from export today"
+      },
+      "solar_produced_month": {
+        "name": "Solar: produced this month"
+      },
+      "solar_value_month": {
+        "name": "Solar: total value this month"
+      },
+      "solar_saved_month": {
+        "name": "Solar: saved this month"
+      },
+      "solar_sold_month": {
+        "name": "Solar: earned from export this month"
+      },
+      "solar_produced_year": {
+        "name": "Solar: produced this year"
+      },
+      "solar_value_year": {
+        "name": "Solar: total value this year"
+      },
+      "solar_saved_year": {
+        "name": "Solar: saved this year"
+      },
+      "solar_sold_year": {
+        "name": "Solar: earned from export this year"
+      },
+      "solar_produced_total": {
+        "name": "Solar: produced total"
+      },
+      "solar_value_total": {
+        "name": "Solar: total value total"
+      },
+      "solar_saved_total": {
+        "name": "Solar: saved total"
+      },
+      "solar_sold_total": {
+        "name": "Solar: earned from export total"
       }
     },
     "binary_sensor": {

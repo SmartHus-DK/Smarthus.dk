@@ -156,6 +156,40 @@ def test_savings():
     assert calc.value("total") != 0
 
 
+def test_solar_overview():
+    slots = model().build_slots(records("2026-10-18", CURVE))
+    calc = savings.SavingsCalculator()
+    s = slots[48]
+    now_local = s.start.astimezone(TZ)
+    avg = planner.avg(slots)
+    calc.update(now_local, s, avg, {"solar": 1000.0, "export": 500.0})
+    calc.update(now_local, s, avg, {"solar": 1003.0, "export": 501.0})  # 3 kWh produceret, 1 solgt
+    assert calc.solar("today", "produced") == 3.0
+    assert calc.solar("today", "self_kwh") == 2.0
+    assert calc.solar("today", "export_kwh") == 1.0
+    assert abs(calc.solar("today", "self_value") - round(2 * s.price, 2)) < 0.011
+    assert abs(calc.solar("today", "export_income") - round(s.sale, 2)) < 0.011
+    assert calc.solar("year", "produced") == 3.0
+    # Solceller tæller ikke med i SmartHus-besparelsen
+    assert calc.value("today") == 0
+    hist = calc.solar_history()
+    assert hist["days"][0]["produced"] == 3.0 and hist["months"][0]["period"] == now_local.strftime("%Y-%m")
+    # Nyt år nulstiller "i år", men ikke "i alt"
+    calc.update(now_local.replace(year=now_local.year + 1), s, avg, {})
+    assert calc.solar("year", "produced") == 0 and calc.solar("total", "produced") == 3.0
+
+
+def test_savings_migration():
+    old = {"day": "2026-10-18", "month": "2026-10", "last": {},
+           "today": {"battery": 1.0, "solar": 4.0, "ev": 2.0, "heatpump": 0.0},
+           "month_values": {"battery": 1.0, "solar": 40.0, "ev": 2.0, "heatpump": 0.0},
+           "total": {"battery": 1.0, "solar": 400.0, "ev": 2.0, "heatpump": 0.0}}
+    calc = savings.SavingsCalculator(old)
+    assert calc.value("total") == 3.0
+    assert calc.solar("total") == 400.0 and calc.solar("month") == 40.0 and calc.solar("year") == 40.0
+    assert calc.value("month_values", "hotwater") == 0
+
+
 def test_merge_periods():
     slots = model().build_slots(records("2026-10-18", CURVE))
     ch = planner.cheapest(slots, 2)

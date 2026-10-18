@@ -28,6 +28,7 @@ from .const import (
     CONF_EXPORT_ENERGY,
     CONF_HEATING_CLIMATE,
     CONF_HEATPUMP_ENERGY,
+    CONF_HOTWATER_ENERGY,
     CONF_HOTWATER_ENTITY,
     CONF_SOLAR_CURTAIL,
     CONF_SOLAR_ENERGY,
@@ -175,6 +176,7 @@ class SmartHusController:
                 readings[key] = self._energy_entity_kwh(car["energy"])
         mapping = {
             "heatpump": CONF_HEATPUMP_ENERGY,
+            "hotwater": CONF_HOTWATER_ENERGY,
             "battery_charge": CONF_BATTERY_CHARGE_ENERGY,
             "battery_discharge": CONF_BATTERY_DISCHARGE_ENERGY,
             "solar": CONF_SOLAR_ENERGY,

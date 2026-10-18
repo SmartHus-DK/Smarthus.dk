@@ -18,7 +18,15 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from . import SmartHusConfigEntry
-from .const import ACTION_OFF, MODULE_BATTERY, MODULE_HEATING, MODULE_HOTWATER, MODULE_SOLAR
+from .const import (
+    ACTION_OFF,
+    CONF_EXPORT_ENERGY,
+    CONF_SOLAR_ENERGY,
+    MODULE_BATTERY,
+    MODULE_HEATING,
+    MODULE_HOTWATER,
+    MODULE_SOLAR,
+)
 from .controller import SmartHusController
 from .entity import SmartHusEntity
 from .planner import EvPlan, Slot, car_settings, cheapest, local_days
@@ -181,12 +189,55 @@ SENSORS: tuple[SmartHusSensorDescription, ...] = (
                               attrs_fn=_savings_attrs("total"), state_class=SensorStateClass.TOTAL, **MONEY),
     SmartHusSensorDescription(key="savings_month_battery", icon="mdi:home-battery-outline",
                               value_fn=_savings("month_values", "battery"), **MONEY),
-    SmartHusSensorDescription(key="savings_month_solar", icon="mdi:solar-power-variant",
-                              value_fn=_savings("month_values", "solar"), **MONEY),
     SmartHusSensorDescription(key="savings_month_ev", icon="mdi:car-electric",
                               value_fn=_savings("month_values", "ev"), **MONEY),
     SmartHusSensorDescription(key="savings_month_heatpump", icon="mdi:heat-pump",
                               value_fn=_savings("month_values", "heatpump"), **MONEY),
+    SmartHusSensorDescription(key="savings_month_hotwater", icon="mdi:water-boiler",
+                              value_fn=_savings("month_values", "hotwater"), **MONEY),
+)
+
+# Solcelleoverblik: produktion, sparet (egetforbrug) og tjent (salg) pr. periode
+_SOLAR_PERIODS = (("today", "today"), ("month", "month"), ("year", "year"), ("total", "total"))
+
+
+def _solar_value(bucket: str):
+    return lambda c: c.savings.solar(bucket) if c.has(CONF_SOLAR_ENERGY) else None
+
+
+def _solar_field(bucket: str, field: str):
+    return lambda c: c.savings.solar(bucket, field) if c.has(CONF_SOLAR_ENERGY) else None
+
+
+def _solar_value_attrs(bucket: str):
+    def fn(c: SmartHusController) -> dict:
+        attrs = c.savings.solar_attrs(bucket)
+        attrs["has_export_meter"] = c.has(CONF_EXPORT_ENERGY)
+        if bucket == "total":
+            attrs.update(c.savings.solar_history())
+        return attrs
+    return fn
+
+
+SOLAR_SENSORS: tuple[SmartHusSensorDescription, ...] = tuple(
+    d
+    for bucket, name in _SOLAR_PERIODS
+    for d in (
+        SmartHusSensorDescription(
+            key=f"solar_produced_{name}", icon="mdi:solar-power-variant", value_fn=_solar_field(bucket, "produced"),
+            device_class=SensorDeviceClass.ENERGY, native_unit_of_measurement="kWh", suggested_display_precision=1,
+            state_class=SensorStateClass.TOTAL if bucket == "total" else None),
+        SmartHusSensorDescription(
+            key=f"solar_value_{name}", icon="mdi:cash-plus", value_fn=_solar_value(bucket),
+            attrs_fn=_solar_value_attrs(bucket),
+            state_class=SensorStateClass.TOTAL if bucket == "total" else None, **MONEY),
+        SmartHusSensorDescription(
+            key=f"solar_saved_{name}", icon="mdi:home-lightning-bolt-outline",
+            value_fn=_solar_field(bucket, "self_value"), **MONEY),
+        SmartHusSensorDescription(
+            key=f"solar_sold_{name}", icon="mdi:transmission-tower-export",
+            value_fn=_solar_field(bucket, "export_income"), **MONEY),
+    )
 )
 
 
@@ -194,6 +245,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
                             async_add_entities: AddEntitiesCallback) -> None:
     controller = entry.runtime_data.controller
     entities: list[SensorEntity] = [SmartHusSensor(entry, controller, d) for d in SENSORS]
+    if controller.has(CONF_SOLAR_ENERGY):
+        entities += [SmartHusSensor(entry, controller, d) for d in SOLAR_SENSORS]
     for car in controller.cars:
         for d in EV_SENSORS:
             entities.append(EvSensor(entry, controller, d, car["id"], car.get("name") or "Elbil"))
@@ -203,7 +256,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
 class SmartHusSensor(SmartHusEntity, SensorEntity):
     _domain = "sensor"
     entity_description: SmartHusSensorDescription
-    _unrecorded_attributes = frozenset({"today", "tomorrow"})
+    _unrecorded_attributes = frozenset({"today", "tomorrow", "days", "months"})
 
     def __init__(self, entry, controller, description: SmartHusSensorDescription) -> None:
         super().__init__(entry, controller, description.key)

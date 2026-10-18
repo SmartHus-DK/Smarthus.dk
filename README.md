@@ -9,11 +9,11 @@ SmartHus henter dagens og morgendagens spotpriser fra Energi Data Service, lægg
 | Modul | Hvad det gør |
 |---|---|
 | 🔋 **Batteri / inverter** | Lader fra nettet i de billigste timer og aflader i de dyreste – kun hvis prisforskellen er stor nok. Respekterer min./maks. batteriniveau. Lader også når salgsprisen er negativ. |
-| ☀️ **Solceller** | Begrænser eksport når salgsprisen er negativ og beregner værdien af din solcellestrøm. |
+| ☀️ **Solceller** | Begrænser eksport når salgsprisen er negativ og giver et overblik over produktion, hvad solcellerne har sparet dig, og hvad du har tjent ved salg – i dag, pr. måned, pr. år og i alt. |
 | 🚗 **Elbillader** | Lader bilen op til din mål-SoC (fx 80 %) i de billigste timer inden dit "klar kl."-tidspunkt og stopper, når målet er nået. Knap til "Lad elbil nu". |
 | 🚿 **Varmt vand** | Opvarmer i dagens billigste sammenhængende periode (kontakt eller temperatur). |
 | 🔥 **Varme / varmepumpe** | Hæver temperaturen X grader i de N billigste timer og sænker den i de dyreste. |
-| 💰 **Besparelser** | Viser besparelse i dag, denne måned og i alt – fordelt på batteri, solceller, elbil og varmepumpe. |
+| 💰 **Besparelser** | Viser hvad SmartHus-styringen har sparet i dag, denne måned og i alt – fordelt på elbil, batteri, varme og varmt vand. Solcellerne vises for sig. |
 
 SmartHus styrer via **dine eksisterende entiteter**, så det virker med SigEnergy og de fleste andre invertere, ladebokse og varmepumper der allerede er i Home Assistant.
 
@@ -91,7 +91,8 @@ Alle entiteter har faste id'er, uanset sprog:
 
 - `sensor.smarthus_current_price` – elpris nu (attributter `today`/`tomorrow` til grafer)
 - `sensor.smarthus_status` – fx "Lader batteri · Lader elbil"
-- `sensor.smarthus_savings_today` / `_month` / `_total` – besparelser i kr
+- `sensor.smarthus_savings_today` / `_month` / `_total` – SmartHus-besparelse i kr (uden solceller)
+- `sensor.smarthus_solar_produced_*`, `_solar_saved_*`, `_solar_sold_*`, `_solar_value_*` – solcelleoverblik for `today`, `month`, `year` og `total`
 - `binary_sensor.smarthus_ev_charge_now` m.fl. – hvad planen ønsker nu, med attributten `periods`
 - `switch.smarthus_control_*` – slå styring til/fra pr. modul
 - `number.smarthus_*` – antal timer, grader og temperaturer, kan ændres direkte fra dashboardet
@@ -125,10 +126,10 @@ Et komplet eksempel-dashboard med standardkort findes i `dashboards/smarthus-das
 - **Planer** laves pr. døgn. Morgendagens priser kommer ca. kl. 13, og så opdateres planen automatisk. Priserne er i 15-minutters opløsning.
 - **Elbil med SoC:** vælg bilens batteriniveau-sensor i opsætningen og indstil "Elbil: lad til" (mål-SoC), batteristørrelse og ladeeffekt. Ladetiden beregnes som (mål − nu) × batteri ÷ ladeeffekt ÷ 0,9 (ladetab), og laderen slukkes, når mål-SoC er nået – også ved "Lad elbil nu". Planen genberegnes hvert minut, så den følger bilens faktiske niveau.
 - **Elbil uden SoC:** lader et fast antal timer ("Elbil: timer at lade") og vælger de billigste tidsrum i de 24 timer op til "klar kl.". Hvis morgendagens priser endnu ikke er kendt, venter den – men lader altid i de sidste timer før klar-tidspunktet som sikkerhed.
-- **Besparelse (elbil, varmepumpe)** = kWh × (dagens gennemsnitspris − prisen da strømmen blev brugt).
+- **Besparelse (elbil, varmepumpe, varmt vand)** = kWh × (dagens gennemsnitspris − prisen da strømmen blev brugt).
 - **Elbil – lad nu vs. billigste timer:** sensoren `sensor.smarthus_ev_smart_saving` viser forskellen i kr. Attributterne `cost_now` og `cost_planned` er prisen for den samme mængde strøm (kWh) ladet med det samme eller i de planlagte timer.
 - **Besparelse (batteri)** = afladet kWh × pris − opladet kWh × pris.
-- **Værdi af solceller** = egetforbrug × købspris + eksport × salgspris.
+- **Solceller – sparet** = egetforbrug × købspris. **Solceller – tjent ved salg** = eksport × salgspris. Solcellerne tæller ikke med i SmartHus-besparelsen, fordi de også producerer uden styring.
 
 Besparelser kræver, at du vælger energimålere (kWh, stigende) i opsætningen.
 

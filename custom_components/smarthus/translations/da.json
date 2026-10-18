@@ -67,7 +67,7 @@
       },
       "solar": {
         "title": "Solceller",
-        "description": "Bruges til besparelser og til at begrænse eksport når salgsprisen er negativ.",
+        "description": "Bruges til solcelleoverblikket (produceret, sparet og tjent ved salg) og til at begrænse eksport når salgsprisen er negativ. Uden eksportmåler regnes al produktion som egetforbrug.",
         "data": {
           "solar_energy_sensor": "Energimåler: solcelleproduktion (kWh)",
           "grid_export_energy_sensor": "Energimåler: eksport til nettet (kWh)",
@@ -84,9 +84,10 @@
       },
       "hotwater": {
         "title": "Varmt vand",
-        "description": "En kontakt tændes i dagens billigste sammenhængende periode. Vælger du en water_heater- eller climate-entitet, hæves temperaturen i stedet.",
+        "description": "En kontakt tændes i dagens billigste sammenhængende periode. Vælger du en water_heater- eller climate-entitet, hæves temperaturen i stedet. Vælg en energimåler for varmtvandsbeholderen, hvis besparelsen skal med i SmartHus-besparelsen. Varmes vandet af varmepumpen, er besparelsen allerede med under varmepumpen – så lad feltet stå tomt.",
         "data": {
-          "hotwater_entity": "Varmtvandsbeholder / varmepumpe"
+          "hotwater_entity": "Varmtvandsbeholder / varmepumpe",
+          "hotwater_energy_sensor": "Energimåler: varmt vand (kWh) – valgfri"
         }
       },
       "heating": {
@@ -185,19 +186,16 @@
         "name": "Status"
       },
       "savings_today": {
-        "name": "Besparelse i dag"
+        "name": "SmartHus-besparelse i dag"
       },
       "savings_month": {
-        "name": "Besparelse denne måned"
+        "name": "SmartHus-besparelse denne måned"
       },
       "savings_total": {
-        "name": "Besparelse i alt"
+        "name": "SmartHus-besparelse i alt"
       },
       "savings_month_battery": {
         "name": "Besparelse batteri (måned)"
-      },
-      "savings_month_solar": {
-        "name": "Værdi af solceller (måned)"
       },
       "savings_month_ev": {
         "name": "Besparelse elbil (måned)"
@@ -210,6 +208,57 @@
       },
       "ev_smart_saving": {
         "name": "{car}: spar ved smart opladning"
+      },
+      "savings_month_hotwater": {
+        "name": "Besparelse varmt vand (måned)"
+      },
+      "solar_produced_today": {
+        "name": "Solceller: produceret i dag"
+      },
+      "solar_value_today": {
+        "name": "Solceller: samlet værdi i dag"
+      },
+      "solar_saved_today": {
+        "name": "Solceller: sparet i dag"
+      },
+      "solar_sold_today": {
+        "name": "Solceller: tjent ved salg i dag"
+      },
+      "solar_produced_month": {
+        "name": "Solceller: produceret denne måned"
+      },
+      "solar_value_month": {
+        "name": "Solceller: samlet værdi denne måned"
+      },
+      "solar_saved_month": {
+        "name": "Solceller: sparet denne måned"
+      },
+      "solar_sold_month": {
+        "name": "Solceller: tjent ved salg denne måned"
+      },
+      "solar_produced_year": {
+        "name": "Solceller: produceret i år"
+      },
+      "solar_value_year": {
+        "name": "Solceller: samlet værdi i år"
+      },
+      "solar_saved_year": {
+        "name": "Solceller: sparet i år"
+      },
+      "solar_sold_year": {
+        "name": "Solceller: tjent ved salg i år"
+      },
+      "solar_produced_total": {
+        "name": "Solceller: produceret i alt"
+      },
+      "solar_value_total": {
+        "name": "Solceller: samlet værdi i alt"
+      },
+      "solar_saved_total": {
+        "name": "Solceller: sparet i alt"
+      },
+      "solar_sold_total": {
+        "name": "Solceller: tjent ved salg i alt"
       }
     },
     "binary_sensor": {
