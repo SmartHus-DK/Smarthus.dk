@@ -147,12 +147,6 @@
     }
   },
   "selector": {
-    "price_area": {
-      "options": {
-        "DK1": "DK1 – West Denmark",
-        "DK2": "DK2 – East Denmark"
-      }
-    },
     "price_source": {
       "options": {
         "eds": "SmartHus calculates the price (spot price + tariffs below)",

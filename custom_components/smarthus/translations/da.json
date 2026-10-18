@@ -147,12 +147,6 @@
     }
   },
   "selector": {
-    "price_area": {
-      "options": {
-        "DK1": "DK1 – Vestdanmark",
-        "DK2": "DK2 – Østdanmark"
-      }
-    },
     "price_source": {
       "options": {
         "eds": "SmartHus beregner prisen (spotpris + tariffer nedenfor)",

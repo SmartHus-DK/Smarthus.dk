@@ -1,10 +1,10 @@
 {
   "domain": "smarthus",
   "name": "SmartHus",
+  "after_dependencies": ["recorder"],
   "codeowners": ["@SmartHus-DK"],
   "config_flow": true,
   "dependencies": ["frontend", "http"],
-  "after_dependencies": ["recorder"],
   "documentation": "https://github.com/SmartHus-DK/Smarthus.dk",
   "integration_type": "service",
   "iot_class": "cloud_polling",

@@ -69,6 +69,12 @@ from .const import (
     SOLAR_KEYS,
 )
 
+# Prisområder vises med navn (oversættelsesnøgler må ikke have store bogstaver, så navnene står her)
+AREA_OPTIONS = [
+    selector.SelectOptionDict(value="DK1", label="DK1 – Vestdanmark (Jylland og Fyn)"),
+    selector.SelectOptionDict(value="DK2", label="DK2 – Østdanmark (Sjælland og øerne)"),
+]
+
 KR = selector.NumberSelector(
     selector.NumberSelectorConfig(min=-5, max=10, step=0.001, mode=selector.NumberSelectorMode.BOX,
                                   unit_of_measurement="kr/kWh")
@@ -118,7 +124,7 @@ def _price_schema(values: dict) -> vol.Schema:
             vol.Optional(CONF_SL_SPOT, description={"suggested_value": v.get(CONF_SL_SPOT) or DEFAULT_SL_SPOT}):
                 selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
             vol.Required(CONF_AREA, default=v[CONF_AREA]): selector.SelectSelector(
-                selector.SelectSelectorConfig(options=AREAS, translation_key="price_area",
+                selector.SelectSelectorConfig(options=AREA_OPTIONS,
                                               mode=selector.SelectSelectorMode.LIST)
             ),
             vol.Required(CONF_VAT, default=v[CONF_VAT]): selector.BooleanSelector(),
