@@ -54,7 +54,7 @@
       },
       "battery": {
         "title": "Batteri / inverter",
-        "description": "Vælg den entitet der styrer inverterens driftstilstand (fx SigEnergy 'Remote EMS control mode') og skriv de præcise navne på tilstandene.",
+        "description": "Integrationen virker med alle invertere og batterier, der kan styres med en select- eller input_select-entitet. Vælg den entitet, der skifter driftstilstand, og skriv de præcise navne på tilstandene, som de står i listen.\n\n**Lad fra nettet**: tilstanden der lader batteriet fra nettet.\n**Aflad batteri**: tilstanden der sælger/aflader til nettet i de dyreste timer.\n**Normal drift**: almindeligt egetforbrug (solceller og batteri dækker huset).\n\nHar inverteren kun kontakter, kan du lave en input_select med tre valg og en automatisering, der omsætter valget.\n\nFelterne er udfyldt med navnene fra SigEnergy som eksempel – ret dem til din egen inverter.",
         "data": {
           "battery_mode_entity": "Entitet for driftstilstand",
           "battery_option_charge": "Tilstand: lad fra nettet",
@@ -62,7 +62,13 @@
           "battery_option_normal": "Tilstand: normal drift",
           "battery_soc_sensor": "Batteriniveau (SoC %)",
           "battery_charge_energy_sensor": "Energimåler: batteri opladet (kWh)",
-          "battery_discharge_energy_sensor": "Energimåler: batteri afladet (kWh)"
+          "battery_discharge_energy_sensor": "Energimåler: batteri afladet (kWh)",
+          "house_energy_sensor": "Energimåler: husets forbrug (kWh) – valgfri"
+        },
+        "data_description": {
+          "house_energy_sensor": "Vælg en stigende energimåler (kWh), der måler husets forbrug – fx fra inverteren, en P1-måler (HAN-port) eller en elmåler. Har du kun 'import fra nettet', kan den bruges, men så tæller opladning af batteriet fra nettet med, og reserven bliver lidt for stor. SmartHus lærer ud fra de seneste 7 dage, hvor meget huset bruger time for time (hverdage og weekend for sig), og holder så meget i batteriet, at huset klarer sig til strømmen bliver billig igen. Kun det overskydende sælges. Elbilens forbrug trækkes fra, hvis bilen har en energimåler. Kræver at måleren har langtidsstatistik (står den i Energi-dashboardet, har den det). Efter 2 dage med historik bruges reserven.",
+          "battery_mode_entity": "Fx select.inverter_work_mode eller en input_select du selv har lavet.",
+          "battery_soc_sensor": "Batteriets niveau i %. Bruges til at undgå at lade over højeste/aflade under laveste niveau og til reserven."
         }
       },
       "solar": {
@@ -71,7 +77,11 @@
         "data": {
           "solar_energy_sensor": "Energimåler: solcelleproduktion (kWh)",
           "grid_export_energy_sensor": "Energimåler: eksport til nettet (kWh)",
-          "solar_curtail_entity": "Kontakt: begræns eksport"
+          "solar_curtail_entity": "Kontakt: begræns eksport",
+          "solar_forecast_sensor": "Solprognose: resterende produktion i dag (kWh) – valgfri"
+        },
+        "data_description": {
+          "solar_forecast_sensor": "Gør batteriets reserve mere præcis, fordi forventet sol trækkes fra. Solcast: sensor.solcast_pv_forecast_forecast_remaining_today. Forecast.Solar: sensor.energy_production_today_remaining. Uden prognose regnes der med, at solen ikke dækker noget af husets forbrug – det er det forsigtige valg."
         }
       },
       "ev": {
@@ -259,6 +269,12 @@
       },
       "solar_sold_total": {
         "name": "Solceller: tjent ved salg i alt"
+      },
+      "battery_reserve": {
+        "name": "Batteri: reserve til huset"
+      },
+      "battery_sellable": {
+        "name": "Batteri: kan sælges nu"
       }
     },
     "binary_sensor": {
@@ -400,6 +416,9 @@
       },
       "ev_max_total_power": {
         "name": "Elbiler: maks. samlet ladeeffekt"
+      },
+      "battery_capacity": {
+        "name": "Batteri: størrelse"
       }
     }
   }

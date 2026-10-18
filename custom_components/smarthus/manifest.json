@@ -4,10 +4,11 @@
   "codeowners": ["@SmartHus-DK"],
   "config_flow": true,
   "dependencies": ["frontend", "http"],
+  "after_dependencies": ["recorder"],
   "documentation": "https://github.com/SmartHus-DK/Smarthus.dk",
   "integration_type": "service",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/SmartHus-DK/Smarthus.dk/issues",
   "requirements": [],
-  "version": "1.7.0"
+  "version": "1.8.0"
 }

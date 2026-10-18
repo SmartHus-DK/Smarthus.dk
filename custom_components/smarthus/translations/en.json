@@ -54,7 +54,7 @@
       },
       "battery": {
         "title": "Battery / inverter",
-        "description": "Choose the entity that controls the inverter operating mode (e.g. SigEnergy 'Remote EMS control mode') and enter the exact mode names.",
+        "description": "Works with any inverter/battery that can be controlled through a select or input_select entity. Pick the entity that switches the operating mode and type the exact option names.\n\n**Charge from grid**: mode that charges from the grid.\n**Discharge**: mode that sells/discharges to the grid in the most expensive hours.\n**Normal**: regular self-consumption.\n\nIf your inverter only has switches, create an input_select with three options and an automation that applies the choice.\n\nThe fields are prefilled with SigEnergy names as an example – change them to match your inverter.",
         "data": {
           "battery_mode_entity": "Operating mode entity",
           "battery_option_charge": "Mode: charge from grid",
@@ -62,7 +62,13 @@
           "battery_option_normal": "Mode: normal operation",
           "battery_soc_sensor": "Battery level (SoC %)",
           "battery_charge_energy_sensor": "Energy meter: battery charged (kWh)",
-          "battery_discharge_energy_sensor": "Energy meter: battery discharged (kWh)"
+          "battery_discharge_energy_sensor": "Energy meter: battery discharged (kWh)",
+          "house_energy_sensor": "Energy meter: house consumption (kWh) – optional"
+        },
+        "data_description": {
+          "house_energy_sensor": "Pick an increasing energy meter (kWh) measuring the house consumption – e.g. from the inverter, a P1 meter or an electricity meter. 'Grid import' works too, but then battery charging from the grid is included and the reserve gets a little too large. SmartHus learns the hourly consumption from the last 7 days (weekdays and weekends separately) and keeps enough energy in the battery to cover the house until power is cheap again. Only the surplus is sold. EV consumption is subtracted if the car has an energy meter. Requires long-term statistics (if the sensor is in the Energy dashboard it has them). The reserve is used after 2 days of history.",
+          "battery_mode_entity": "E.g. select.inverter_work_mode or an input_select you created.",
+          "battery_soc_sensor": "Battery level in %. Used for min/max levels and the reserve."
         }
       },
       "solar": {
@@ -71,7 +77,11 @@
         "data": {
           "solar_energy_sensor": "Energy meter: solar production (kWh)",
           "grid_export_energy_sensor": "Energy meter: grid export (kWh)",
-          "solar_curtail_entity": "Switch: limit export"
+          "solar_curtail_entity": "Switch: limit export",
+          "solar_forecast_sensor": "Solar forecast: remaining production today (kWh) – optional"
+        },
+        "data_description": {
+          "solar_forecast_sensor": "Makes the battery reserve more accurate by subtracting expected solar. Solcast: sensor.solcast_pv_forecast_forecast_remaining_today. Forecast.Solar: sensor.energy_production_today_remaining. Without a forecast, solar is assumed not to cover any house consumption – the cautious choice."
         }
       },
       "ev": {
@@ -259,6 +269,12 @@
       },
       "solar_sold_total": {
         "name": "Solar: earned from export total"
+      },
+      "battery_reserve": {
+        "name": "Battery: reserve for the house"
+      },
+      "battery_sellable": {
+        "name": "Battery: sellable now"
       }
     },
     "binary_sensor": {
@@ -400,6 +416,9 @@
       },
       "ev_max_total_power": {
         "name": "EVs: max. total charging power"
+      },
+      "battery_capacity": {
+        "name": "Battery: capacity"
       }
     }
   }

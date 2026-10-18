@@ -28,6 +28,7 @@ const = _load("const")
 planner = _load("planner")
 pricing = _load("pricing")
 savings = _load("savings")
+profile = _load("profile")
 
 TZ = ZoneInfo("Europe/Copenhagen")
 
@@ -304,3 +305,34 @@ def test_stromligning_spot_for_sale():
     assert hits == 96
     assert out[10].spot == 1.0 and out[10].sale == 0.97
     assert out[10].price == slots[10].price  # købsprisen røres ikke
+
+
+def test_profile_and_reserve():
+    # 7 dage: 0,5 kWh/time om natten, 2 kWh/time kl. 17-21, 1 kWh ellers
+    start = datetime(2026, 10, 12, tzinfo=TZ)  # mandag
+    hours = []
+    for h in range(7 * 24):
+        t = start + timedelta(hours=h)
+        kwh = 2.0 if 17 <= t.hour < 21 else 0.5 if t.hour < 6 else 1.0
+        hours.append((t, kwh))
+    hours.append((start, 999.0))  # urealistisk time ignoreres
+    p = profile.build_profile(hours)
+    assert p.days == 7 and p.ready
+    assert abs(p.weekday[18] - 2.0) < 1e-9 and abs(p.weekend[3] - 0.5) < 1e-9
+    now = datetime(2026, 10, 19, 16, 30, tzinfo=TZ)  # mandag 16:30
+    until = datetime(2026, 10, 20, 2, 0, tzinfo=TZ)  # billigt igen kl. 02
+    load = profile.expected_load(p, now, until)
+    # 0,5 (16:30-17) + 4×2 + 3×1 (21-24) + 2×0,5 = 12,5
+    assert abs(load - 12.5) < 1e-9
+    r = profile.calc_reserve(p, now, until, soc=80, capacity=20, min_soc=10, solar_remaining=None)
+    assert abs(r.reserve_kwh - 12.5 / profile.EFFICIENCY) < 1e-9
+    # 16 kWh i batteriet − 2 kWh laveste niveau − reserve
+    assert abs(r.sellable_kwh - (16 - 2 - 12.5 / profile.EFFICIENCY)) < 1e-9
+    # Sol trækker fra reserven
+    r2 = profile.calc_reserve(p, now, until, soc=80, capacity=20, min_soc=10, solar_remaining=2.0)
+    assert r2.solar_kwh > 0 and r2.reserve_kwh < r.reserve_kwh
+    # Tomt batteri: intet at sælge
+    r3 = profile.calc_reserve(p, now, until, soc=30, capacity=20, min_soc=10, solar_remaining=None)
+    assert r3.sellable_kwh == 0
+    # For lidt historik
+    assert not profile.build_profile(hours[:30]).ready

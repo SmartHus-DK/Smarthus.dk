@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.7.0";
+const SMARTHUS_CARD_VERSION = "1.8.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -53,7 +53,7 @@ const MODULES = [
     groups: [
       { title: "Opladning fra nettet", items: ["battery_charge_hours", ["battery_charge_from", "battery_charge_to"]] },
       { title: "Brug af batteriet", items: ["battery_discharge_hours", ["battery_discharge_from", "battery_discharge_to"]] },
-      { title: "Grænser", items: ["battery_min_spread", "battery_min_soc", "battery_max_soc"] },
+      { title: "Grænser", items: ["battery_min_spread", "battery_min_soc", "battery_max_soc", "battery_capacity"] },
     ],
   },
   {
@@ -106,6 +106,7 @@ const NUMBER_LABELS = {
   battery_min_spread: "Min. prisforskel",
   battery_min_soc: "Laveste niveau",
   battery_max_soc: "Højeste niveau",
+  battery_capacity: "Batteriets størrelse",
   hotwater_hours: "Timer at opvarme",
   hotwater_boost_temp: "Opvarm til",
   hotwater_normal_temp: "Normal temperatur",
@@ -579,10 +580,15 @@ class SmartHusCard extends HTMLElement {
       return `${prefix}${n ? `Lader ${n}` : "Venter på priser"}${a.soc != null ? ` · ${nf(a.soc, 0)} % af ${nf(a.target_soc, 0)} %` : ""}`;
     }
     switch (m.id) {
-      case "battery":
+      case "battery": {
+        const r = this._st("sensor", "battery_reserve");
+        const ra = r?.attributes || {};
         if (isOn("battery_charge_now")) return `${prefix}Lader fra nettet`;
-        if (isOn("battery_discharge_now")) return `${prefix}Bruger batteriet`;
+        if (ra.holding_for_reserve) return `Gemmer ${nf(ra.reserve_kwh, 1)} kWh til huset`;
+        if (isOn("battery_discharge_now")) return `${prefix}Sælger${ra.sellable_kwh != null ? ` · ${nf(ra.sellable_kwh, 1)} kWh tilbage at sælge` : ""}`;
+        if (r && ra.reserve_kwh != null && ra.until) return `Reserve ${nf(ra.reserve_kwh, 1)} kWh til kl. ${hh(new Date(ra.until))}`;
         return `${prefix}${next("battery_charge_now") ? `Lader ${next("battery_charge_now")}` : "Normal drift"}`;
+      }
       case "hotwater":
         return `${prefix}${isOn("hotwater_now") ? "Opvarmer nu" : next("hotwater_now") ? `Opvarmer ${next("hotwater_now")}` : "Ingen plan"}`;
       case "heating":
@@ -598,6 +604,7 @@ class SmartHusCard extends HTMLElement {
   _moduleBody(m) {
     let extra = "";
     if (m.car) extra = this._evCompare(m.id);
+    if (m.id === "battery") extra = this._reserveBox();
     if (m.id === "solar") extra = `<div class="hint">Når salgsprisen er negativ, begrænses eksporten automatisk. Der er ingen indstillinger.</div>`;
     const evHasSoc = m.car && this._st("sensor", `${m.id}_smart_saving`)?.attributes?.soc != null;
     const hide = (k) =>
@@ -639,6 +646,38 @@ class SmartHusCard extends HTMLElement {
       <div class="step win">
         <span class="step-lbl">Tidsrum<span class="win-note">${all ? "Hele døgnet" : fa > fb ? "Hen over midnat" : `${Math.round(fb - fa)} timer`}</span></span>
         <span class="win-ctl">${mini(a, fa)}<span class="dash">–</span>${mini(b, fb)}</span>
+      </div>`;
+  }
+
+  /** Batteriets reserve: forventet husforbrug til strømmen bliver billig igen, og hvad der må sælges. */
+  _reserveBox() {
+    const r = this._st("sensor", "battery_reserve");
+    if (!r) return "";
+    const a = r.attributes || {};
+    if (!a.profile_ready) {
+      return `<div class="cmp wait">SmartHus lærer husets forbrug. Reserven bruges, når der er mindst 2 dages historik (har nu ${nf(a.learned_days || 0, 0)}).</div>`;
+    }
+    const prof = a.profile_today || [];
+    const max = Math.max(...prof, 0.01);
+    const nowH = new Date().getHours();
+    const bars = prof.map((v, i) => `<i title="kl. ${String(i).padStart(2, "0")}: ${nf(v, 2)} kWh" style="height:${Math.max((v / max) * 100, 3)}%" class="${i === nowH ? "now" : i < nowH ? "past" : ""}"></i>`).join("");
+    const until = a.until ? new Date(a.until) : null;
+    const untilTxt = until ? `${until.getDate() !== new Date().getDate() ? "i morgen " : ""}kl. ${hh(until)}` : "";
+    const bat = a.battery_kwh, sell = a.sellable_kwh;
+    const total = Math.max((bat ?? 0), a.reserve_kwh + a.min_level_kwh, 0.01);
+    const seg = (v, c) => `<i style="width:${Math.max(Math.min(v / total, 1), 0) * 100}%;background:${c}"></i>`;
+    return `
+      <div class="cmp">
+        <div class="cmp-title">Reserve til huset frem til ${untilTxt}</div>
+        <div class="res-line">Forventet forbrug <b>${nf(a.expected_house_kwh, 1)} kWh</b>${a.expected_solar_kwh > 0.05 ? ` − sol <b>${nf(a.expected_solar_kwh, 1)} kWh</b>` : ""} → gem <b>${nf(a.reserve_kwh, 1)} kWh</b></div>
+        ${bat != null ? `
+        <div class="res-bar">${seg(a.min_level_kwh, COLORS.mid)}${seg(Math.min(a.reserve_kwh, Math.max(bat - a.min_level_kwh, 0)), COLORS.battery_charge)}${seg(sell, COLORS.battery_discharge)}</div>
+        <div class="res-leg"><span><i style="background:${COLORS.mid}"></i>Laveste niveau</span><span><i style="background:${COLORS.battery_charge}"></i>Reserve</span><span><i style="background:${COLORS.battery_discharge}"></i>Kan sælges</span></div>
+        <div class="cmp-result">Batteriet har ${nf(bat, 1)} kWh · ${sell > 0.05 ? `må sælge <b>${nf(sell, 1)} kWh</b> i de dyre timer` : "sælger ikke – strømmen skal bruges i huset"}</div>` :
+        `<div class="cmp-sub" style="margin-left:0">Vælg en sensor for batteriniveau for at se, hvor meget der må sælges.</div>`}
+        <div class="prof-title">Husets forbrug pr. time (lært af ${nf(a.learned_days, 0)} dage)</div>
+        <div class="prof">${bars}</div>
+        <div class="prof-ticks"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>
       </div>`;
   }
 
@@ -882,6 +921,19 @@ class SmartHusCard extends HTMLElement {
       .cmp-result { margin-top: 2px; font-size: 14px; }
       .cmp-warn { margin-top: 8px; font-size: 12px; color: ${COLORS.expensive}; }
       .cmp-result b { color: ${COLORS.cheap}; font-variant-numeric: tabular-nums; }
+      .res-line { font-size: 13px; }
+      .res-line b { font-variant-numeric: tabular-nums; }
+      .res-bar { display: flex; gap: 2px; height: 10px; border-radius: 5px; overflow: hidden; margin: 10px 0 4px;
+                 background: color-mix(in srgb, var(--primary-text-color) 6%, transparent); }
+      .res-bar i { display: block; height: 100%; }
+      .res-leg { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--secondary-text-color); margin-bottom: 6px; }
+      .res-leg i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+      .prof-title { margin-top: 12px; font-size: 12px; color: var(--secondary-text-color); }
+      .prof { display: flex; align-items: flex-end; gap: 2px; height: 44px; margin-top: 6px; }
+      .prof i { flex: 1; border-radius: 2px 2px 0 0; background: ${COLORS.battery_charge}; opacity: .8; }
+      .prof i.past { opacity: .3; }
+      .prof i.now { opacity: 1; outline: 1px solid var(--primary-text-color); }
+      .prof-ticks { display: flex; justify-content: space-between; font-size: 10px; color: var(--secondary-text-color); margin-top: 2px; }
 
       .grp { padding-top: 6px; }
       .grp + .grp { margin-top: 6px; border-top: 1px dashed var(--sh-line); }

@@ -11,7 +11,7 @@ API_URL: Final = "https://api.energidataservice.dk/dataset/DayAheadPrices"
 
 STATIC_URL: Final = "/smarthus_static"
 CARD_URL: Final = f"{STATIC_URL}/smarthus-card.js"
-CARD_VERSION: Final = "1.7.0"
+CARD_VERSION: Final = "1.8.0"
 
 PLATFORMS: Final = ["sensor", "binary_sensor", "switch", "number"]
 
@@ -72,10 +72,14 @@ CONF_BATTERY_OPT_NORMAL: Final = "battery_option_normal"
 CONF_BATTERY_SOC: Final = "battery_soc_sensor"
 CONF_BATTERY_CHARGE_ENERGY: Final = "battery_charge_energy_sensor"
 CONF_BATTERY_DISCHARGE_ENERGY: Final = "battery_discharge_energy_sensor"
+# Husets forbrug (valgfri) – bruges til at lære forbrugsmønsteret og holde en reserve i batteriet
+CONF_HOUSE_ENERGY: Final = "house_energy_sensor"
 # Solceller
 CONF_SOLAR_ENERGY: Final = "solar_energy_sensor"
 CONF_EXPORT_ENERGY: Final = "grid_export_energy_sensor"
 CONF_SOLAR_CURTAIL: Final = "solar_curtail_entity"
+# Solprognose (valgfri): sensor med forventet resterende produktion i dag (kWh)
+CONF_SOLAR_FORECAST: Final = "solar_forecast_sensor"
 # Elbil
 CONF_EV_SWITCH: Final = "ev_charger_entity"
 CONF_EV_ENERGY: Final = "ev_energy_sensor"
@@ -95,8 +99,9 @@ BATTERY_KEYS: Final = [
     CONF_BATTERY_SOC,
     CONF_BATTERY_CHARGE_ENERGY,
     CONF_BATTERY_DISCHARGE_ENERGY,
+    CONF_HOUSE_ENERGY,
 ]
-SOLAR_KEYS: Final = [CONF_SOLAR_ENERGY, CONF_EXPORT_ENERGY, CONF_SOLAR_CURTAIL]
+SOLAR_KEYS: Final = [CONF_SOLAR_ENERGY, CONF_EXPORT_ENERGY, CONF_SOLAR_CURTAIL, CONF_SOLAR_FORECAST]
 EV_KEYS: Final = [CONF_EV_SWITCH, CONF_EV_ENERGY, CONF_EV_SOC]
 
 # Flere elbiler: options["evs"] = [{"id", "name", "charger", "soc", "energy"}, ...]
@@ -143,6 +148,7 @@ S_BATTERY_DISCHARGE_HOURS: Final = "battery_discharge_hours"
 S_BATTERY_MIN_SPREAD: Final = "battery_min_spread"
 S_BATTERY_MIN_SOC: Final = "battery_min_soc"
 S_BATTERY_MAX_SOC: Final = "battery_max_soc"
+S_BATTERY_CAPACITY: Final = "battery_capacity"
 S_EV_HOURS: Final = "ev_hours"
 S_EV_READY_HOUR: Final = "ev_ready_hour"
 S_EV_TARGET_SOC: Final = "ev_target_soc"
@@ -174,6 +180,7 @@ DEFAULT_SETTINGS: Final = {
     S_BATTERY_MIN_SPREAD: 0.5,
     S_BATTERY_MIN_SOC: 15.0,
     S_BATTERY_MAX_SOC: 95.0,
+    S_BATTERY_CAPACITY: 10.0,
     S_EV_HOURS: 4.0,
     S_EV_READY_HOUR: 7.0,
     S_EV_TARGET_SOC: 80.0,

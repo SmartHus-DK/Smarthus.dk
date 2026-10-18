@@ -21,6 +21,7 @@ from . import SmartHusConfigEntry
 from .const import (
     ACTION_OFF,
     CONF_EXPORT_ENERGY,
+    CONF_HOUSE_ENERGY,
     CONF_SOLAR_ENERGY,
     MODULE_BATTERY,
     MODULE_HEATING,
@@ -103,6 +104,8 @@ def _status(c: SmartHusController) -> str:
         parts.append("Lader batteri")
     if c.active(MODULE_BATTERY) and p.battery_action == "discharge":
         parts.append("Bruger batteri")
+    if c.active(MODULE_BATTERY) and c.reserve_holds:
+        parts.append("Gemmer batteri til huset")
     if c.active(MODULE_SOLAR) and p.solar_curtail:
         parts.append("Begrænser eksport")
     for cid, ep in p.evs.items():
@@ -197,6 +200,33 @@ SENSORS: tuple[SmartHusSensorDescription, ...] = (
                               value_fn=_savings("month_values", "hotwater"), **MONEY),
 )
 
+# Batteriets reserve ud fra husets lærte forbrugsmønster
+def _reserve_attrs(c: SmartHusController) -> dict:
+    attrs = c.reserve.as_dict() if c.reserve else {}
+    p = c.profile
+    today = dt_util.now()
+    attrs.update({
+        "learned_days": p.days,
+        "profile_ready": p.ready,
+        "profile_updated": c.profile_updated.isoformat() if c.profile_updated else None,
+        "profile_today": [round(v, 2) for v in p.hours_for(today)],
+        "holding_for_reserve": c.reserve_holds,
+    })
+    return attrs
+
+
+RESERVE_SENSORS: tuple[SmartHusSensorDescription, ...] = (
+    SmartHusSensorDescription(
+        key="battery_reserve", icon="mdi:battery-lock", device_class=SensorDeviceClass.ENERGY_STORAGE,
+        native_unit_of_measurement="kWh", suggested_display_precision=1,
+        value_fn=lambda c: round(c.reserve.reserve_kwh, 2) if c.reserve else None, attrs_fn=_reserve_attrs),
+    SmartHusSensorDescription(
+        key="battery_sellable", icon="mdi:battery-arrow-up-outline", device_class=SensorDeviceClass.ENERGY_STORAGE,
+        native_unit_of_measurement="kWh", suggested_display_precision=1,
+        value_fn=lambda c: round(c.reserve.sellable_kwh, 2) if c.reserve and c.reserve.sellable_kwh is not None else None),
+)
+
+
 # Solcelleoverblik: produktion, sparet (egetforbrug) og tjent (salg) pr. periode
 _SOLAR_PERIODS = (("today", "today"), ("month", "month"), ("year", "year"), ("total", "total"))
 
@@ -245,6 +275,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
                             async_add_entities: AddEntitiesCallback) -> None:
     controller = entry.runtime_data.controller
     entities: list[SensorEntity] = [SmartHusSensor(entry, controller, d) for d in SENSORS]
+    if controller.has(CONF_HOUSE_ENERGY):
+        entities += [SmartHusSensor(entry, controller, d) for d in RESERVE_SENSORS]
     if controller.has(CONF_SOLAR_ENERGY):
         entities += [SmartHusSensor(entry, controller, d) for d in SOLAR_SENSORS]
     for car in controller.cars:

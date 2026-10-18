@@ -62,6 +62,24 @@ Med en SigEnergy-integration (Modbus) vælger du under **Batteri / inverter**:
 
 Navnene skal stå **præcis** som i inverterens rullemenu (se entitetens mulige værdier under Udviklerværktøjer → Tilstande). Husk at aktivere "Remote EMS" på anlægget, hvis din integration kræver det.
 
+### Andre invertere og batterier
+SmartHus virker med alle batterier, der kan styres via en `select`- eller `input_select`-entitet med tre tilstande: **lad fra nettet**, **aflad/sælg** og **normal drift (egetforbrug)**. SigEnergy-eksemplet ovenfor er kun et eksempel – skriv navnene præcis som de står hos din inverter. Har inverteren i stedet kontakter eller tal-entiteter, så lav en `input_select` med tre valg og en automatisering, der omsætter valget til inverterens kommandoer.
+
+### Batteriets reserve (lærer husets forbrug)
+Vælg **Energimåler: husets forbrug** under *Batteri / inverter* (valgfri) og indstil **Batteriets størrelse** i kortet. Så gør SmartHus følgende:
+
+1. Hver nat lærer den husets forbrug time for time ud fra de seneste **7 dage** (hverdage og weekend for sig). Historikken hentes fra Home Assistants langtidsstatistik, så den virker med det samme, hvis måleren allerede har data. Elbilens forbrug trækkes fra, hvis bilen har en energimåler.
+2. Den beregner, hvor meget huset forventes at bruge fra nu og til strømmen bliver billig igen (næste planlagte opladning) – minus forventet sol, hvis du har valgt en solprognose under *Solceller*.
+3. I de dyreste timer sælges kun det, batteriet har **ud over reserven og laveste niveau**. Når reserven er nået, skifter batteriet til normal drift, så resten bruges i huset.
+
+| Hvad | Forslag |
+|---|---|
+| Husets forbrug | En stigende kWh-måler for husets forbrug fra inverteren, en P1-måler eller en elmåler. "Import fra nettet" kan bruges, men så tæller opladning fra nettet med, og reserven bliver lidt for stor. |
+| Solprognose | Solcast: `sensor.solcast_pv_forecast_forecast_remaining_today` · Forecast.Solar: `sensor.energy_production_today_remaining`. Uden prognose regnes der forsigtigt uden sol. |
+| Batteriniveau | Kræves for at regne ud, hvor meget der må sælges. |
+
+Reserven bruges, når der er mindst 2 hele døgn med historik. Se `sensor.smarthus_battery_reserve` (med det lærte forbrug som attributter) og `sensor.smarthus_battery_sellable`.
+
 ### Styring slås til
 Når opsætningen er gemt, får du kontakter som `Styr batteri`, `Styr elbillader` osv. De er **slået fra som standard** – så sker der intet, før du selv tænder dem. Planen kan ses i de binære sensorer, før du slår styringen til.
 
@@ -92,6 +110,7 @@ Alle entiteter har faste id'er, uanset sprog:
 - `sensor.smarthus_current_price` – elpris nu (attributter `today`/`tomorrow` til grafer)
 - `sensor.smarthus_status` – fx "Lader batteri · Lader elbil"
 - `sensor.smarthus_savings_today` / `_month` / `_total` – SmartHus-besparelse i kr (uden solceller)
+- `sensor.smarthus_battery_reserve` / `_battery_sellable` – reserve til huset og hvad der må sælges (kræver husets forbrug)
 - `sensor.smarthus_solar_produced_*`, `_solar_saved_*`, `_solar_sold_*`, `_solar_value_*` – solcelleoverblik for `today`, `month`, `year` og `total`
 - `binary_sensor.smarthus_ev_charge_now` m.fl. – hvad planen ønsker nu, med attributten `periods`
 - `switch.smarthus_control_*` – slå styring til/fra pr. modul

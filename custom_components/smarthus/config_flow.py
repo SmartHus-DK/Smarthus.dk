@@ -33,6 +33,8 @@ from .const import (
     CONF_HEATING_CLIMATE,
     CONF_HEATPUMP_ENERGY,
     CONF_HOTWATER_ENERGY,
+    CONF_HOUSE_ENERGY,
+    CONF_SOLAR_FORECAST,
     CONF_HOTWATER_ENTITY,
     CONF_MARKUP,
     CONF_NAME,
@@ -80,6 +82,7 @@ HOTWATER = selector.EntitySelector(
     selector.EntitySelectorConfig(domain=["switch", "input_boolean", "water_heater", "climate"])
 )
 CLIMATE = selector.EntitySelector(selector.EntitySelectorConfig(domain="climate"))
+FORECAST = selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor"))
 
 
 NEW_CAR = "__new__"
@@ -230,6 +233,7 @@ class SmartHusOptionsFlow(OptionsFlow):
             (CONF_BATTERY_SOC, SOC),
             (CONF_BATTERY_CHARGE_ENERGY, ENERGY),
             (CONF_BATTERY_DISCHARGE_ENERGY, ENERGY),
+            (CONF_HOUSE_ENERGY, ENERGY),
         ]
         return self.async_show_form(
             step_id="battery", data_schema=_entity_schema(fields, self._current(), DEFAULT_BATTERY_OPTIONS)
@@ -238,7 +242,8 @@ class SmartHusOptionsFlow(OptionsFlow):
     async def async_step_solar(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
             return self._save(SOLAR_KEYS, user_input)
-        fields = [(CONF_SOLAR_ENERGY, ENERGY), (CONF_EXPORT_ENERGY, ENERGY), (CONF_SOLAR_CURTAIL, ONOFF)]
+        fields = [(CONF_SOLAR_ENERGY, ENERGY), (CONF_EXPORT_ENERGY, ENERGY), (CONF_SOLAR_CURTAIL, ONOFF),
+                  (CONF_SOLAR_FORECAST, FORECAST)]
         return self.async_show_form(step_id="solar", data_schema=_entity_schema(fields, self._current()))
 
     # --- Elbiler ---------------------------------------------------------
