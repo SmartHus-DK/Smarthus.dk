@@ -244,3 +244,19 @@ def test_get_cars_legacy():
     assert cars == [{"id": "ev", "name": "Elbil", "charger": "switch.lader", "soc": "sensor.soc", "energy": None}]
     cfg = {"evs": [{"id": "ev", "name": "Kia", "charger": "switch.a"}, {"id": "ev_tesla", "name": "Tesla", "charger": "switch.b"}]}
     assert [c["id"] for c in const.get_cars(cfg)] == ["ev", "ev_tesla"]
+
+
+def test_stromligning_prices():
+    slots = model().build_slots(records("2026-10-18", CURVE))
+    # Hele timer fra Strømligning (kr/kWh inkl. alt) – dækker kun de første 12 timer
+    base = datetime(2026, 10, 18, 0, 0, tzinfo=TZ)
+    raw = [{"start": (base + timedelta(hours=h)).isoformat(), "price": 1.0 + h / 10} for h in range(12)]
+    prices = pricing.parse_price_list(raw)
+    out, hits = pricing.apply_external_prices(slots, prices)
+    assert hits == 48 and len(out) == 96
+    assert out[4 * 5 + 2].price == 1.5          # kl. 05:30 -> timepris kl. 05
+    assert out[4 * 20].price == slots[4 * 20].price  # kl. 20 uden ekstern pris -> beregnet pris
+    assert out[0].sale == slots[0].sale          # salgspris uændret
+    # øre/kWh omregnes
+    assert pricing.parse_price_list([{"start": base.isoformat(), "price": 215}])[0][1] == 2.15
+    assert pricing.parse_price_list([{"start": "ugyldig", "price": 1}, {"x": 1}]) == []

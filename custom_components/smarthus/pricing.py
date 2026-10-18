@@ -21,6 +21,55 @@ from .const import (
 from .planner import Slot
 
 
+def parse_price_list(raw: list | None) -> list[tuple[datetime, float]]:
+    """Læs en prisliste fra fx Strømligning: [{"start": "...", "price": 2.15}, ...]."""
+    out: list[tuple[datetime, float]] = []
+    for item in raw or []:
+        try:
+            start = item.get("start") if isinstance(item, dict) else None
+            price = item.get("price") if isinstance(item, dict) else None
+            if start is None or price is None:
+                continue
+            t = start if isinstance(start, datetime) else datetime.fromisoformat(str(start))
+            if t.tzinfo is None:
+                t = t.replace(tzinfo=timezone.utc)
+            out.append((t.astimezone(timezone.utc), float(price)))
+        except (TypeError, ValueError):
+            continue
+    out.sort(key=lambda x: x[0])
+    # Nogle kilder angiver øre/kWh – omregn til kr/kWh
+    if out:
+        vals = sorted(p for _, p in out)
+        if vals[len(vals) // 2] > 20:
+            out = [(t, p / 100) for t, p in out]
+    return out
+
+
+def apply_external_prices(slots: list[Slot], prices: list[tuple[datetime, float]]) -> tuple[list[Slot], int]:
+    """Erstat købsprisen i hvert tidsrum med den eksterne pris, der gælder på tidspunktet.
+
+    Returnerer de nye tidsrum og hvor mange der fik en ekstern pris. Tidsrum uden ekstern
+    pris (fx efter sidste kendte pris) beholder den beregnede pris.
+    """
+    if not prices:
+        return slots, 0
+    starts = [t for t, _ in prices]
+    # Varighed pr. ekstern pris = afstand til næste (sidste bruger samme varighed som den før)
+    durs = [b - a for a, b in zip(starts, starts[1:])] or [timedelta(hours=1)]
+    durs.append(durs[-1])
+    out, hits, j = [], 0, 0
+    for s in slots:
+        while j + 1 < len(prices) and prices[j + 1][0] <= s.start:
+            j += 1
+        t, p = prices[j]
+        if t <= s.start < t + durs[j]:
+            out.append(Slot(s.start, s.end, s.spot, round(p, 4), s.sale))
+            hits += 1
+        else:
+            out.append(s)
+    return out, hits
+
+
 class PriceModel:
     """Samlet pris = (spot + leverandørtillæg + nettarif + Energinet + elafgift) × moms."""
 

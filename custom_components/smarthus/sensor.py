@@ -61,6 +61,7 @@ def _price_attrs(c: SmartHusController) -> dict:
         "tomorrow": _series(tomorrow),
         "tomorrow_available": bool(tomorrow),
         "price_area": c.coordinator.area,
+        "price_source": "Strømligning" if c.coordinator.uses_stromligning and c.coordinator.external_hits else "SmartHus",
     }
     if cur:
         attrs["spot"] = cur.spot

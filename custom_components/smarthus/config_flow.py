@@ -11,6 +11,8 @@ from homeassistant.core import callback
 from homeassistant.helpers import selector
 from homeassistant.util import slugify
 
+from .pricing import parse_price_list
+
 from .const import (
     AREAS,
     BATTERY_KEYS,
@@ -33,7 +35,14 @@ from .const import (
     CONF_HOTWATER_ENTITY,
     CONF_MARKUP,
     CONF_NAME,
+    CONF_PRICE_SOURCE,
     CONF_SALE_FEE,
+    CONF_SL_PRICE,
+    CONF_SL_TOMORROW,
+    DEFAULT_SL_PRICE,
+    DEFAULT_SL_TOMORROW,
+    SOURCE_EDS,
+    SOURCE_STROMLIGNING,
     CONF_SOLAR_CURTAIL,
     CONF_SOLAR_ENERGY,
     CONF_T_SUMMER_HIGH,
@@ -89,9 +98,17 @@ def _new_car_id(name: str, cars: list[dict]) -> str:
 
 
 def _price_schema(values: dict) -> vol.Schema:
-    v = {**DEFAULT_PRICES, **values}
+    v = {**DEFAULT_PRICES, CONF_PRICE_SOURCE: SOURCE_EDS, **values}
     return vol.Schema(
         {
+            vol.Required(CONF_PRICE_SOURCE, default=v[CONF_PRICE_SOURCE]): selector.SelectSelector(
+                selector.SelectSelectorConfig(options=[SOURCE_EDS, SOURCE_STROMLIGNING], translation_key="price_source",
+                                              mode=selector.SelectSelectorMode.LIST)
+            ),
+            vol.Optional(CONF_SL_PRICE, description={"suggested_value": v.get(CONF_SL_PRICE) or DEFAULT_SL_PRICE}):
+                selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
+            vol.Optional(CONF_SL_TOMORROW, description={"suggested_value": v.get(CONF_SL_TOMORROW) or DEFAULT_SL_TOMORROW}):
+                selector.EntitySelector(selector.EntitySelectorConfig(domain=["binary_sensor", "sensor"])),
             vol.Required(CONF_AREA, default=v[CONF_AREA]): selector.SelectSelector(
                 selector.SelectSelectorConfig(options=AREAS, translation_key="price_area",
                                               mode=selector.SelectSelectorMode.LIST)
@@ -109,6 +126,19 @@ def _price_schema(values: dict) -> vol.Schema:
             vol.Required(CONF_T_SUMMER_PEAK, default=v[CONF_T_SUMMER_PEAK]): KR,
         }
     )
+
+
+def _price_errors(hass, user_input: dict) -> dict:
+    """Tjek at Strømligning-sensoren findes og har priser, når den er valgt."""
+    if user_input.get(CONF_PRICE_SOURCE) != SOURCE_STROMLIGNING:
+        return {}
+    entity_id = user_input.get(CONF_SL_PRICE) or DEFAULT_SL_PRICE
+    st = hass.states.get(entity_id)
+    if st is None:
+        return {CONF_SL_PRICE: "stromligning_missing"}
+    if not parse_price_list(st.attributes.get("prices")):
+        return {CONF_SL_PRICE: "stromligning_no_prices"}
+    return {}
 
 
 def _opt(key: str, current: dict, sel: Any, default: str | None = None) -> tuple:
@@ -139,12 +169,13 @@ class SmartHusConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_prices(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        if user_input is not None:
+        errors = _price_errors(self.hass, user_input) if user_input is not None else {}
+        if user_input is not None and not errors:
             self._data.update(user_input)
             await self.async_set_unique_id(f"{self._data[CONF_NAME].lower()}_{user_input[CONF_AREA]}")
             self._abort_if_unique_id_configured()
             return self.async_create_entry(title=self._data[CONF_NAME], data=self._data)
-        return self.async_show_form(step_id="prices", data_schema=_price_schema({}))
+        return self.async_show_form(step_id="prices", data_schema=_price_schema(user_input or {}), errors=errors)
 
     @staticmethod
     @callback
@@ -177,9 +208,11 @@ class SmartHusOptionsFlow(OptionsFlow):
         )
 
     async def async_step_prices(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        if user_input is not None:
+        errors = _price_errors(self.hass, user_input) if user_input is not None else {}
+        if user_input is not None and not errors:
             return self._save(PRICE_KEYS, user_input)
-        return self.async_show_form(step_id="prices", data_schema=_price_schema(self._current()))
+        return self.async_show_form(step_id="prices", data_schema=_price_schema({**self._current(), **(user_input or {})}),
+                                    errors=errors)
 
     async def async_step_battery(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:

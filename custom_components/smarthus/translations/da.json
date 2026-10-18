@@ -10,8 +10,11 @@
       },
       "prices": {
         "title": "Elpris og tariffer",
-        "description": "Spotprisen hentes fra Energi Data Service. Indtast tillæg og nettarif i kr/kWh ekskl. moms – se din elregning eller dit netselskabs hjemmeside. Vinter = oktober–marts, sommer = april–september.",
+        "description": "Vælg Strømligning, hvis kunden har Strømligning-integrationen installeret. Så bruges den rigtige pris fra kundens elabonnement, og tarifferne nedenfor bruges kun som reserve. Ellers beregner SmartHus prisen ud fra spotprisen fra Energi Data Service og tarifferne nedenfor (kr/kWh ekskl. moms, vinter = oktober–marts). Salgsprisen beregnes altid ud fra spotprisen.",
         "data": {
+          "price_source": "Hvor kommer elprisen fra?",
+          "stromligning_price_entity": "Strømligning: prissensor",
+          "stromligning_tomorrow_entity": "Strømligning: sensor for morgendagens priser",
           "price_area": "Prisområde",
           "include_vat": "Læg 25 % moms på købsprisen",
           "supplier_markup": "Elleverandørens tillæg",
@@ -29,6 +32,10 @@
     },
     "abort": {
       "already_configured": "SmartHus er allerede sat op med dette navn og prisområde."
+    },
+    "error": {
+      "stromligning_missing": "Sensoren findes ikke. Installér Strømligning-integrationen (HACS) og vælg dit elselskab og produkt der først.",
+      "stromligning_no_prices": "Sensoren har ingen priser (attributten 'prices' mangler). Vælg Strømligning-sensoren for den aktuelle pris inkl. moms."
     }
   },
   "options": {
@@ -91,8 +98,11 @@
       },
       "prices": {
         "title": "Elpris og tariffer",
-        "description": "Kr/kWh ekskl. moms. Vinter = oktober–marts, sommer = april–september.",
+        "description": "Vælg Strømligning, hvis kunden har Strømligning-integrationen installeret. Så bruges den rigtige pris fra kundens elabonnement, og tarifferne nedenfor bruges kun som reserve. Ellers beregner SmartHus prisen ud fra spotprisen fra Energi Data Service og tarifferne nedenfor (kr/kWh ekskl. moms, vinter = oktober–marts). Salgsprisen beregnes altid ud fra spotprisen.",
         "data": {
+          "price_source": "Hvor kommer elprisen fra?",
+          "stromligning_price_entity": "Strømligning: prissensor",
+          "stromligning_tomorrow_entity": "Strømligning: sensor for morgendagens priser",
           "price_area": "Prisområde",
           "include_vat": "Læg 25 % moms på købsprisen",
           "supplier_markup": "Elleverandørens tillæg",
@@ -117,6 +127,10 @@
           "ev_energy_sensor": "Energimåler for laderen (kWh)"
         }
       }
+    },
+    "error": {
+      "stromligning_missing": "Sensoren findes ikke. Installér Strømligning-integrationen (HACS) og vælg dit elselskab og produkt der først.",
+      "stromligning_no_prices": "Sensoren har ingen priser (attributten 'prices' mangler). Vælg Strømligning-sensoren for den aktuelle pris inkl. moms."
     }
   },
   "selector": {
@@ -124,6 +138,12 @@
       "options": {
         "DK1": "DK1 – Vestdanmark",
         "DK2": "DK2 – Østdanmark"
+      }
+    },
+    "price_source": {
+      "options": {
+        "eds": "SmartHus beregner prisen (spotpris + tariffer nedenfor)",
+        "stromligning": "Strømligning – min rigtige pris fra mit elabonnement"
       }
     }
   },

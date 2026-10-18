@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.5.0";
+const SMARTHUS_CARD_VERSION = "1.6.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -273,7 +273,7 @@ class SmartHusCard extends HTMLElement {
           <div class="price"><span class="value">${nf(price)}</span><span class="unit">kr/kWh</span></div>
           <div class="now-meta">
             <div class="level-text">${levelText}</div>
-            <div class="sub">Salgspris ${nf(sale)} kr/kWh</div>
+            <div class="sub">Salgspris ${nf(sale)} kr/kWh${this._st("sensor", "current_price")?.attributes?.price_source === "Strømligning" ? "<br>Pris fra Strømligning" : ""}</div>
           </div>
         </div>
         <div class="status" data-action="more" data-entity="${this._id("sensor", "status")}">${esc(status)}</div>

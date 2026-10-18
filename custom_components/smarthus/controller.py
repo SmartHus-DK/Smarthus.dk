@@ -10,7 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_ON, STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
-from homeassistant.helpers.event import async_track_time_change
+from homeassistant.helpers.event import async_track_state_change_event, async_track_time_change
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
@@ -92,6 +92,11 @@ class SmartHusController:
         self.savings = SavingsCalculator(stored)
         self._unsub = async_track_time_change(self.hass, self._async_tick, second=5)
         self._unsub_prices = self.coordinator.async_add_listener(self._on_prices)
+        self._unsub_sl = None
+        if self.coordinator.uses_stromligning:
+            self._unsub_sl = async_track_state_change_event(
+                self.hass, self.coordinator.sl_entities, lambda _e: self.coordinator.async_refresh_external()
+            )
         self.recalculate()
 
     async def async_stop(self) -> None:
@@ -101,6 +106,9 @@ class SmartHusController:
         if self._unsub_prices:
             self._unsub_prices()
             self._unsub_prices = None
+        if getattr(self, "_unsub_sl", None):
+            self._unsub_sl()
+            self._unsub_sl = None
         await self._store.async_save(self.savings.data)
 
     @callback

@@ -40,6 +40,15 @@ Kopiér mappen `custom_components/smarthus` til `config/custom_components/` og g
 
 **Trin 2 – Enheder:** Klik **Konfigurer** på SmartHus-integrationen og vælg de moduler du vil bruge. Alle felter er valgfrie.
 
+### Elpris fra Strømligning (anbefalet)
+Har kunden [Strømligning-integrationen](https://github.com/MTrab/stromligning) installeret (HACS), kan SmartHus bruge kundens **rigtige pris fra elabonnementet** – inkl. leverandørens tillæg, nettarif, afgifter og moms. Så skal der ikke tastes tariffer ind.
+
+1. Installér Strømligning via HACS, og vælg kundens elselskab og produkt i den.
+2. Gå til SmartHus → **Konfigurer → Elpris og tariffer**, og vælg **Strømligning**.
+3. Prissensoren er som standard `sensor.stromligning_current_price_vat`, og morgendagens priser hentes fra `binary_sensor.stromligning_tomorrow_available_vat`.
+
+Salgsprisen for solceller beregnes stadig ud fra spotprisen fra Energi Data Service. Mangler Strømligning priser for et tidsrum, bruger SmartHus sin egen beregning som reserve.
+
 ### SigEnergy-eksempel
 Med en SigEnergy-integration (Modbus) vælger du under **Batteri / inverter**:
 
