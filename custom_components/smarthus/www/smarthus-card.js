@@ -126,7 +126,7 @@ class SmartHusCard extends HTMLElement {
   }
 
   setConfig(config) {
-    this._config = { prefix: "smarthus", title: "SmartHus", ...(config || {}) };
+    this._config = { prefix: "smarthus", title: "SmartHus", logo: "/smarthus_static/smarthus-mark.png", ...(config || {}) };
     this._sig = null;
   }
 
@@ -222,7 +222,10 @@ class SmartHusCard extends HTMLElement {
     return `
       <div class="head">
         <div class="title-row">
-          <div class="title">${esc(this._config.title)}</div>
+          <div class="brand">
+            ${this._config.logo ? `<img class="logo" src="${esc(this._config.logo)}" alt="" onerror="this.remove()">` : ""}
+            <div class="title">${esc(this._config.title)}</div>
+          </div>
           ${master ? this._toggle(master.entity_id, masterOn, masterOn ? "Styring til" : "Styring fra") : ""}
         </div>
         <div class="now level-${level}">
@@ -547,6 +550,8 @@ class SmartHusCard extends HTMLElement {
       .empty { padding: 16px; color: var(--secondary-text-color); }
       .head { padding: 0 16px 12px; }
       .title-row { display: flex; align-items: center; justify-content: space-between; }
+      .brand { display: flex; align-items: center; gap: 10px; }
+      .logo { width: 34px; height: 34px; object-fit: contain; }
       .title { font-size: 15px; font-weight: 600; letter-spacing: .01em; color: var(--secondary-text-color); }
       .now { display: flex; align-items: flex-end; gap: 14px; margin-top: 6px; }
       .price { display: flex; align-items: baseline; gap: 6px; }

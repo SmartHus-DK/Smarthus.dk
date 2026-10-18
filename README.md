@@ -1,3 +1,5 @@
+<p align="center"><img src="logo.png" alt="SmartHus.dk" width="220"></p>
+
 # SmartHus for Home Assistant
 
 Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk).
@@ -16,6 +18,8 @@ SmartHus henter dagens og morgendagens spotpriser fra Energi Data Service, lægg
 SmartHus styrer via **dine eksisterende entiteter**, så det virker med SigEnergy og de fleste andre invertere, ladebokse og varmepumper der allerede er i Home Assistant.
 
 ---
+
+Kræver Home Assistant 2025.1 eller nyere. SmartHus-logoet vises på integrationssiden fra Home Assistant 2026.3.
 
 ## Installation via HACS
 

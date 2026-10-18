@@ -9,7 +9,8 @@ MANUFACTURER: Final = "SmartHus.dk"
 
 API_URL: Final = "https://api.energidataservice.dk/dataset/DayAheadPrices"
 
-CARD_URL: Final = "/smarthus_static/smarthus-card.js"
+STATIC_URL: Final = "/smarthus_static"
+CARD_URL: Final = f"{STATIC_URL}/smarthus-card.js"
 CARD_VERSION: Final = "1.3.0"
 
 PLATFORMS: Final = ["sensor", "binary_sensor", "switch", "number"]
