@@ -116,7 +116,7 @@ class SmartHusCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
-    this._open = new Set(["ev"]);
+    this._open = new Set(["ev", "battery", "hotwater", "heating", "solar"]);
     this._sel = null;
     this.shadowRoot.addEventListener("click", (ev) => this._onClick(ev));
   }
@@ -362,7 +362,7 @@ class SmartHusCard extends HTMLElement {
           <button class="mod-main" data-action="expand" data-mod="${m.id}" aria-expanded="${open}">
             <ha-icon icon="${m.icon}"></ha-icon>
             <span class="mod-text"><span class="mod-name">${m.name}</span><span class="mod-line">${esc(line)}</span></span>
-            <ha-icon class="chev" icon="mdi:chevron-down"></ha-icon>
+            <span class="chev-lbl">${open ? "Skjul" : "Indstillinger"}</span><ha-icon class="chev" icon="mdi:chevron-down"></ha-icon>
           </button>
           ${this._toggle(sw.entity_id, on, `Styr ${m.name.toLowerCase()}`)}
         </div>
@@ -600,6 +600,7 @@ class SmartHusCard extends HTMLElement {
       .mod-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
       .mod-name { font-size: 15px; font-weight: 600; }
       .mod-line { font-size: 13px; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .chev-lbl { font-size: 12px; color: var(--secondary-text-color); white-space: nowrap; }
       .chev { transition: transform .2s; --mdc-icon-size: 20px; }
       .mod.open .chev { transform: rotate(180deg); }
       .mod-body { padding: 0 16px 14px 52px; }
