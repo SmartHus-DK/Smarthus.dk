@@ -10,11 +10,12 @@
       },
       "prices": {
         "title": "Electricity price and tariffs",
-        "description": "Choose Strømligning if the Strømligning integration is installed. The actual price from the customer's plan is then used, and the tariffs below are only a fallback. Otherwise SmartHus calculates the price from the Energi Data Service spot price and the tariffs below (DKK/kWh excl. VAT, winter = October–March). The sale price is always based on the spot price.",
+        "description": "Choose Strømligning if the Strømligning integration is installed. The actual price from the customer's plan is then used, and the tariffs below are only a fallback. Otherwise SmartHus calculates the price from the Energi Data Service spot price and the tariffs below (DKK/kWh excl. VAT, winter = October–March). The sale price is the spot price (from Strømligning, otherwise Energi Data Service) minus the sale deduction, excl. VAT.",
         "data": {
           "price_source": "Where does the electricity price come from?",
           "stromligning_price_entity": "Strømligning: price sensor",
           "stromligning_tomorrow_entity": "Strømligning: tomorrow's prices sensor",
+          "stromligning_spot_entity": "Strømligning: spot price sensor (for the sale price)",
           "price_area": "Price area",
           "include_vat": "Add 25% VAT to the purchase price",
           "supplier_markup": "Supplier markup",
@@ -98,11 +99,12 @@
       },
       "prices": {
         "title": "Electricity price and tariffs",
-        "description": "Choose Strømligning if the Strømligning integration is installed. The actual price from the customer's plan is then used, and the tariffs below are only a fallback. Otherwise SmartHus calculates the price from the Energi Data Service spot price and the tariffs below (DKK/kWh excl. VAT, winter = October–March). The sale price is always based on the spot price.",
+        "description": "Choose Strømligning if the Strømligning integration is installed. The actual price from the customer's plan is then used, and the tariffs below are only a fallback. Otherwise SmartHus calculates the price from the Energi Data Service spot price and the tariffs below (DKK/kWh excl. VAT, winter = October–March). The sale price is the spot price (from Strømligning, otherwise Energi Data Service) minus the sale deduction, excl. VAT.",
         "data": {
           "price_source": "Where does the electricity price come from?",
           "stromligning_price_entity": "Strømligning: price sensor",
           "stromligning_tomorrow_entity": "Strømligning: tomorrow's prices sensor",
+          "stromligning_spot_entity": "Strømligning: spot price sensor (for the sale price)",
           "price_area": "Price area",
           "include_vat": "Add 25% VAT to the purchase price",
           "supplier_markup": "Supplier markup",

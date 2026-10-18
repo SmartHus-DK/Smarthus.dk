@@ -10,11 +10,12 @@
       },
       "prices": {
         "title": "Elpris og tariffer",
-        "description": "Vælg Strømligning, hvis kunden har Strømligning-integrationen installeret. Så bruges den rigtige pris fra kundens elabonnement, og tarifferne nedenfor bruges kun som reserve. Ellers beregner SmartHus prisen ud fra spotprisen fra Energi Data Service og tarifferne nedenfor (kr/kWh ekskl. moms, vinter = oktober–marts). Salgsprisen beregnes altid ud fra spotprisen.",
+        "description": "Vælg Strømligning, hvis kunden har Strømligning-integrationen installeret. Så bruges den rigtige pris fra kundens elabonnement, og tarifferne nedenfor bruges kun som reserve. Ellers beregner SmartHus prisen ud fra spotprisen fra Energi Data Service og tarifferne nedenfor (kr/kWh ekskl. moms, vinter = oktober–marts). Salgsprisen beregnes ud fra spotprisen (fra Strømligning, ellers Energi Data Service) minus fradraget ved salg, uden moms.",
         "data": {
           "price_source": "Hvor kommer elprisen fra?",
           "stromligning_price_entity": "Strømligning: prissensor",
           "stromligning_tomorrow_entity": "Strømligning: sensor for morgendagens priser",
+          "stromligning_spot_entity": "Strømligning: spotpris-sensor (til salgsprisen)",
           "price_area": "Prisområde",
           "include_vat": "Læg 25 % moms på købsprisen",
           "supplier_markup": "Elleverandørens tillæg",
@@ -98,11 +99,12 @@
       },
       "prices": {
         "title": "Elpris og tariffer",
-        "description": "Vælg Strømligning, hvis kunden har Strømligning-integrationen installeret. Så bruges den rigtige pris fra kundens elabonnement, og tarifferne nedenfor bruges kun som reserve. Ellers beregner SmartHus prisen ud fra spotprisen fra Energi Data Service og tarifferne nedenfor (kr/kWh ekskl. moms, vinter = oktober–marts). Salgsprisen beregnes altid ud fra spotprisen.",
+        "description": "Vælg Strømligning, hvis kunden har Strømligning-integrationen installeret. Så bruges den rigtige pris fra kundens elabonnement, og tarifferne nedenfor bruges kun som reserve. Ellers beregner SmartHus prisen ud fra spotprisen fra Energi Data Service og tarifferne nedenfor (kr/kWh ekskl. moms, vinter = oktober–marts). Salgsprisen beregnes ud fra spotprisen (fra Strømligning, ellers Energi Data Service) minus fradraget ved salg, uden moms.",
         "data": {
           "price_source": "Hvor kommer elprisen fra?",
           "stromligning_price_entity": "Strømligning: prissensor",
           "stromligning_tomorrow_entity": "Strømligning: sensor for morgendagens priser",
+          "stromligning_spot_entity": "Strømligning: spotpris-sensor (til salgsprisen)",
           "price_area": "Prisområde",
           "include_vat": "Læg 25 % moms på købsprisen",
           "supplier_markup": "Elleverandørens tillæg",

@@ -47,7 +47,7 @@ Har kunden [Strømligning-integrationen](https://github.com/MTrab/stromligning) 
 2. Gå til SmartHus → **Konfigurer → Elpris og tariffer**, og vælg **Strømligning**.
 3. Prissensoren er som standard `sensor.stromligning_current_price_vat`, og morgendagens priser hentes fra `binary_sensor.stromligning_tomorrow_available_vat`.
 
-Salgsprisen for solceller beregnes stadig ud fra spotprisen fra Energi Data Service. Mangler Strømligning priser for et tidsrum, bruger SmartHus sin egen beregning som reserve.
+Salgsprisen for solceller beregnes ud fra spotprisen fra `sensor.stromligning_spotprice_vat` (uden moms, minus fradraget ved salg). Energi Data Service bruges som reserve. Mangler Strømligning priser for et tidsrum, bruger SmartHus sin egen beregning som reserve.
 
 ### SigEnergy-eksempel
 Med en SigEnergy-integration (Modbus) vælger du under **Batteri / inverter**:

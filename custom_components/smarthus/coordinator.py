@@ -19,16 +19,19 @@ from .const import (
     API_URL,
     CONF_AREA,
     CONF_PRICE_SOURCE,
+    CONF_SALE_FEE,
     CONF_SL_PRICE,
+    CONF_SL_SPOT,
     CONF_SL_TOMORROW,
     DEFAULT_PRICES,
     DEFAULT_SL_PRICE,
+    DEFAULT_SL_SPOT,
     DEFAULT_SL_TOMORROW,
     DOMAIN,
     SOURCE_STROMLIGNING,
 )
 from .planner import Slot
-from .pricing import PriceModel, apply_external_prices, parse_price_list
+from .pricing import PriceModel, apply_external_prices, apply_external_spot, parse_price_list
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -51,6 +54,7 @@ class SmartHusPriceCoordinator(DataUpdateCoordinator[list[Slot]]):
         self.source = config.get(CONF_PRICE_SOURCE) or "eds"
         self.sl_entities = [config.get(CONF_SL_PRICE) or DEFAULT_SL_PRICE,
                             config.get(CONF_SL_TOMORROW) or DEFAULT_SL_TOMORROW]
+        self.sl_spot = config.get(CONF_SL_SPOT) or DEFAULT_SL_SPOT
         self.external_hits = 0
         self._raw: list[Slot] = []
 
@@ -69,6 +73,12 @@ class SmartHusPriceCoordinator(DataUpdateCoordinator[list[Slot]]):
                 prices += parse_price_list(st.attributes.get("prices"))
         prices = sorted({t: p for t, p in prices}.items())
         out, self.external_hits = apply_external_prices(slots, prices)
+        st = self.hass.states.get(self.sl_spot)
+        if st is not None:
+            spot = parse_price_list(st.attributes.get("prices"))
+            # Sensorer der ender på "_vat" er inkl. moms – salgsprisen beregnes uden moms
+            fee = float(self.config.get(CONF_SALE_FEE, DEFAULT_PRICES[CONF_SALE_FEE]))
+            out, _ = apply_external_spot(out, spot, self.sl_spot.endswith("_vat"), fee)
         if not self.external_hits:
             _LOGGER.warning("Ingen priser fra Strømligning (%s) – bruger SmartHus' egen beregning",
                             ", ".join(self.sl_entities))

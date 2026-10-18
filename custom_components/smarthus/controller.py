@@ -95,7 +95,7 @@ class SmartHusController:
         self._unsub_sl = None
         if self.coordinator.uses_stromligning:
             self._unsub_sl = async_track_state_change_event(
-                self.hass, self.coordinator.sl_entities, lambda _e: self.coordinator.async_refresh_external()
+                self.hass, [*self.coordinator.sl_entities, self.coordinator.sl_spot], lambda _e: self.coordinator.async_refresh_external()
             )
         self.recalculate()
 

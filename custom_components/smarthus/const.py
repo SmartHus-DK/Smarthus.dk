@@ -58,8 +58,10 @@ CONF_SL_PRICE: Final = "stromligning_price_entity"
 CONF_SL_TOMORROW: Final = "stromligning_tomorrow_entity"
 DEFAULT_SL_PRICE: Final = "sensor.stromligning_current_price_vat"
 DEFAULT_SL_TOMORROW: Final = "binary_sensor.stromligning_tomorrow_available_vat"
+CONF_SL_SPOT: Final = "stromligning_spot_entity"
+DEFAULT_SL_SPOT: Final = "sensor.stromligning_spotprice_vat"
 
-PRICE_KEYS: Final = list(DEFAULT_PRICES) + [CONF_PRICE_SOURCE, CONF_SL_PRICE, CONF_SL_TOMORROW]
+PRICE_KEYS: Final = list(DEFAULT_PRICES) + [CONF_PRICE_SOURCE, CONF_SL_PRICE, CONF_SL_TOMORROW, CONF_SL_SPOT]
 
 # --- Enheder (options) -----------------------------------------------------
 # Batteri / inverter

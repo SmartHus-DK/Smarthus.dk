@@ -260,3 +260,13 @@ def test_stromligning_prices():
     # øre/kWh omregnes
     assert pricing.parse_price_list([{"start": base.isoformat(), "price": 215}])[0][1] == 2.15
     assert pricing.parse_price_list([{"start": "ugyldig", "price": 1}, {"x": 1}]) == []
+
+
+def test_stromligning_spot_for_sale():
+    slots = model().build_slots(records("2026-10-18", CURVE))
+    base = datetime(2026, 10, 18, 0, 0, tzinfo=TZ)
+    spot_vat = pricing.parse_price_list([{"start": (base + timedelta(hours=h)).isoformat(), "price": 1.25} for h in range(24)])
+    out, hits = pricing.apply_external_spot(slots, spot_vat, True, 0.03)
+    assert hits == 96
+    assert out[10].spot == 1.0 and out[10].sale == 0.97
+    assert out[10].price == slots[10].price  # købsprisen røres ikke

@@ -70,6 +70,28 @@ def apply_external_prices(slots: list[Slot], prices: list[tuple[datetime, float]
     return out, hits
 
 
+def apply_external_spot(slots: list[Slot], prices: list[tuple[datetime, float]],
+                        vat_included: bool, sale_fee: float) -> tuple[list[Slot], int]:
+    """Brug ekstern spotpris (fx Strømligning) til spot- og salgspris. Salg er altid uden moms."""
+    if not prices:
+        return slots, 0
+    starts = [t for t, _ in prices]
+    durs = [b - a for a, b in zip(starts, starts[1:])] or [timedelta(hours=1)]
+    durs.append(durs[-1])
+    out, hits, j = [], 0, 0
+    for s in slots:
+        while j + 1 < len(prices) and prices[j + 1][0] <= s.start:
+            j += 1
+        t, p = prices[j]
+        if t <= s.start < t + durs[j]:
+            spot = p / 1.25 if vat_included else p
+            out.append(Slot(s.start, s.end, round(spot, 4), s.price, round(spot - sale_fee, 4)))
+            hits += 1
+        else:
+            out.append(s)
+    return out, hits
+
+
 class PriceModel:
     """Samlet pris = (spot + leverandørtillæg + nettarif + Energinet + elafgift) × moms."""
 

@@ -38,8 +38,10 @@ from .const import (
     CONF_PRICE_SOURCE,
     CONF_SALE_FEE,
     CONF_SL_PRICE,
+    CONF_SL_SPOT,
     CONF_SL_TOMORROW,
     DEFAULT_SL_PRICE,
+    DEFAULT_SL_SPOT,
     DEFAULT_SL_TOMORROW,
     SOURCE_EDS,
     SOURCE_STROMLIGNING,
@@ -109,6 +111,8 @@ def _price_schema(values: dict) -> vol.Schema:
                 selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
             vol.Optional(CONF_SL_TOMORROW, description={"suggested_value": v.get(CONF_SL_TOMORROW) or DEFAULT_SL_TOMORROW}):
                 selector.EntitySelector(selector.EntitySelectorConfig(domain=["binary_sensor", "sensor"])),
+            vol.Optional(CONF_SL_SPOT, description={"suggested_value": v.get(CONF_SL_SPOT) or DEFAULT_SL_SPOT}):
+                selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
             vol.Required(CONF_AREA, default=v[CONF_AREA]): selector.SelectSelector(
                 selector.SelectSelectorConfig(options=AREAS, translation_key="price_area",
                                               mode=selector.SelectSelectorMode.LIST)
