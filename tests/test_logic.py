@@ -160,3 +160,21 @@ def test_merge_periods():
     slots = model().build_slots(records("2026-10-18", CURVE))
     ch = planner.cheapest(slots, 2)
     assert planner.merge_periods(ch, TZ) == ["18/10 02:00–04:00"]
+
+
+def test_ev_target_soc():
+    recs = records("2026-10-18", CURVE) + records("2026-10-19", CURVE)
+    slots = model().build_slots(recs)
+    s = dict(const.DEFAULT_SETTINGS)  # mål 80 %, 60 kWh, 11 kW
+    now = datetime(2026, 10, 18, 20, 0, tzinfo=TZ).astimezone(timezone.utc)
+    p = planner.build_plan(slots, now, TZ, s, ev_soc=50)
+    need = 0.30 * 60 / 11 / 0.9
+    assert abs(p.ev_hours_needed - round(need, 2)) < 0.01
+    assert len(p.ev_slots) == round(need / 0.25)
+    assert all(sl.end > now for sl in p.ev_slots)
+    # Mål nået: ingen opladning, heller ikke med "Lad nu"
+    p = planner.build_plan(slots, now, TZ, s, ev_soc=81, ev_force=True)
+    assert p.ev_target_reached and not p.ev_on and p.ev_slots == []
+    # Lad nu under målet
+    p = planner.build_plan(slots, now, TZ, s, ev_soc=40, ev_force=True)
+    assert p.ev_on

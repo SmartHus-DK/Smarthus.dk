@@ -98,6 +98,8 @@ def _status(c: SmartHusController) -> str:
         parts.append("Begrænser eksport")
     if c.active(MODULE_EV) and p.ev_on:
         parts.append("Lader elbil")
+    elif c.active(MODULE_EV) and p.ev_target_reached:
+        parts.append("Elbil opladet")
     if c.active(MODULE_HOTWATER) and p.hotwater_on:
         parts.append("Opvarmer varmt vand")
     if c.active(MODULE_HEATING) and p.heating_mode == "boost":
@@ -136,6 +138,8 @@ SENSORS: tuple[SmartHusSensorDescription, ...] = (
                               device_class=SensorDeviceClass.TIMESTAMP, value_fn=_cheapest_hour),
     SmartHusSensorDescription(key="battery_status", icon="mdi:home-battery", device_class=SensorDeviceClass.ENUM,
                               options=["charge", "discharge", "normal", "off"], value_fn=_battery_status),
+    SmartHusSensorDescription(key="ev_hours_needed", icon="mdi:timer-sand", native_unit_of_measurement="h",
+                              suggested_display_precision=1, value_fn=lambda c: c.plan.ev_hours_needed),
     SmartHusSensorDescription(key="status", icon="mdi:home-lightning-bolt", value_fn=_status),
     SmartHusSensorDescription(key="savings_today", icon="mdi:piggy-bank", value_fn=_savings("today"),
                               attrs_fn=_savings_attrs("today"), **MONEY),

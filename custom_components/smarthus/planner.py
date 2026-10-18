@@ -113,6 +113,8 @@ class Plan:
     solar_curtail: bool = False
     ev_slots: list[Slot] = field(default_factory=list)
     ev_on: bool = False
+    ev_hours_needed: float | None = None
+    ev_target_reached: bool = False
     hotwater_slots: list[Slot] = field(default_factory=list)
     hotwater_on: bool = False
     heating_boost: list[Slot] = field(default_factory=list)
@@ -133,7 +135,8 @@ def _percentile(values: list[float], q: float) -> float:
 
 
 def build_plan(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
-               soc: float | None = None, ev_force: bool = False) -> Plan:
+               soc: float | None = None, ev_force: bool = False,
+               ev_soc: float | None = None) -> Plan:
     """Byg den samlede plan for alle moduler ud fra priserne."""
     plan = Plan()
     if not slots:
@@ -171,7 +174,15 @@ def build_plan(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
             plan.heating_reduce += cheapest(pool, settings["heating_reduce_hours"], most_expensive=True)
 
     # Elbil: billigste timer i 24 timer op til klar-tidspunktet
-    plan.ev_slots = ev_plan(slots, now, tz, settings["ev_hours"], int(settings["ev_ready_hour"]))
+    ready_hour = int(settings["ev_ready_hour"])
+    if ev_soc is None:
+        plan.ev_slots = ev_plan(slots, now, tz, settings["ev_hours"], ready_hour)
+    else:
+        # Mål-SoC: beregn resterende ladetid og planlæg kun fremad
+        plan.ev_hours_needed = ev_hours_needed(ev_soc, settings)
+        plan.ev_target_reached = plan.ev_hours_needed <= 0
+        if not plan.ev_target_reached:
+            plan.ev_slots = ev_plan(slots, now, tz, plan.ev_hours_needed, ready_hour, from_now=True)
 
     cur = plan.current
     if cur:
@@ -187,11 +198,22 @@ def build_plan(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
             plan.heating_mode = "boost"
         elif cur in plan.heating_reduce:
             plan.heating_mode = "reduce"
-    plan.ev_on = ev_force or any(s.start <= now < s.end for s in plan.ev_slots)
+    plan.ev_on = (ev_force or any(s.start <= now < s.end for s in plan.ev_slots)) and not plan.ev_target_reached
     return plan
 
 
-def ev_plan(slots: list[Slot], now: datetime, tz: tzinfo, hours: float, ready_hour: int) -> list[Slot]:
+CHARGE_EFFICIENCY = 0.9  # ladetab i lader og bil
+
+
+def ev_hours_needed(ev_soc: float, settings: dict) -> float:
+    """Timer der skal til for at nå mål-SoC (0 hvis nået)."""
+    missing = max(0.0, settings["ev_target_soc"] - ev_soc) / 100
+    kw = max(settings["ev_charge_power"], 0.1)
+    return round(missing * settings["ev_battery_capacity"] / kw / CHARGE_EFFICIENCY, 2)
+
+
+def ev_plan(slots: list[Slot], now: datetime, tz: tzinfo, hours: float, ready_hour: int,
+            from_now: bool = False) -> list[Slot]:
     """Billigste tidsrum i vinduet [klar-tid − 24 t, klar-tid).
 
     Hvis priserne for hele vinduet endnu ikke er kendt (før ca. kl. 13), ventes
@@ -204,8 +226,12 @@ def ev_plan(slots: list[Slot], now: datetime, tz: tzinfo, hours: float, ready_ho
     if local_now >= ready:
         ready += timedelta(days=1)
     start = ready - timedelta(days=1)
-    window = slots_in(slots, start, ready)
-    covered = bool(window) and max(s.end for s in window) >= ready and min(s.start for s in window) <= start
+    if from_now:
+        window = [s for s in slots if s.end > now and s.start < ready]
+        covered = bool(window) and max(s.end for s in window) >= ready
+    else:
+        window = slots_in(slots, start, ready)
+        covered = bool(window) and max(s.end for s in window) >= ready and min(s.start for s in window) <= start
     if covered:
         return cheapest(window, hours)
     # Sikkerhed: data mangler – lad i de sidste timer før klar-tid

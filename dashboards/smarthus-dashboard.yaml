@@ -33,6 +33,9 @@ views:
             entity: sensor.smarthus_today_max
             name: Højeste i dag
           - type: tile
+            entity: sensor.smarthus_ev_hours_needed
+            name: Elbil – ladetid tilbage
+          - type: tile
             entity: sensor.smarthus_cheapest_hour
             name: Billigste time
             grid_options: { columns: full }
@@ -149,6 +152,9 @@ views:
               - number.smarthus_battery_charge_hours
               - number.smarthus_battery_discharge_hours
               - number.smarthus_battery_min_spread
+              - number.smarthus_ev_target_soc
+              - number.smarthus_ev_battery_capacity
+              - number.smarthus_ev_charge_power
               - number.smarthus_ev_hours
               - number.smarthus_ev_ready_hour
               - number.smarthus_hotwater_hours

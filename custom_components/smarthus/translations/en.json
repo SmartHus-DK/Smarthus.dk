@@ -4,7 +4,9 @@
       "user": {
         "title": "SmartHus",
         "description": "Smart control of solar, battery, EV charger and heat pump based on electricity prices. Devices are added afterwards under Configure.",
-        "data": { "name": "Name" }
+        "data": {
+          "name": "Name"
+        }
       },
       "prices": {
         "title": "Electricity price and tariffs",
@@ -25,7 +27,9 @@
         }
       }
     },
-    "abort": { "already_configured": "SmartHus is already set up with this name and price area." }
+    "abort": {
+      "already_configured": "SmartHus is already set up with this name and price area."
+    }
   },
   "options": {
     "step": {
@@ -64,16 +68,19 @@
       },
       "ev": {
         "title": "EV charger",
-        "description": "The charger is enabled in the cheapest hours before your ready time.",
+        "description": "The charger is enabled in the cheapest hours before your ready time. With the car's SoC selected, charge time is calculated from the target SoC and charging stops when it is reached.",
         "data": {
           "ev_charger_entity": "Switch: allow charging",
+          "ev_soc_sensor": "Car battery level (SoC %)",
           "ev_energy_sensor": "Energy meter: EV (kWh)"
         }
       },
       "hotwater": {
         "title": "Hot water",
         "description": "A switch is turned on in the cheapest continuous period of the day. For a water_heater or climate entity the temperature is raised instead.",
-        "data": { "hotwater_entity": "Water heater / heat pump" }
+        "data": {
+          "hotwater_entity": "Water heater / heat pump"
+        }
       },
       "heating": {
         "title": "Heating / heat pump",
@@ -104,66 +111,180 @@
     }
   },
   "selector": {
-    "price_area": { "options": { "DK1": "DK1 – West Denmark", "DK2": "DK2 – East Denmark" } }
+    "price_area": {
+      "options": {
+        "DK1": "DK1 – West Denmark",
+        "DK2": "DK2 – East Denmark"
+      }
+    }
   },
   "entity": {
     "sensor": {
-      "current_price": { "name": "Price now" },
-      "spot_price": { "name": "Spot price" },
-      "sale_price": { "name": "Sale price" },
-      "today_average": { "name": "Average price today" },
-      "today_min": { "name": "Lowest price today" },
-      "today_max": { "name": "Highest price today" },
-      "cheapest_hour": { "name": "Cheapest hour" },
+      "current_price": {
+        "name": "Price now"
+      },
+      "spot_price": {
+        "name": "Spot price"
+      },
+      "sale_price": {
+        "name": "Sale price"
+      },
+      "today_average": {
+        "name": "Average price today"
+      },
+      "today_min": {
+        "name": "Lowest price today"
+      },
+      "today_max": {
+        "name": "Highest price today"
+      },
+      "cheapest_hour": {
+        "name": "Cheapest hour"
+      },
       "battery_status": {
         "name": "Battery control",
-        "state": { "charge": "Charging", "discharge": "Discharging", "normal": "Normal", "off": "Off" }
+        "state": {
+          "charge": "Charging",
+          "discharge": "Discharging",
+          "normal": "Normal",
+          "off": "Off"
+        }
       },
-      "status": { "name": "Status" },
-      "savings_today": { "name": "Savings today" },
-      "savings_month": { "name": "Savings this month" },
-      "savings_total": { "name": "Savings total" },
-      "savings_month_battery": { "name": "Battery savings (month)" },
-      "savings_month_solar": { "name": "Solar value (month)" },
-      "savings_month_ev": { "name": "EV savings (month)" },
-      "savings_month_heatpump": { "name": "Heat pump savings (month)" }
+      "status": {
+        "name": "Status"
+      },
+      "savings_today": {
+        "name": "Savings today"
+      },
+      "savings_month": {
+        "name": "Savings this month"
+      },
+      "savings_total": {
+        "name": "Savings total"
+      },
+      "savings_month_battery": {
+        "name": "Battery savings (month)"
+      },
+      "savings_month_solar": {
+        "name": "Solar value (month)"
+      },
+      "savings_month_ev": {
+        "name": "EV savings (month)"
+      },
+      "savings_month_heatpump": {
+        "name": "Heat pump savings (month)"
+      },
+      "ev_hours_needed": {
+        "name": "EV: charge time left"
+      }
     },
     "binary_sensor": {
-      "cheap_now": { "name": "Cheap power now" },
-      "expensive_now": { "name": "Expensive power now" },
-      "battery_charge_now": { "name": "Battery: charge now" },
-      "battery_discharge_now": { "name": "Battery: discharge now" },
-      "solar_curtail_now": { "name": "Limit export now" },
-      "ev_charge_now": { "name": "EV: charge now" },
-      "hotwater_now": { "name": "Hot water: heat now" },
-      "heating_boost_now": { "name": "Heating: boost now" },
-      "heating_reduce_now": { "name": "Heating: save now" }
+      "cheap_now": {
+        "name": "Cheap power now"
+      },
+      "expensive_now": {
+        "name": "Expensive power now"
+      },
+      "battery_charge_now": {
+        "name": "Battery: charge now"
+      },
+      "battery_discharge_now": {
+        "name": "Battery: discharge now"
+      },
+      "solar_curtail_now": {
+        "name": "Limit export now"
+      },
+      "ev_charge_now": {
+        "name": "EV: charge now"
+      },
+      "hotwater_now": {
+        "name": "Hot water: heat now"
+      },
+      "heating_boost_now": {
+        "name": "Heating: boost now"
+      },
+      "heating_reduce_now": {
+        "name": "Heating: save now"
+      }
     },
     "switch": {
-      "control_master": { "name": "SmartHus control" },
-      "control_battery": { "name": "Control battery" },
-      "control_solar": { "name": "Control solar" },
-      "control_ev": { "name": "Control EV charger" },
-      "control_hotwater": { "name": "Control hot water" },
-      "control_heating": { "name": "Control heating" },
-      "ev_force": { "name": "Charge EV now" }
+      "control_master": {
+        "name": "SmartHus control"
+      },
+      "control_battery": {
+        "name": "Control battery"
+      },
+      "control_solar": {
+        "name": "Control solar"
+      },
+      "control_ev": {
+        "name": "Control EV charger"
+      },
+      "control_hotwater": {
+        "name": "Control hot water"
+      },
+      "control_heating": {
+        "name": "Control heating"
+      },
+      "ev_force": {
+        "name": "Charge EV now"
+      }
     },
     "number": {
-      "battery_charge_hours": { "name": "Battery: hours to charge" },
-      "battery_discharge_hours": { "name": "Battery: hours to discharge" },
-      "battery_min_spread": { "name": "Battery: min. price spread" },
-      "battery_min_soc": { "name": "Battery: min. level" },
-      "battery_max_soc": { "name": "Battery: max. level" },
-      "ev_hours": { "name": "EV: hours to charge" },
-      "ev_ready_hour": { "name": "EV: ready at" },
-      "hotwater_hours": { "name": "Hot water: hours" },
-      "hotwater_boost_temp": { "name": "Hot water: heat to" },
-      "hotwater_normal_temp": { "name": "Hot water: normal temperature" },
-      "heating_base_temp": { "name": "Heating: base temperature" },
-      "heating_boost_degrees": { "name": "Heating: raise by" },
-      "heating_boost_hours": { "name": "Heating: hours to raise" },
-      "heating_reduce_degrees": { "name": "Heating: lower by" },
-      "heating_reduce_hours": { "name": "Heating: hours to lower" }
+      "battery_charge_hours": {
+        "name": "Battery: hours to charge"
+      },
+      "battery_discharge_hours": {
+        "name": "Battery: hours to discharge"
+      },
+      "battery_min_spread": {
+        "name": "Battery: min. price spread"
+      },
+      "battery_min_soc": {
+        "name": "Battery: min. level"
+      },
+      "battery_max_soc": {
+        "name": "Battery: max. level"
+      },
+      "ev_hours": {
+        "name": "EV: hours to charge"
+      },
+      "ev_ready_hour": {
+        "name": "EV: ready at"
+      },
+      "hotwater_hours": {
+        "name": "Hot water: hours"
+      },
+      "hotwater_boost_temp": {
+        "name": "Hot water: heat to"
+      },
+      "hotwater_normal_temp": {
+        "name": "Hot water: normal temperature"
+      },
+      "heating_base_temp": {
+        "name": "Heating: base temperature"
+      },
+      "heating_boost_degrees": {
+        "name": "Heating: raise by"
+      },
+      "heating_boost_hours": {
+        "name": "Heating: hours to raise"
+      },
+      "heating_reduce_degrees": {
+        "name": "Heating: lower by"
+      },
+      "heating_reduce_hours": {
+        "name": "Heating: hours to lower"
+      },
+      "ev_target_soc": {
+        "name": "EV: charge to"
+      },
+      "ev_battery_capacity": {
+        "name": "EV: battery size"
+      },
+      "ev_charge_power": {
+        "name": "EV: charging power"
+      }
     }
   }
 }

@@ -24,6 +24,7 @@ from .const import (
     CONF_ELAFGIFT,
     CONF_ENERGINET,
     CONF_EV_ENERGY,
+    CONF_EV_SOC,
     CONF_EV_SWITCH,
     CONF_EXPORT_ENERGY,
     CONF_HEATING_CLIMATE,
@@ -182,7 +183,7 @@ class SmartHusOptionsFlow(OptionsFlow):
     async def async_step_ev(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
             return self._save(EV_KEYS, user_input)
-        fields = [(CONF_EV_SWITCH, ONOFF), (CONF_EV_ENERGY, ENERGY)]
+        fields = [(CONF_EV_SWITCH, ONOFF), (CONF_EV_SOC, SOC), (CONF_EV_ENERGY, ENERGY)]
         return self.async_show_form(step_id="ev", data_schema=_entity_schema(fields, self._current()))
 
     async def async_step_hotwater(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:

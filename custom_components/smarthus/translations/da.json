@@ -4,7 +4,9 @@
       "user": {
         "title": "SmartHus",
         "description": "Intelligent styring af solceller, batteri, elbil og varmepumpe efter elprisen. Enhederne tilføjes bagefter under Konfigurer.",
-        "data": { "name": "Navn" }
+        "data": {
+          "name": "Navn"
+        }
       },
       "prices": {
         "title": "Elpris og tariffer",
@@ -25,7 +27,9 @@
         }
       }
     },
-    "abort": { "already_configured": "SmartHus er allerede sat op med dette navn og prisområde." }
+    "abort": {
+      "already_configured": "SmartHus er allerede sat op med dette navn og prisområde."
+    }
   },
   "options": {
     "step": {
@@ -64,16 +68,19 @@
       },
       "ev": {
         "title": "Elbillader",
-        "description": "Laderen tændes i de billigste timer før dit klar-tidspunkt.",
+        "description": "Laderen tændes i de billigste timer før dit klar-tidspunkt. Vælger du bilens SoC, beregnes ladetiden ud fra mål-SoC, og der stoppes når målet er nået.",
         "data": {
           "ev_charger_entity": "Kontakt: tillad opladning",
+          "ev_soc_sensor": "Bilens batteriniveau (SoC %)",
           "ev_energy_sensor": "Energimåler: elbil (kWh)"
         }
       },
       "hotwater": {
         "title": "Varmt vand",
         "description": "En kontakt tændes i dagens billigste sammenhængende periode. Vælger du en water_heater- eller climate-entitet, hæves temperaturen i stedet.",
-        "data": { "hotwater_entity": "Varmtvandsbeholder / varmepumpe" }
+        "data": {
+          "hotwater_entity": "Varmtvandsbeholder / varmepumpe"
+        }
       },
       "heating": {
         "title": "Varme / varmepumpe",
@@ -104,66 +111,180 @@
     }
   },
   "selector": {
-    "price_area": { "options": { "DK1": "DK1 – Vestdanmark", "DK2": "DK2 – Østdanmark" } }
+    "price_area": {
+      "options": {
+        "DK1": "DK1 – Vestdanmark",
+        "DK2": "DK2 – Østdanmark"
+      }
+    }
   },
   "entity": {
     "sensor": {
-      "current_price": { "name": "Elpris nu" },
-      "spot_price": { "name": "Spotpris" },
-      "sale_price": { "name": "Salgspris" },
-      "today_average": { "name": "Gennemsnitspris i dag" },
-      "today_min": { "name": "Laveste pris i dag" },
-      "today_max": { "name": "Højeste pris i dag" },
-      "cheapest_hour": { "name": "Billigste time" },
+      "current_price": {
+        "name": "Elpris nu"
+      },
+      "spot_price": {
+        "name": "Spotpris"
+      },
+      "sale_price": {
+        "name": "Salgspris"
+      },
+      "today_average": {
+        "name": "Gennemsnitspris i dag"
+      },
+      "today_min": {
+        "name": "Laveste pris i dag"
+      },
+      "today_max": {
+        "name": "Højeste pris i dag"
+      },
+      "cheapest_hour": {
+        "name": "Billigste time"
+      },
       "battery_status": {
         "name": "Batteristyring",
-        "state": { "charge": "Lader", "discharge": "Aflader", "normal": "Normal", "off": "Slået fra" }
+        "state": {
+          "charge": "Lader",
+          "discharge": "Aflader",
+          "normal": "Normal",
+          "off": "Slået fra"
+        }
       },
-      "status": { "name": "Status" },
-      "savings_today": { "name": "Besparelse i dag" },
-      "savings_month": { "name": "Besparelse denne måned" },
-      "savings_total": { "name": "Besparelse i alt" },
-      "savings_month_battery": { "name": "Besparelse batteri (måned)" },
-      "savings_month_solar": { "name": "Værdi af solceller (måned)" },
-      "savings_month_ev": { "name": "Besparelse elbil (måned)" },
-      "savings_month_heatpump": { "name": "Besparelse varmepumpe (måned)" }
+      "status": {
+        "name": "Status"
+      },
+      "savings_today": {
+        "name": "Besparelse i dag"
+      },
+      "savings_month": {
+        "name": "Besparelse denne måned"
+      },
+      "savings_total": {
+        "name": "Besparelse i alt"
+      },
+      "savings_month_battery": {
+        "name": "Besparelse batteri (måned)"
+      },
+      "savings_month_solar": {
+        "name": "Værdi af solceller (måned)"
+      },
+      "savings_month_ev": {
+        "name": "Besparelse elbil (måned)"
+      },
+      "savings_month_heatpump": {
+        "name": "Besparelse varmepumpe (måned)"
+      },
+      "ev_hours_needed": {
+        "name": "Elbil: ladetid tilbage"
+      }
     },
     "binary_sensor": {
-      "cheap_now": { "name": "Billig strøm nu" },
-      "expensive_now": { "name": "Dyr strøm nu" },
-      "battery_charge_now": { "name": "Batteri: lad nu" },
-      "battery_discharge_now": { "name": "Batteri: aflad nu" },
-      "solar_curtail_now": { "name": "Begræns eksport nu" },
-      "ev_charge_now": { "name": "Elbil: lad nu" },
-      "hotwater_now": { "name": "Varmt vand: opvarm nu" },
-      "heating_boost_now": { "name": "Varme: ekstra varme nu" },
-      "heating_reduce_now": { "name": "Varme: spar nu" }
+      "cheap_now": {
+        "name": "Billig strøm nu"
+      },
+      "expensive_now": {
+        "name": "Dyr strøm nu"
+      },
+      "battery_charge_now": {
+        "name": "Batteri: lad nu"
+      },
+      "battery_discharge_now": {
+        "name": "Batteri: aflad nu"
+      },
+      "solar_curtail_now": {
+        "name": "Begræns eksport nu"
+      },
+      "ev_charge_now": {
+        "name": "Elbil: lad nu"
+      },
+      "hotwater_now": {
+        "name": "Varmt vand: opvarm nu"
+      },
+      "heating_boost_now": {
+        "name": "Varme: ekstra varme nu"
+      },
+      "heating_reduce_now": {
+        "name": "Varme: spar nu"
+      }
     },
     "switch": {
-      "control_master": { "name": "SmartHus-styring" },
-      "control_battery": { "name": "Styr batteri" },
-      "control_solar": { "name": "Styr solceller" },
-      "control_ev": { "name": "Styr elbillader" },
-      "control_hotwater": { "name": "Styr varmt vand" },
-      "control_heating": { "name": "Styr varme" },
-      "ev_force": { "name": "Lad elbil nu" }
+      "control_master": {
+        "name": "SmartHus-styring"
+      },
+      "control_battery": {
+        "name": "Styr batteri"
+      },
+      "control_solar": {
+        "name": "Styr solceller"
+      },
+      "control_ev": {
+        "name": "Styr elbillader"
+      },
+      "control_hotwater": {
+        "name": "Styr varmt vand"
+      },
+      "control_heating": {
+        "name": "Styr varme"
+      },
+      "ev_force": {
+        "name": "Lad elbil nu"
+      }
     },
     "number": {
-      "battery_charge_hours": { "name": "Batteri: timer at lade" },
-      "battery_discharge_hours": { "name": "Batteri: timer at aflade" },
-      "battery_min_spread": { "name": "Batteri: min. prisforskel" },
-      "battery_min_soc": { "name": "Batteri: min. niveau" },
-      "battery_max_soc": { "name": "Batteri: maks. niveau" },
-      "ev_hours": { "name": "Elbil: timer at lade" },
-      "ev_ready_hour": { "name": "Elbil: klar kl." },
-      "hotwater_hours": { "name": "Varmt vand: timer" },
-      "hotwater_boost_temp": { "name": "Varmt vand: opvarm til" },
-      "hotwater_normal_temp": { "name": "Varmt vand: normal temperatur" },
-      "heating_base_temp": { "name": "Varme: grundtemperatur" },
-      "heating_boost_degrees": { "name": "Varme: hæv grader" },
-      "heating_boost_hours": { "name": "Varme: timer at hæve" },
-      "heating_reduce_degrees": { "name": "Varme: sænk grader" },
-      "heating_reduce_hours": { "name": "Varme: timer at sænke" }
+      "battery_charge_hours": {
+        "name": "Batteri: timer at lade"
+      },
+      "battery_discharge_hours": {
+        "name": "Batteri: timer at aflade"
+      },
+      "battery_min_spread": {
+        "name": "Batteri: min. prisforskel"
+      },
+      "battery_min_soc": {
+        "name": "Batteri: min. niveau"
+      },
+      "battery_max_soc": {
+        "name": "Batteri: maks. niveau"
+      },
+      "ev_hours": {
+        "name": "Elbil: timer at lade"
+      },
+      "ev_ready_hour": {
+        "name": "Elbil: klar kl."
+      },
+      "hotwater_hours": {
+        "name": "Varmt vand: timer"
+      },
+      "hotwater_boost_temp": {
+        "name": "Varmt vand: opvarm til"
+      },
+      "hotwater_normal_temp": {
+        "name": "Varmt vand: normal temperatur"
+      },
+      "heating_base_temp": {
+        "name": "Varme: grundtemperatur"
+      },
+      "heating_boost_degrees": {
+        "name": "Varme: hæv grader"
+      },
+      "heating_boost_hours": {
+        "name": "Varme: timer at hæve"
+      },
+      "heating_reduce_degrees": {
+        "name": "Varme: sænk grader"
+      },
+      "heating_reduce_hours": {
+        "name": "Varme: timer at sænke"
+      },
+      "ev_target_soc": {
+        "name": "Elbil: lad til"
+      },
+      "ev_battery_capacity": {
+        "name": "Elbil: batteristørrelse"
+      },
+      "ev_charge_power": {
+        "name": "Elbil: ladeeffekt"
+      }
     }
   }
 }

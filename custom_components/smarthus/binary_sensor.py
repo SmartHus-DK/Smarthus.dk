@@ -67,7 +67,12 @@ class SmartHusBinary(SmartHusEntity, BinarySensorEntity):
         if not fn:
             return None
         slots = fn(self.controller.plan)
+        extra = {}
+        if self.entity_description.key == "ev_charge_now":
+            p = self.controller.plan
+            extra = {"hours_needed": p.ev_hours_needed, "target_reached": p.ev_target_reached}
         return {
+            **extra,
             "periods": merge_periods(slots, self.controller.tz),
             "slots": [s.start.isoformat() for s in sorted(slots, key=lambda s: s.start)],
         }

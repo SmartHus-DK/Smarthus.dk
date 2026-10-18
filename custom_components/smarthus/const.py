@@ -64,6 +64,7 @@ CONF_SOLAR_CURTAIL: Final = "solar_curtail_entity"
 # Elbil
 CONF_EV_SWITCH: Final = "ev_charger_entity"
 CONF_EV_ENERGY: Final = "ev_energy_sensor"
+CONF_EV_SOC: Final = "ev_soc_sensor"
 # Varmt vand
 CONF_HOTWATER_ENTITY: Final = "hotwater_entity"
 # Varme / varmepumpe
@@ -80,7 +81,7 @@ BATTERY_KEYS: Final = [
     CONF_BATTERY_DISCHARGE_ENERGY,
 ]
 SOLAR_KEYS: Final = [CONF_SOLAR_ENERGY, CONF_EXPORT_ENERGY, CONF_SOLAR_CURTAIL]
-EV_KEYS: Final = [CONF_EV_SWITCH, CONF_EV_ENERGY]
+EV_KEYS: Final = [CONF_EV_SWITCH, CONF_EV_ENERGY, CONF_EV_SOC]
 HOTWATER_KEYS: Final = [CONF_HOTWATER_ENTITY]
 HEATING_KEYS: Final = [CONF_HEATING_CLIMATE, CONF_HEATPUMP_ENERGY]
 
@@ -108,6 +109,9 @@ S_BATTERY_MIN_SOC: Final = "battery_min_soc"
 S_BATTERY_MAX_SOC: Final = "battery_max_soc"
 S_EV_HOURS: Final = "ev_hours"
 S_EV_READY_HOUR: Final = "ev_ready_hour"
+S_EV_TARGET_SOC: Final = "ev_target_soc"
+S_EV_CAPACITY: Final = "ev_battery_capacity"
+S_EV_CHARGE_POWER: Final = "ev_charge_power"
 S_HOTWATER_HOURS: Final = "hotwater_hours"
 S_HOTWATER_BOOST_TEMP: Final = "hotwater_boost_temp"
 S_HOTWATER_NORMAL_TEMP: Final = "hotwater_normal_temp"
@@ -125,6 +129,9 @@ DEFAULT_SETTINGS: Final = {
     S_BATTERY_MAX_SOC: 95.0,
     S_EV_HOURS: 4.0,
     S_EV_READY_HOUR: 7.0,
+    S_EV_TARGET_SOC: 80.0,
+    S_EV_CAPACITY: 60.0,
+    S_EV_CHARGE_POWER: 11.0,
     S_HOTWATER_HOURS: 2.0,
     S_HOTWATER_BOOST_TEMP: 55.0,
     S_HOTWATER_NORMAL_TEMP: 45.0,

@@ -26,6 +26,7 @@ from .const import (
     CONF_BATTERY_OPT_NORMAL,
     CONF_BATTERY_SOC,
     CONF_EV_ENERGY,
+    CONF_EV_SOC,
     CONF_EV_SWITCH,
     CONF_EXPORT_ENERGY,
     CONF_HEATING_CLIMATE,
@@ -135,7 +136,10 @@ class SmartHusController:
         slots = self.coordinator.data or []
         soc = self._float_state(self.config.get(CONF_BATTERY_SOC))
         self.plan = build_plan(slots, dt_util.utcnow(), self.tz, self.settings,
-                               soc=soc, ev_force=self.ev_force)
+                               soc=soc, ev_force=self.ev_force,
+                               ev_soc=self._float_state(self.config.get(CONF_EV_SOC)))
+        if self.ev_force and self.plan.ev_target_reached:
+            self.ev_force = False  # "Lad elbil nu" slukker selv ved mål-SoC
         async_dispatcher_send(self.hass, SIGNAL_TICK.format(entry_id=self.entry.entry_id))
 
     async def _async_tick(self, now: datetime) -> None:

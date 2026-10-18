@@ -8,7 +8,7 @@ SmartHus henter dagens og morgendagens spotpriser fra Energi Data Service, lægg
 |---|---|
 | 🔋 **Batteri / inverter** | Lader fra nettet i de billigste timer og aflader i de dyreste – kun hvis prisforskellen er stor nok. Respekterer min./maks. batteriniveau. Lader også når salgsprisen er negativ. |
 | ☀️ **Solceller** | Begrænser eksport når salgsprisen er negativ og beregner værdien af din solcellestrøm. |
-| 🚗 **Elbillader** | Tænder laderen i de billigste timer inden dit "klar kl."-tidspunkt. Knap til "Lad elbil nu". |
+| 🚗 **Elbillader** | Lader bilen op til din mål-SoC (fx 80 %) i de billigste timer inden dit "klar kl."-tidspunkt og stopper, når målet er nået. Knap til "Lad elbil nu". |
 | 🚿 **Varmt vand** | Opvarmer i dagens billigste sammenhængende periode (kontakt eller temperatur). |
 | 🔥 **Varme / varmepumpe** | Hæver temperaturen X grader i de N billigste timer og sænker den i de dyreste. |
 | 💰 **Besparelser** | Viser besparelse i dag, denne måned og i alt – fordelt på batteri, solceller, elbil og varmepumpe. |
@@ -78,7 +78,8 @@ Se `dashboards/smarthus-dashboard.yaml`. Prisgrafen bruger [ApexCharts Card](htt
 - **Salgspris** = spot − fradrag ved salg
 - **Nettarif** følger Tarifmodel 3.0: lav 00–06, høj 06–17 og 21–24, spids 17–21. Vinter er oktober–marts.
 - **Planer** laves pr. døgn. Morgendagens priser kommer ca. kl. 13, og så opdateres planen automatisk. Priserne er i 15-minutters opløsning.
-- **Elbil:** vælger de billigste tidsrum i de 24 timer op til "klar kl.". Hvis morgendagens priser endnu ikke er kendt, venter den – men lader altid i de sidste timer før klar-tidspunktet som sikkerhed.
+- **Elbil med SoC:** vælg bilens batteriniveau-sensor i opsætningen og indstil "Elbil: lad til" (mål-SoC), batteristørrelse og ladeeffekt. Ladetiden beregnes som (mål − nu) × batteri ÷ ladeeffekt ÷ 0,9 (ladetab), og laderen slukkes, når mål-SoC er nået – også ved "Lad elbil nu". Planen genberegnes hvert minut, så den følger bilens faktiske niveau.
+- **Elbil uden SoC:** lader et fast antal timer ("Elbil: timer at lade") og vælger de billigste tidsrum i de 24 timer op til "klar kl.". Hvis morgendagens priser endnu ikke er kendt, venter den – men lader altid i de sidste timer før klar-tidspunktet som sikkerhed.
 - **Besparelse (elbil, varmepumpe)** = kWh × (dagens gennemsnitspris − prisen da strømmen blev brugt).
 - **Besparelse (batteri)** = afladet kWh × pris − opladet kWh × pris.
 - **Værdi af solceller** = egetforbrug × købspris + eksport × salgspris.
