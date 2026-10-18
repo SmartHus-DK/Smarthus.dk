@@ -791,6 +791,9 @@ class SmartHusCard extends HTMLElement {
         .top { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); }
         .top > .solar { border-top: 0; border-left: 1px solid var(--sh-line); padding-top: 0; padding-left: 20px; }
         .top > .solar .solar-head .sec-title, .top > .solar .tabs { margin-top: 0; }
+        .legend { grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 24px; }
+        .lg { grid-template-columns: 10px minmax(0, 1fr); }
+        .lg-val { grid-column: 2; text-align: left; font-size: 12px; margin-top: -4px; }
         .modules { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .mod { border-bottom: 1px solid var(--sh-line); }
         .mod:nth-child(odd) { border-right: 1px solid var(--sh-line); }
