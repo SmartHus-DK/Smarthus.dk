@@ -264,13 +264,15 @@ def build_plan(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
 
     cur = plan.current
     if cur:
+        # Eksport stoppes, når salgsprisen er under grænsen, og starter selv igen over den
+        export_min = float(settings.get("solar_export_min_price", 0.0))
         if cur in plan.battery_charge and (soc is None or soc < settings["battery_max_soc"]):
             plan.battery_action = "charge"
         elif cur in plan.battery_discharge and (soc is None or soc > settings["battery_min_soc"]):
             plan.battery_action = "discharge"
-        elif cur.sale < 0 and (soc is None or soc < settings["battery_max_soc"]):
-            plan.battery_action = "charge"  # negativ salgspris: gem strømmen selv
-        plan.solar_curtail = cur.sale < 0
+        elif cur.sale < export_min and (soc is None or soc < settings["battery_max_soc"]):
+            plan.battery_action = "charge"  # for lav salgspris: gem strømmen selv
+        plan.solar_curtail = cur.sale < export_min
         plan.hotwater_on = cur in plan.hotwater_slots
         if cur in plan.heating_boost:
             plan.heating_mode = "boost"

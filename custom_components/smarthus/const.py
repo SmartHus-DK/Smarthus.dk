@@ -11,7 +11,7 @@ API_URL: Final = "https://api.energidataservice.dk/dataset/DayAheadPrices"
 
 STATIC_URL: Final = "/smarthus_static"
 CARD_URL: Final = f"{STATIC_URL}/smarthus-card.js"
-CARD_VERSION: Final = "1.8.1"
+CARD_VERSION: Final = "1.8.2"
 
 PLATFORMS: Final = ["sensor", "binary_sensor", "switch", "number"]
 
@@ -162,6 +162,7 @@ S_HEATING_BOOST_DEG: Final = "heating_boost_degrees"
 S_HEATING_BOOST_HOURS: Final = "heating_boost_hours"
 S_HEATING_REDUCE_DEG: Final = "heating_reduce_degrees"
 S_HEATING_REDUCE_HOURS: Final = "heating_reduce_hours"
+S_SOLAR_EXPORT_MIN: Final = "solar_export_min_price"
 
 S_BATTERY_CHARGE_FROM: Final = "battery_charge_from"
 S_BATTERY_CHARGE_TO: Final = "battery_charge_to"
@@ -195,6 +196,7 @@ DEFAULT_SETTINGS: Final = {
     S_HEATING_BOOST_HOURS: 4.0,
     S_HEATING_REDUCE_DEG: 1.0,
     S_HEATING_REDUCE_HOURS: 3.0,
+    S_SOLAR_EXPORT_MIN: 0.0,
     S_BATTERY_CHARGE_FROM: 0.0,
     S_BATTERY_CHARGE_TO: 24.0,
     S_BATTERY_DISCHARGE_FROM: 0.0,

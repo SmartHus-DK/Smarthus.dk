@@ -413,6 +413,9 @@
       },
       "battery_capacity": {
         "name": "Batteri: størrelse"
+      },
+      "solar_export_min_price": {
+        "name": "Solceller: stop eksport under"
       }
     }
   }

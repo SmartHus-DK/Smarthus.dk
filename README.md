@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.8.1** – kortet viser sin version nederst. Står der et lavere tal på kortet, så genstart Home Assistant og nulstil app-cachen.
+**Version 1.8.2** – kortet viser sin version nederst. Står der et lavere tal på kortet, så genstart Home Assistant og nulstil app-cachen.
 
 Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk).
 
@@ -95,6 +95,12 @@ Under **Konfigurer → Elbiler** kan du tilføje så mange biler, du vil. Hver b
 **Maks. samlet ladeeffekt** (fx 11 kW) sørger for, at bilerne ikke lader samtidig ud over hvad hovedsikringen kan klare. Bilen med det tidligste klar-tidspunkt får de billigste timer først. 0 betyder ingen grænse (standard). Indstillingen vises, når der er mindst to biler.
 
 Den første bil beholder de oprindelige entity-id'er (fx `switch.smarthus_control_ev`), så eksisterende automatiseringer virker uændret.
+
+### Stop eksport under en bestemt pris
+Under **Solceller** på kortet kan du sætte **Stop eksport under** (kr/kWh). Når salgsprisen er under grænsen, tændes kontakten "begræns eksport", og batteriet lader af solstrømmen i stedet. Når prisen kommer over grænsen igen, starter eksporten automatisk. Standard er 0 kr, dvs. der stoppes kun ved negativ pris.
+
+### Kortet i fuld skærm
+Kortets bredde bestemmes af dashboard-visningen. Vil du have det til at fylde hele skærmen: **Rediger dashboard → tryk på blyanten ved fanen → Visningstype: Panel (1 kort)**.
 
 ### Tidsrum
 Batteri, varmt vand og varme har hvert sit **tidsrum** (fra–til kl.), så kunden kan bestemme, hvornår SmartHus må handle:

@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.8.1";
+const SMARTHUS_CARD_VERSION = "1.8.2";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -71,7 +71,8 @@ const MODULES = [
       { title: "Spar i dyre timer", items: ["heating_reduce_degrees", "heating_reduce_hours", ["heating_reduce_from", "heating_reduce_to"]] },
     ],
   },
-  { id: "solar", name: "Solceller", icon: "mdi:solar-power", sw: "control_solar", groups: [] },
+  { id: "solar", name: "Solceller", icon: "mdi:solar-power", sw: "control_solar",
+    groups: [{ title: null, items: ["solar_export_min_price"] }] },
 ];
 
 const CAR_COLORS = [COLORS.ev, COLORS.ev2, COLORS.ev3];
@@ -95,6 +96,7 @@ const EV_LABELS = {
 };
 
 const NUMBER_LABELS = {
+  solar_export_min_price: "Stop eksport under",
   ev_max_total_power: "Maks. samlet ladeeffekt",
   ev_target_soc: "Lad til",
   ev_ready_hour: "Klar kl.",
@@ -597,7 +599,11 @@ class SmartHusCard extends HTMLElement {
         if (isOn("heating_reduce_now")) return `${prefix}Sparer på varmen nu`;
         return `${prefix}${next("heating_boost_now") ? `Ekstra varme ${next("heating_boost_now")}` : "Normal drift"}`;
       case "solar":
-        return `${prefix}${isOn("solar_curtail_now") ? "Begrænser eksport (negativ pris)" : "Normal eksport"}`;
+        {
+          const lim = this._num("number", "solar_export_min_price");
+          const lt = lim === null ? "" : ` · grænse ${nf(lim)} kr/kWh`;
+          return `${prefix}${isOn("solar_curtail_now") ? "Eksport stoppet – salgsprisen er for lav" : "Sælger strøm normalt"}${lt}`;
+        }
     }
     return "";
   }
@@ -606,7 +612,7 @@ class SmartHusCard extends HTMLElement {
     let extra = "";
     if (m.car) extra = this._evCompare(m.id);
     if (m.id === "battery") extra = this._reserveBox();
-    if (m.id === "solar") extra = `<div class="hint">Når salgsprisen er negativ, begrænses eksporten automatisk. Der er ingen indstillinger.</div>`;
+    if (m.id === "solar") extra = `<div class="hint">Eksporten stoppes, når salgsprisen er under grænsen, og starter selv igen, når prisen kommer over. 0 kr betyder, at der kun stoppes ved negativ pris.</div>`;
     const evHasSoc = m.car && this._st("sensor", `${m.id}_smart_saving`)?.attributes?.soc != null;
     const hide = (k) =>
       (m.car && evHasSoc && k === `${m.id}_hours`) ||

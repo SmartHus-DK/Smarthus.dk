@@ -336,3 +336,15 @@ def test_profile_and_reserve():
     assert r3.sellable_kwh == 0
     # For lidt historik
     assert not profile.build_profile(hours[:30]).ready
+
+
+def test_export_min_price():
+    slots = model().build_slots(records("2026-10-18", CURVE))
+    s = dict(const.DEFAULT_SETTINGS)
+    now = slots[4 * 2].start  # kl. 02: spot 0,10 -> salgspris 0,07
+    assert not planner.build_plan(slots, now, TZ, s).solar_curtail  # standard 0 kr: sælg
+    s["solar_export_min_price"] = 0.20
+    p = planner.build_plan(slots, now, TZ, s, soc=50)
+    assert p.solar_curtail and p.battery_action == "charge"
+    later = slots[4 * 18].start  # kl. 18: høj pris -> eksport kører igen
+    assert not planner.build_plan(slots, later, TZ, s).solar_curtail

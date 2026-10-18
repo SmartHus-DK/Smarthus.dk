@@ -32,6 +32,8 @@ from .const import (
     S_HEATING_BOOST_HOURS,
     S_HEATING_REDUCE_DEG,
     S_HEATING_REDUCE_HOURS,
+    S_SOLAR_EXPORT_MIN,
+    CONF_SOLAR_CURTAIL,
     S_HOTWATER_BOOST_TEMP,
     S_HOTWATER_HOURS,
     S_HOTWATER_NORMAL_TEMP,
@@ -150,6 +152,9 @@ NUMBERS: tuple[SmartHusNumberDescription, ...] = (
     SmartHusNumberDescription(key=S_HEATING_REDUCE_HOURS, icon="mdi:clock-minus", native_min_value=0,
                               native_max_value=12, native_step=0.25, native_unit_of_measurement=H,
                               requires=CONF_HEATING_CLIMATE),
+    SmartHusNumberDescription(key=S_SOLAR_EXPORT_MIN, icon="mdi:transmission-tower-off", native_min_value=-2,
+                              native_max_value=5, native_step=0.01, native_unit_of_measurement="kr/kWh",
+                              requires=CONF_SOLAR_CURTAIL),
 )
 
 

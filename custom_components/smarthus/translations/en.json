@@ -413,6 +413,9 @@
       },
       "battery_capacity": {
         "name": "Battery: capacity"
+      },
+      "solar_export_min_price": {
+        "name": "Solar: stop export below"
       }
     }
   }
