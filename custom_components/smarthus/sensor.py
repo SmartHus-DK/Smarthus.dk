@@ -18,10 +18,10 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from . import SmartHusConfigEntry
-from .const import ACTION_OFF, MODULE_BATTERY, MODULE_EV, MODULE_HEATING, MODULE_HOTWATER, MODULE_SOLAR
+from .const import ACTION_OFF, MODULE_BATTERY, MODULE_HEATING, MODULE_HOTWATER, MODULE_SOLAR
 from .controller import SmartHusController
 from .entity import SmartHusEntity
-from .planner import Slot, cheapest, local_days
+from .planner import EvPlan, Slot, car_settings, cheapest, local_days
 
 PRICE_UNIT = "kr/kWh"
 
@@ -96,10 +96,13 @@ def _status(c: SmartHusController) -> str:
         parts.append("Bruger batteri")
     if c.active(MODULE_SOLAR) and p.solar_curtail:
         parts.append("Begrænser eksport")
-    if c.active(MODULE_EV) and p.ev_on:
-        parts.append("Lader elbil")
-    elif c.active(MODULE_EV) and p.ev_target_reached:
-        parts.append("Elbil opladet")
+    for cid, ep in p.evs.items():
+        if not c.active(cid):
+            continue
+        if ep.on:
+            parts.append(f"Lader {ep.name}")
+        elif ep.target_reached:
+            parts.append(f"{ep.name} opladet")
     if c.active(MODULE_HOTWATER) and p.hotwater_on:
         parts.append("Opvarmer varmt vand")
     if c.active(MODULE_HEATING) and p.heating_mode == "boost":
@@ -111,26 +114,33 @@ def _status(c: SmartHusController) -> str:
     return " · ".join(parts)
 
 
-def _ev_saving(c: SmartHusController) -> float | None:
-    p = c.plan
-    if p.ev_cost_now is None or p.ev_cost_planned is None:
+def _ev(c: SmartHusController, cid: str) -> EvPlan:
+    return c.plan.evs.get(cid) or EvPlan(cid)
+
+
+def _ev_saving(c: SmartHusController, cid: str) -> float | None:
+    ep = _ev(c, cid)
+    if ep.cost_now is None or ep.cost_planned is None:
         return None
-    return round(p.ev_cost_now - p.ev_cost_planned, 2)
+    return round(ep.cost_now - ep.cost_planned, 2)
 
 
-def _ev_attrs(c: SmartHusController) -> dict:
-    p = c.plan
-    e = p.ev_energy or 0
+def _ev_attrs(c: SmartHusController, cid: str) -> dict:
+    ep = _ev(c, cid)
+    e = ep.energy or 0
     return {
-        "cost_now": p.ev_cost_now,
-        "cost_planned": p.ev_cost_planned,
-        "energy_kwh": p.ev_energy,
-        "price_now": round(p.ev_cost_now / e, 3) if e and p.ev_cost_now is not None else None,
-        "price_planned": round(p.ev_cost_planned / e, 3) if e and p.ev_cost_planned is not None else None,
-        "soc": p.ev_soc,
-        "target_soc": c.settings.get("ev_target_soc"),
-        "hours_needed": p.ev_hours_needed,
-        "target_reached": p.ev_target_reached,
+        "car_id": cid,
+        "car_name": (c.car(cid) or {}).get("name") or ep.name,
+        "cost_now": ep.cost_now,
+        "cost_planned": ep.cost_planned,
+        "energy_kwh": ep.energy,
+        "price_now": round(ep.cost_now / e, 3) if e and ep.cost_now is not None else None,
+        "price_planned": round(ep.cost_planned / e, 3) if e and ep.cost_planned is not None else None,
+        "soc": ep.soc,
+        "target_soc": car_settings(c.settings, cid)["target_soc"],
+        "hours_needed": ep.hours_needed,
+        "target_reached": ep.target_reached,
+        "limited_by_power": ep.limited,
     }
 
 
@@ -161,10 +171,6 @@ SENSORS: tuple[SmartHusSensorDescription, ...] = (
                               device_class=SensorDeviceClass.TIMESTAMP, value_fn=_cheapest_hour),
     SmartHusSensorDescription(key="battery_status", icon="mdi:home-battery", device_class=SensorDeviceClass.ENUM,
                               options=["charge", "discharge", "normal", "off"], value_fn=_battery_status),
-    SmartHusSensorDescription(key="ev_hours_needed", icon="mdi:timer-sand", native_unit_of_measurement="h",
-                              suggested_display_precision=1, value_fn=lambda c: c.plan.ev_hours_needed),
-    SmartHusSensorDescription(key="ev_smart_saving", icon="mdi:cash-plus", value_fn=_ev_saving,
-                              attrs_fn=_ev_attrs, **MONEY),
     SmartHusSensorDescription(key="status", icon="mdi:home-lightning-bolt", value_fn=_status),
     SmartHusSensorDescription(key="savings_today", icon="mdi:piggy-bank", value_fn=_savings("today"),
                               attrs_fn=_savings_attrs("today"), **MONEY),
@@ -186,7 +192,11 @@ SENSORS: tuple[SmartHusSensorDescription, ...] = (
 async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
                             async_add_entities: AddEntitiesCallback) -> None:
     controller = entry.runtime_data.controller
-    async_add_entities(SmartHusSensor(entry, controller, d) for d in SENSORS)
+    entities: list[SensorEntity] = [SmartHusSensor(entry, controller, d) for d in SENSORS]
+    for car in controller.cars:
+        for d in EV_SENSORS:
+            entities.append(EvSensor(entry, controller, d, car["id"], car.get("name") or "Elbil"))
+    async_add_entities(entities)
 
 
 class SmartHusSensor(SmartHusEntity, SensorEntity):
@@ -206,3 +216,39 @@ class SmartHusSensor(SmartHusEntity, SensorEntity):
     def extra_state_attributes(self) -> dict | None:
         fn = self.entity_description.attrs_fn
         return fn(self.controller) if fn else None
+
+
+@dataclass(frozen=True, kw_only=True)
+class EvSensorDescription(SensorEntityDescription):
+    value_fn: Callable[[SmartHusController, str], Any]
+    attrs_fn: Callable[[SmartHusController, str], dict] | None = None
+
+
+EV_SENSORS: tuple[EvSensorDescription, ...] = (
+    EvSensorDescription(key="ev_hours_needed", icon="mdi:timer-sand", native_unit_of_measurement="h",
+                        suggested_display_precision=1, value_fn=lambda c, cid: _ev(c, cid).hours_needed),
+    EvSensorDescription(key="ev_smart_saving", icon="mdi:cash-plus", value_fn=_ev_saving,
+                        attrs_fn=_ev_attrs, **MONEY),
+)
+
+
+class EvSensor(SmartHusEntity, SensorEntity):
+    """Sensor for én elbil. Første bil beholder id'erne sensor.smarthus_ev_*."""
+
+    _domain = "sensor"
+    entity_description: EvSensorDescription
+
+    def __init__(self, entry, controller, description: EvSensorDescription, cid: str, name: str) -> None:
+        key = description.key.replace("ev_", f"{cid}_", 1)
+        super().__init__(entry, controller, key, description.key, name)
+        self.entity_description = description
+        self.cid = cid
+
+    @property
+    def native_value(self):
+        return self.entity_description.value_fn(self.controller, self.cid)
+
+    @property
+    def extra_state_attributes(self) -> dict | None:
+        fn = self.entity_description.attrs_fn
+        return fn(self.controller, self.cid) if fn else None

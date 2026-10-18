@@ -38,7 +38,7 @@
         "menu_options": {
           "battery": "Batteri / inverter",
           "solar": "Solceller",
-          "ev": "Elbillader",
+          "ev": "Elbiler",
           "hotwater": "Varmt vand",
           "heating": "Varme / varmepumpe",
           "prices": "Elpris og tariffer"
@@ -67,12 +67,11 @@
         }
       },
       "ev": {
-        "title": "Elbillader",
-        "description": "Laderen tændes i de billigste timer før dit klar-tidspunkt. Vælger du bilens SoC, beregnes ladetiden ud fra mål-SoC, og der stoppes når målet er nået.",
+        "title": "Elbiler",
+        "description": "Vælg en elbil for at rette den, eller tilføj en ny. Sæt flueben i 'Fjern' for at slette den valgte bil.",
         "data": {
-          "ev_charger_entity": "Kontakt: tillad opladning",
-          "ev_soc_sensor": "Bilens batteriniveau (SoC %)",
-          "ev_energy_sensor": "Energimåler: elbil (kWh)"
+          "car": "Elbil",
+          "remove": "Fjern den valgte elbil"
         }
       },
       "hotwater": {
@@ -106,6 +105,16 @@
           "tariff_summer_low": "Nettarif sommer, lav (00–06)",
           "tariff_summer_high": "Nettarif sommer, høj (06–17 og 21–24)",
           "tariff_summer_peak": "Nettarif sommer, spids (17–21)"
+        }
+      },
+      "ev_car": {
+        "title": "Elbil: {car}",
+        "description": "Laderen tændes i de billigste timer før bilens klar-tidspunkt. Vælger du bilens batteriniveau (SoC), lades der kun til mål-SoC.",
+        "data": {
+          "car_name": "Navn på bilen",
+          "ev_charger_entity": "Kontakt: tillad opladning",
+          "ev_soc_sensor": "Bilens batteriniveau (SoC %)",
+          "ev_energy_sensor": "Energimåler for laderen (kWh)"
         }
       }
     }
@@ -175,10 +184,10 @@
         "name": "Besparelse varmepumpe (måned)"
       },
       "ev_hours_needed": {
-        "name": "Elbil: ladetid tilbage"
+        "name": "{car}: ladetid tilbage"
       },
       "ev_smart_saving": {
-        "name": "Elbil: spar ved smart opladning"
+        "name": "{car}: spar ved smart opladning"
       }
     },
     "binary_sensor": {
@@ -198,7 +207,7 @@
         "name": "Begræns eksport nu"
       },
       "ev_charge_now": {
-        "name": "Elbil: lad nu"
+        "name": "{car}: lad nu"
       },
       "hotwater_now": {
         "name": "Varmt vand: opvarm nu"
@@ -221,7 +230,7 @@
         "name": "Styr solceller"
       },
       "control_ev": {
-        "name": "Styr elbillader"
+        "name": "Styr {car}"
       },
       "control_hotwater": {
         "name": "Styr varmt vand"
@@ -230,7 +239,7 @@
         "name": "Styr varme"
       },
       "ev_force": {
-        "name": "Lad elbil nu"
+        "name": "Lad {car} nu"
       }
     },
     "number": {
@@ -250,10 +259,10 @@
         "name": "Batteri: maks. niveau"
       },
       "ev_hours": {
-        "name": "Elbil: timer at lade"
+        "name": "{car}: timer at lade"
       },
       "ev_ready_hour": {
-        "name": "Elbil: klar kl."
+        "name": "{car}: klar kl."
       },
       "hotwater_hours": {
         "name": "Varmt vand: timer"
@@ -280,13 +289,13 @@
         "name": "Varme: timer at sænke"
       },
       "ev_target_soc": {
-        "name": "Elbil: lad til"
+        "name": "{car}: lad til"
       },
       "ev_battery_capacity": {
-        "name": "Elbil: batteristørrelse"
+        "name": "{car}: batteristørrelse"
       },
       "ev_charge_power": {
-        "name": "Elbil: ladeeffekt"
+        "name": "{car}: ladeeffekt"
       },
       "battery_charge_from": {
         "name": "Batteri: lad mellem kl. (fra)"
@@ -317,6 +326,9 @@
       },
       "heating_reduce_to": {
         "name": "Varme: sænk mellem kl. (til)"
+      },
+      "ev_max_total_power": {
+        "name": "Elbiler: maks. samlet ladeeffekt"
       }
     }
   }

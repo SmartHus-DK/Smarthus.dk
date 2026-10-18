@@ -3,13 +3,15 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.4.0";
+const SMARTHUS_CARD_VERSION = "1.5.0";
 
 const COLORS = {
   cheap: "#3FA88F",
   mid: "#8C97A4",
   expensive: "#C2416B",
   ev: "#3E6FD8",
+  ev2: "#1B3F8F",
+  ev3: "#7FA6F0",
   battery_charge: "#3FA88F",
   battery_discharge: "#8A5CC8",
   hotwater: "#2BA3C9",
@@ -18,7 +20,6 @@ const COLORS = {
 };
 
 const LANES = [
-  { key: "ev_charge_now", label: "Elbil lader", color: COLORS.ev, module: "control_ev" },
   { key: "battery_charge_now", label: "Batteri lader", color: COLORS.battery_charge, module: "control_battery" },
   { key: "battery_discharge_now", label: "Batteri aflader", color: COLORS.battery_discharge, module: "control_battery" },
   { key: "hotwater_now", label: "Varmt vand", color: COLORS.hotwater, module: "control_hotwater" },
@@ -28,13 +29,6 @@ const LANES = [
 
 // Indstillinger pr. modul, i grupper. ["a_from","a_to"] vises som ét tidsrum.
 const MODULES = [
-  {
-    id: "ev", name: "Elbil", icon: "mdi:car-electric", sw: "control_ev",
-    groups: [
-      { title: null, items: ["ev_target_soc", "ev_ready_hour", "ev_hours"] },
-      { title: "Bil og lader", items: ["ev_battery_capacity", "ev_charge_power"] },
-    ],
-  },
   {
     id: "battery", name: "Batteri", icon: "mdi:home-battery", sw: "control_battery",
     groups: [
@@ -61,7 +55,28 @@ const MODULES = [
   { id: "solar", name: "Solceller", icon: "mdi:solar-power", sw: "control_solar", groups: [] },
 ];
 
+const CAR_COLORS = [COLORS.ev, COLORS.ev2, COLORS.ev3];
+
+/** Et felt pr. elbil. Bilens id er fx "ev" eller "ev_tesla". */
+function carModule(cid, name, first) {
+  const groups = [
+    { title: null, items: [`${cid}_target_soc`, `${cid}_ready_hour`, `${cid}_hours`] },
+    { title: "Bil og lader", items: [`${cid}_battery_capacity`, `${cid}_charge_power`] },
+  ];
+  if (first) groups.push({ title: "Alle elbiler", items: ["ev_max_total_power"] });
+  return { id: cid, car: true, name, icon: "mdi:car-electric", sw: `control_${cid}`, groups };
+}
+
+const EV_LABELS = {
+  target_soc: "Lad til",
+  ready_hour: "Klar kl.",
+  charge_power: "Ladeeffekt",
+  battery_capacity: "Batteristørrelse",
+  hours: "Timer at lade",
+};
+
 const NUMBER_LABELS = {
+  ev_max_total_power: "Maks. samlet ladeeffekt",
   ev_target_soc: "Lad til",
   ev_ready_hour: "Klar kl.",
   ev_charge_power: "Ladeeffekt",
@@ -116,7 +131,7 @@ class SmartHusCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
-    this._open = new Set(["ev", "battery", "hotwater", "heating", "solar"]);
+    this._closed = new Set(); // alle felter er foldet ud fra start
     this._sel = null;
     this.shadowRoot.addEventListener("click", (ev) => this._onClick(ev));
   }
@@ -160,6 +175,32 @@ class SmartHusCard extends HTMLElement {
     const v = parseFloat(s.state);
     return isNaN(v) ? null : v;
   }
+  _cars() {
+    if (!this._hass) return [];
+    const pre = `switch.${this._config.prefix}_control_`;
+    return Object.keys(this._hass.states)
+      .filter((id) => id.startsWith(pre) && /^ev(_|$)/.test(id.slice(pre.length)))
+      .map((id) => id.slice(pre.length))
+      .sort((a, b) => (a === "ev" ? -1 : b === "ev" ? 1 : a.localeCompare(b)))
+      .map((cid, i) => ({
+        cid,
+        name: this._st("sensor", `${cid}_smart_saving`)?.attributes?.car_name || "Elbil",
+        color: CAR_COLORS[i % CAR_COLORS.length],
+      }));
+  }
+  _forceKey(cid) {
+    return cid === "ev" ? "ev_force" : `${cid}_force`;
+  }
+  _modules() {
+    const cars = this._cars().map((c, i) => carModule(c.cid, c.name, i === 0));
+    return [...cars, ...MODULES].filter((m) => this._st("switch", m.sw));
+  }
+  _label(key) {
+    if (NUMBER_LABELS[key]) return NUMBER_LABELS[key];
+    const suffix = Object.keys(EV_LABELS).find((k) => key.endsWith(`_${k}`));
+    return suffix ? EV_LABELS[suffix] : this._st("number", key)?.attributes.friendly_name || key;
+  }
+
   _signature() {
     if (!this._hass) return "";
     const tag = `.${this._config.prefix}_`;
@@ -203,7 +244,7 @@ class SmartHusCard extends HTMLElement {
         ${this._renderHeader()}
         ${this._renderStrip()}
         <div class="modules">
-          ${MODULES.filter((m) => this._st("switch", m.sw)).map((m) => this._renderModule(m)).join("")}
+          ${this._modules().map((m) => this._renderModule(m)).join("")}
         </div>
       </ha-card>`;
   }
@@ -285,7 +326,8 @@ class SmartHusCard extends HTMLElement {
     const midX = midnight ? xOf(midnight.start.getTime()) : null;
 
     // Spor for planlagte handlinger
-    const lanes = LANES.filter((l) => this._st("switch", l.module) && this._st("binary_sensor", l.key));
+    const carLanes = this._cars().map((c) => ({ key: `${c.cid}_charge_now`, label: `${c.name} lader`, color: c.color, module: `control_${c.cid}` }));
+    const lanes = [...carLanes, ...LANES].filter((l) => this._st("switch", l.module) && this._st("binary_sensor", l.key));
     const laneH = 7, gap = 4;
     const lanesSvg = lanes
       .map((l, li) => {
@@ -353,7 +395,7 @@ class SmartHusCard extends HTMLElement {
   _renderModule(m) {
     const sw = this._st("switch", m.sw);
     const on = sw.state === "on";
-    const open = this._open.has(m.id);
+    const open = !this._closed.has(m.id);
     const line = this._moduleLine(m, on);
     const body = open ? this._moduleBody(m) : "";
     return `
@@ -382,14 +424,15 @@ class SmartHusCard extends HTMLElement {
     };
     if (!on) return "Styring slået fra";
     const prefix = "";
+    if (m.car) {
+      const a = this._st("sensor", `${m.id}_smart_saving`)?.attributes || {};
+      const k = `${m.id}_charge_now`;
+      if (a.target_reached) return `${prefix}Ladet til ${nf(a.soc, 0)} %`;
+      if (isOn(k)) return `${prefix}Lader nu${a.soc != null ? ` · ${nf(a.soc, 0)} %` : ""}`;
+      const n = next(k);
+      return `${prefix}${n ? `Lader ${n}` : "Venter på priser"}${a.soc != null ? ` · ${nf(a.soc, 0)} % af ${nf(a.target_soc, 0)} %` : ""}`;
+    }
     switch (m.id) {
-      case "ev": {
-        const a = this._st("sensor", "ev_smart_saving")?.attributes || {};
-        if (a.target_reached) return `${prefix}Ladet til ${nf(a.soc, 0)} %`;
-        if (isOn("ev_charge_now")) return `${prefix}Lader nu${a.soc != null ? ` · ${nf(a.soc, 0)} %` : ""}`;
-        const n = next("ev_charge_now");
-        return `${prefix}${n ? `Lader ${n}` : "Venter på priser"}${a.soc != null ? ` · ${nf(a.soc, 0)} % af ${nf(a.target_soc, 0)} %` : ""}`;
-      }
       case "battery":
         if (isOn("battery_charge_now")) return `${prefix}Lader fra nettet`;
         if (isOn("battery_discharge_now")) return `${prefix}Bruger batteriet`;
@@ -408,12 +451,12 @@ class SmartHusCard extends HTMLElement {
 
   _moduleBody(m) {
     let extra = "";
-    if (m.id === "ev") extra = this._evCompare();
+    if (m.car) extra = this._evCompare(m.id);
     if (m.id === "solar") extra = `<div class="hint">Når salgsprisen er negativ, begrænses eksporten automatisk. Der er ingen indstillinger.</div>`;
-    const evHasSoc = this._st("sensor", "ev_smart_saving")?.attributes?.soc != null;
+    const evHasSoc = m.car && this._st("sensor", `${m.id}_smart_saving`)?.attributes?.soc != null;
     const hide = (k) =>
-      (m.id === "ev" && evHasSoc && k === "ev_hours") ||
-      (m.id === "ev" && !evHasSoc && ["ev_target_soc", "ev_battery_capacity"].includes(k));
+      (m.car && evHasSoc && k === `${m.id}_hours`) ||
+      (m.car && !evHasSoc && [`${m.id}_target_soc`, `${m.id}_battery_capacity`].includes(k));
     const groups = m.groups
       .map((g) => {
         const rows = g.items
@@ -426,11 +469,11 @@ class SmartHusCard extends HTMLElement {
       })
       .join("");
     let actions = "";
-    const force = this._st("switch", "ev_force");
-    if (m.id === "ev" && force) {
+    const force = m.car ? this._st("switch", this._forceKey(m.id)) : null;
+    if (force) {
       const fon = force.state === "on";
       actions = `<button class="action ${fon ? "active" : ""}" data-action="toggle" data-entity="${force.entity_id}">
-        <ha-icon icon="mdi:lightning-bolt"></ha-icon>${fon ? "Stop opladning nu" : "Lad elbil nu"}</button>`;
+        <ha-icon icon="mdi:lightning-bolt"></ha-icon>${fon ? "Stop opladning nu" : `Lad ${esc(m.name)} nu`}</button>`;
     }
     return `<div class="mod-body">${extra}${groups}${actions}</div>`;
   }
@@ -453,8 +496,8 @@ class SmartHusCard extends HTMLElement {
       </div>`;
   }
 
-  _evCompare() {
-    const s = this._st("sensor", "ev_smart_saving");
+  _evCompare(cid) {
+    const s = this._st("sensor", `${cid}_smart_saving`);
     if (!s) return "";
     const a = s.attributes;
     if (a.target_reached) {
@@ -465,7 +508,7 @@ class SmartHusCard extends HTMLElement {
     }
     const maxc = Math.max(a.cost_now, a.cost_planned, 0.01);
     const save = a.cost_now - a.cost_planned;
-    const when = this._periods("ev_charge_now").join(", ");
+    const when = this._periods(`${cid}_charge_now`).join(", ");
     const row = (label, cost, price, color) => `
       <div class="cmp-row">
         <span class="cmp-lbl">${label}</span>
@@ -481,6 +524,7 @@ class SmartHusCard extends HTMLElement {
         <div class="cmp-result">${save > 0.005
           ? `Du sparer <b>${nf(save)} kr</b> ved at lade ${esc(when || "i de billigste timer")}`
           : "Det er lige så billigt at lade nu"}</div>
+        ${a.limited_by_power ? `<div class="cmp-warn">Den samlede ladeeffekt er begrænset, så der er ikke plads til hele opladningen inden klar-tidspunktet. Hæv grænsen eller klar-tidspunktet.</div>` : ""}
       </div>`;
   }
 
@@ -497,11 +541,11 @@ class SmartHusCard extends HTMLElement {
       `${nf(v, dec)} ${esc(unit)}`;
     return `
       <div class="step">
-        <span class="step-lbl">${NUMBER_LABELS[key] || esc(s.attributes.friendly_name)}</span>
+        <span class="step-lbl">${esc(this._label(key))}${key === "ev_max_total_power" ? `<span class="win-note">0 = ingen grænse</span>` : ""}</span>
         <span class="step-ctl">
-          <button data-action="step" data-entity="${s.entity_id}" data-dir="-1" aria-label="Mindre ${NUMBER_LABELS[key] || ""}">−</button>
+          <button data-action="step" data-entity="${s.entity_id}" data-dir="-1" aria-label="Mindre ${esc(this._label(key))}">−</button>
           <span class="step-val">${shown}</span>
-          <button data-action="step" data-entity="${s.entity_id}" data-dir="1" aria-label="Mere ${NUMBER_LABELS[key] || ""}">+</button>
+          <button data-action="step" data-entity="${s.entity_id}" data-dir="1" aria-label="Mere ${esc(this._label(key))}">+</button>
         </span>
       </div>`;
   }
@@ -520,7 +564,7 @@ class SmartHusCard extends HTMLElement {
       this._hass.callService("switch", "toggle", { entity_id: entity });
     } else if (action === "expand") {
       const id = el.dataset.mod;
-      this._open.has(id) ? this._open.delete(id) : this._open.add(id);
+      this._closed.has(id) ? this._closed.delete(id) : this._closed.add(id);
       this._render();
     } else if (action === "bar") {
       const i = parseInt(el.dataset.i, 10);
@@ -621,6 +665,7 @@ class SmartHusCard extends HTMLElement {
       .cmp-val { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 64px; text-align: right; }
       .cmp-sub { margin: 1px 0 8px 106px; font-size: 11px; color: var(--secondary-text-color); }
       .cmp-result { margin-top: 2px; font-size: 14px; }
+      .cmp-warn { margin-top: 8px; font-size: 12px; color: ${COLORS.expensive}; }
       .cmp-result b { color: ${COLORS.cheap}; font-variant-numeric: tabular-nums; }
 
       .grp { padding-top: 6px; }

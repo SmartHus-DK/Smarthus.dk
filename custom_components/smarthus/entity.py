@@ -19,11 +19,15 @@ class SmartHusEntity(Entity):
     _attr_should_poll = False
     _domain: str = ""  # sættes af hver platform, giver stabile entity-id'er
 
-    def __init__(self, entry: ConfigEntry, controller: SmartHusController, key: str) -> None:
+    def __init__(self, entry: ConfigEntry, controller: SmartHusController, key: str,
+                 translation_key: str | None = None, car_name: str | None = None) -> None:
         self.entry = entry
         self.controller = controller
-        self._attr_translation_key = key
+        self._attr_translation_key = translation_key or key
+        if translation_key:
+            self._attr_translation_placeholders = {"car": car_name or "Elbil"}
         self._attr_unique_id = f"{entry.entry_id}_{key}"
+        controller.expected_unique_ids.add(self._attr_unique_id)
         if self._domain:
             # Stabile id'er uanset sprog, fx sensor.smarthus_current_price
             self.entity_id = f"{self._domain}.smarthus_{key}"

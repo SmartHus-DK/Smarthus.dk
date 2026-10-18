@@ -211,3 +211,36 @@ def test_time_windows():
     assert hrs(p.battery_discharge) <= {17, 18, 19}
     assert hrs(p.battery_charge) <= {22, 23, 0, 1, 2, 3, 4, 5}
     assert planner.in_window(slots, TZ, 0, 24) == slots
+
+
+def test_two_cars_and_power_limit():
+    recs = records("2026-10-18", CURVE) + records("2026-10-19", CURVE)
+    slots = model().build_slots(recs)
+    s = dict(const.DEFAULT_SETTINGS)
+    s.update({"ev_tesla_target_soc": 90, "ev_tesla_ready_hour": 6, "ev_tesla_battery_capacity": 75,
+              "ev_tesla_charge_power": 11})
+    now = datetime(2026, 10, 18, 20, 0, tzinfo=TZ).astimezone(timezone.utc)
+    cars = [planner.CarInput("ev", "Kia", soc=50), planner.CarInput("ev_tesla", "Tesla", soc=40)]
+    p = planner.build_plan(slots, now, TZ, s, cars=cars)
+    assert list(p.evs) == ["ev", "ev_tesla"]
+    a, b = p.evs["ev"], p.evs["ev_tesla"]
+    assert a.slots and b.slots and b.hours_needed > a.hours_needed
+    # Uden grænse må de gerne overlappe
+    assert {x.start for x in a.slots} & {x.start for x in b.slots}
+    # Med 11 kW samlet: aldrig to biler i samme tidsrum, Tesla (klar kl. 6) planlægges først
+    s["ev_max_total_power"] = 11
+    p = planner.build_plan(slots, now, TZ, s, cars=cars)
+    a, b = p.evs["ev"], p.evs["ev_tesla"]
+    assert not ({x.start for x in a.slots} & {x.start for x in b.slots})
+    assert abs(sum(x.hours for x in b.slots) - round(b.hours_needed / 0.25) * 0.25) < 0.01
+    assert a.cost_planned >= 0 and b.cost_planned >= 0
+    # Bagudkompatible genveje peger på første bil
+    assert p.ev_slots == a.slots
+
+
+def test_get_cars_legacy():
+    cfg = {"ev_charger_entity": "switch.lader", "ev_soc_sensor": "sensor.soc"}
+    cars = const.get_cars(cfg)
+    assert cars == [{"id": "ev", "name": "Elbil", "charger": "switch.lader", "soc": "sensor.soc", "energy": None}]
+    cfg = {"evs": [{"id": "ev", "name": "Kia", "charger": "switch.a"}, {"id": "ev_tesla", "name": "Tesla", "charger": "switch.b"}]}
+    assert [c["id"] for c in const.get_cars(cfg)] == ["ev", "ev_tesla"]

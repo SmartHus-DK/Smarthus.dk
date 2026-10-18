@@ -60,6 +60,13 @@ Slår du et modul fra, sættes enheden tilbage til normal drift (batteri i norma
 
 ---
 
+### Flere elbiler
+Under **Konfigurer → Elbiler** kan du tilføje så mange biler, du vil. Hver bil får sit eget navn, sin egen lader, SoC-sensor og energimåler. Den får også sine egne indstillinger (lad til, klar kl., batteristørrelse og ladeeffekt), sin egen plan, sin egen "Lad nu"-knap og sin egen sammenligning af "lad nu" og "billigste timer". Her kan du også rette eller fjerne en bil.
+
+**Maks. samlet ladeeffekt** (fx 11 kW) sørger for, at bilerne ikke lader samtidig ud over hvad hovedsikringen kan klare. Bilen med det tidligste klar-tidspunkt får de billigste timer først. 0 betyder ingen grænse (standard). Indstillingen vises, når der er mindst to biler.
+
+Den første bil beholder de oprindelige entity-id'er (fx `switch.smarthus_control_ev`), så eksisterende automatiseringer virker uændret.
+
 ### Tidsrum
 Batteri, varmt vand og varme har hvert sit **tidsrum** (fra–til kl.), så kunden kan bestemme, hvornår SmartHus må handle:
 

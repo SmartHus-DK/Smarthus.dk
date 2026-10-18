@@ -9,6 +9,7 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import callback
 from homeassistant.helpers import selector
+from homeassistant.util import slugify
 
 from .const import (
     AREAS,
@@ -45,7 +46,9 @@ from .const import (
     DEFAULT_BATTERY_OPTIONS,
     DEFAULT_PRICES,
     DOMAIN,
+    CONF_EVS,
     EV_KEYS,
+    get_cars,
     HEATING_KEYS,
     HOTWATER_KEYS,
     PRICE_KEYS,
@@ -65,6 +68,24 @@ HOTWATER = selector.EntitySelector(
     selector.EntitySelectorConfig(domain=["switch", "input_boolean", "water_heater", "climate"])
 )
 CLIMATE = selector.EntitySelector(selector.EntitySelectorConfig(domain="climate"))
+
+
+NEW_CAR = "__new__"
+CAR_CHOICE = "car"
+CAR_REMOVE = "remove"
+CAR_NAME = "car_name"
+
+
+def _new_car_id(name: str, cars: list[dict]) -> str:
+    """Første bil hedder 'ev' (så de oprindelige entity-id'er bevares), de næste fx 'ev_tesla'."""
+    taken = {c["id"] for c in cars}
+    if "ev" not in taken:
+        return "ev"
+    base = f"ev_{slugify(name) or 'bil'}"
+    cid, n = base, 2
+    while cid in taken:
+        cid, n = f"{base}_{n}", n + 1
+    return cid
 
 
 def _price_schema(values: dict) -> vol.Schema:
@@ -134,6 +155,8 @@ class SmartHusConfigFlow(ConfigFlow, domain=DOMAIN):
 class SmartHusOptionsFlow(OptionsFlow):
     """Tilføj/ret enheder og priser efter installation."""
 
+    _car_id: str = NEW_CAR
+
     def _current(self) -> dict:
         return {**self.config_entry.data, **self.config_entry.options}
 
@@ -180,11 +203,66 @@ class SmartHusOptionsFlow(OptionsFlow):
         fields = [(CONF_SOLAR_ENERGY, ENERGY), (CONF_EXPORT_ENERGY, ENERGY), (CONF_SOLAR_CURTAIL, ONOFF)]
         return self.async_show_form(step_id="solar", data_schema=_entity_schema(fields, self._current()))
 
+    # --- Elbiler ---------------------------------------------------------
+    def _cars(self) -> list[dict]:
+        return [dict(c) for c in get_cars(self._current())]
+
+    def _save_cars(self, cars: list[dict]) -> ConfigFlowResult:
+        new = dict(self.config_entry.options)
+        for key in EV_KEYS:  # ældre opsætning med én bil flyttes over i listen
+            new.pop(key, None)
+        new[CONF_EVS] = cars
+        return self.async_create_entry(data=new)
+
     async def async_step_ev(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Vælg hvilken elbil der skal rettes, tilføj en ny, eller fjern en."""
+        cars = self._cars()
+        if not cars:
+            self._car_id = NEW_CAR
+            return await self.async_step_ev_car()
         if user_input is not None:
-            return self._save(EV_KEYS, user_input)
-        fields = [(CONF_EV_SWITCH, ONOFF), (CONF_EV_SOC, SOC), (CONF_EV_ENERGY, ENERGY)]
-        return self.async_show_form(step_id="ev", data_schema=_entity_schema(fields, self._current()))
+            choice = user_input[CAR_CHOICE]
+            if user_input.get(CAR_REMOVE) and choice != NEW_CAR:
+                return self._save_cars([c for c in cars if c["id"] != choice])
+            self._car_id = choice
+            return await self.async_step_ev_car()
+        options = [{"value": c["id"], "label": c.get("name") or "Elbil"} for c in cars]
+        options.append({"value": NEW_CAR, "label": "+ Tilføj ny elbil"})
+        schema = vol.Schema({
+            vol.Required(CAR_CHOICE, default=cars[0]["id"]): selector.SelectSelector(
+                selector.SelectSelectorConfig(options=options, mode=selector.SelectSelectorMode.LIST)
+            ),
+            vol.Optional(CAR_REMOVE, default=False): selector.BooleanSelector(),
+        })
+        return self.async_show_form(step_id="ev", data_schema=schema)
+
+    async def async_step_ev_car(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Navn, lader, SoC og energimåler for én elbil."""
+        cars = self._cars()
+        current = next((c for c in cars if c["id"] == self._car_id), None)
+        if user_input is not None:
+            name = (user_input.get(CAR_NAME) or "Elbil").strip()
+            data = {
+                "name": name,
+                "charger": user_input[CONF_EV_SWITCH],
+                "soc": user_input.get(CONF_EV_SOC) or None,
+                "energy": user_input.get(CONF_EV_ENERGY) or None,
+            }
+            if current:
+                current.update(data)
+            else:
+                cars.append({"id": _new_car_id(name, cars), **data})
+            return self._save_cars(cars)
+        cur = current or {}
+        default_name = cur.get("name") or ("Elbil" if not cars else f"Elbil {len(cars) + 1}")
+        schema = vol.Schema({
+            vol.Required(CAR_NAME, default=default_name): TEXT,
+            vol.Required(CONF_EV_SWITCH, **({"default": cur["charger"]} if cur.get("charger") else {})): ONOFF,
+            _opt(CONF_EV_SOC, {CONF_EV_SOC: cur.get("soc")}, SOC)[0]: SOC,
+            _opt(CONF_EV_ENERGY, {CONF_EV_ENERGY: cur.get("energy")}, ENERGY)[0]: ENERGY,
+        })
+        return self.async_show_form(step_id="ev_car", data_schema=schema,
+                                    description_placeholders={"car": default_name})
 
     async def async_step_hotwater(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:

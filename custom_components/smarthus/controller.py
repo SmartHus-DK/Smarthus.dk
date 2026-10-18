@@ -25,9 +25,6 @@ from .const import (
     CONF_BATTERY_OPT_DISCHARGE,
     CONF_BATTERY_OPT_NORMAL,
     CONF_BATTERY_SOC,
-    CONF_EV_ENERGY,
-    CONF_EV_SOC,
-    CONF_EV_SWITCH,
     CONF_EXPORT_ENERGY,
     CONF_HEATING_CLIMATE,
     CONF_HEATPUMP_ENERGY,
@@ -41,12 +38,12 @@ from .const import (
     HEATING_REDUCE,
     MIN_COMMAND_INTERVAL,
     MODULE_BATTERY,
-    MODULE_EV,
     MODULE_HEATING,
     MODULE_HOTWATER,
     MODULE_MASTER,
     MODULE_SOLAR,
     MODULES,
+    get_cars,
     S_HEATING_BASE_TEMP,
     S_HEATING_BOOST_DEG,
     S_HEATING_REDUCE_DEG,
@@ -55,7 +52,7 @@ from .const import (
     SIGNAL_TICK,
 )
 from .coordinator import SmartHusPriceCoordinator
-from .planner import Plan, build_plan
+from .planner import CarInput, Plan, build_plan
 from .savings import SavingsCalculator
 
 _LOGGER = logging.getLogger(__name__)
@@ -74,14 +71,20 @@ class SmartHusController:
         self.config = config
         self.tz = dt_util.get_default_time_zone()
         self.settings: dict[str, float] = dict(DEFAULT_SETTINGS)
-        self.enabled: dict[str, bool] = {MODULE_MASTER: True, **{m: False for m in MODULES}}
-        self.ev_force = False
+        self.cars: list[dict] = get_cars(config)
+        self.car_ids: list[str] = [car["id"] for car in self.cars]
+        # Moduler: de faste + én pr. elbil (bilens id, fx "ev" eller "ev_tesla")
+        self.modules: list[str] = [m for m in MODULES if m != "ev"] + self.car_ids
+        self.enabled: dict[str, bool] = {MODULE_MASTER: True, **{m: False for m in MODULES},
+                                         **{cid: False for cid in self.car_ids}}
+        self.ev_force: dict[str, bool] = {cid: False for cid in self.car_ids}
         self.plan = Plan()
         self.savings = SavingsCalculator()
         self._store: Store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}.savings")
         self._last_cmd: dict[str, float] = {}
         self._unsub = None
         self._unsub_prices = None
+        self.expected_unique_ids: set[str] = set()
 
     # --- Livscyklus --------------------------------------------------------
     async def async_start(self) -> None:
@@ -109,7 +112,10 @@ class SmartHusController:
         return bool(self.config.get(key))
 
     def active(self, module: str) -> bool:
-        return self.enabled[MODULE_MASTER] and self.enabled[module]
+        return self.enabled[MODULE_MASTER] and self.enabled.get(module, False)
+
+    def car(self, cid: str) -> dict | None:
+        return next((c for c in self.cars if c["id"] == cid), None)
 
     def _float_state(self, entity_id: str | None) -> float | None:
         if not entity_id:
@@ -123,7 +129,9 @@ class SmartHusController:
             return None
 
     def _energy_kwh(self, key: str) -> float | None:
-        entity_id = self.config.get(key)
+        return self._energy_entity_kwh(self.config.get(key))
+
+    def _energy_entity_kwh(self, entity_id: str | None) -> float | None:
         val = self._float_state(entity_id)
         if val is None:
             return None
@@ -135,11 +143,15 @@ class SmartHusController:
         """Byg planen på ny og opdatér alle entiteter."""
         slots = self.coordinator.data or []
         soc = self._float_state(self.config.get(CONF_BATTERY_SOC))
-        self.plan = build_plan(slots, dt_util.utcnow(), self.tz, self.settings,
-                               soc=soc, ev_force=self.ev_force,
-                               ev_soc=self._float_state(self.config.get(CONF_EV_SOC)))
-        if self.ev_force and self.plan.ev_target_reached:
-            self.ev_force = False  # "Lad elbil nu" slukker selv ved mål-SoC
+        cars = [
+            CarInput(car["id"], car.get("name") or "Elbil",
+                     soc=self._float_state(car.get("soc")), force=self.ev_force.get(car["id"], False))
+            for car in self.cars
+        ]
+        self.plan = build_plan(slots, dt_util.utcnow(), self.tz, self.settings, soc=soc, cars=cars)
+        for cid, ep in self.plan.evs.items():
+            if self.ev_force.get(cid) and ep.target_reached:
+                self.ev_force[cid] = False  # "Lad nu" slukker selv ved mål-SoC
         async_dispatcher_send(self.hass, SIGNAL_TICK.format(entry_id=self.entry.entry_id))
 
     async def _async_tick(self, now: datetime) -> None:
@@ -149,8 +161,11 @@ class SmartHusController:
 
     def _update_savings(self) -> None:
         readings: dict[str, float | None] = {}
+        for car in self.cars:
+            if car.get("energy"):
+                key = "ev" if car["id"] == "ev" else f"ev:{car['id']}"
+                readings[key] = self._energy_entity_kwh(car["energy"])
         mapping = {
-            "ev": CONF_EV_ENERGY,
             "heatpump": CONF_HEATPUMP_ENERGY,
             "battery_charge": CONF_BATTERY_CHARGE_ENERGY,
             "battery_discharge": CONF_BATTERY_DISCHARGE_ENERGY,
@@ -235,8 +250,10 @@ class SmartHusController:
                                       self._battery_option(p.battery_action), force)
         if self.active(MODULE_SOLAR) and self.has(CONF_SOLAR_CURTAIL):
             await self._ensure_switch(self.config[CONF_SOLAR_CURTAIL], p.solar_curtail, force)
-        if self.active(MODULE_EV) and self.has(CONF_EV_SWITCH):
-            await self._ensure_switch(self.config[CONF_EV_SWITCH], p.ev_on, force)
+        for car in self.cars:
+            ep = p.evs.get(car["id"])
+            if ep and self.active(car["id"]):
+                await self._ensure_switch(car["charger"], ep.on, force)
         if self.active(MODULE_HOTWATER) and self.has(CONF_HOTWATER_ENTITY):
             await self._apply_hotwater(p.hotwater_on, force)
         if self.active(MODULE_HEATING) and self.has(CONF_HEATING_CLIMATE):
@@ -263,8 +280,8 @@ class SmartHusController:
                                       self._battery_option(ACTION_NORMAL), True)
         elif module == MODULE_SOLAR and self.has(CONF_SOLAR_CURTAIL):
             await self._ensure_switch(self.config[CONF_SOLAR_CURTAIL], False, True)
-        elif module == MODULE_EV and self.has(CONF_EV_SWITCH):
-            await self._ensure_switch(self.config[CONF_EV_SWITCH], True, True)
+        elif module in self.car_ids:
+            await self._ensure_switch(self.car(module)["charger"], True, True)
         elif module == MODULE_HOTWATER and self.has(CONF_HOTWATER_ENTITY):
             entity_id = self.config[CONF_HOTWATER_ENTITY]
             if entity_id.split(".")[0] in ("water_heater", "climate"):
@@ -280,7 +297,7 @@ class SmartHusController:
         self.enabled[module] = on
         if module == MODULE_MASTER:
             if was and not on:
-                for m in MODULES:
+                for m in self.modules:
                     if self.enabled[m]:
                         await self.async_restore_normal(m)
         elif was and not on:
@@ -293,7 +310,7 @@ class SmartHusController:
         self.settings[key] = value
         self.recalculate()
 
-    async def async_set_ev_force(self, on: bool) -> None:
-        self.ev_force = on
+    async def async_set_ev_force(self, cid: str, on: bool) -> None:
+        self.ev_force[cid] = on
         self.recalculate()
         await self.async_apply(force=True)

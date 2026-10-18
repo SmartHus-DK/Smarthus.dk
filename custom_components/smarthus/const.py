@@ -11,7 +11,7 @@ API_URL: Final = "https://api.energidataservice.dk/dataset/DayAheadPrices"
 
 STATIC_URL: Final = "/smarthus_static"
 CARD_URL: Final = f"{STATIC_URL}/smarthus-card.js"
-CARD_VERSION: Final = "1.4.0"
+CARD_VERSION: Final = "1.5.0"
 
 PLATFORMS: Final = ["sensor", "binary_sensor", "switch", "number"]
 
@@ -86,6 +86,26 @@ BATTERY_KEYS: Final = [
 ]
 SOLAR_KEYS: Final = [CONF_SOLAR_ENERGY, CONF_EXPORT_ENERGY, CONF_SOLAR_CURTAIL]
 EV_KEYS: Final = [CONF_EV_SWITCH, CONF_EV_ENERGY, CONF_EV_SOC]
+
+# Flere elbiler: options["evs"] = [{"id", "name", "charger", "soc", "energy"}, ...]
+CONF_EVS: Final = "evs"
+S_EV_MAX_TOTAL_POWER: Final = "ev_max_total_power"
+
+
+def get_cars(config: dict) -> list[dict]:
+    """Elbilerne i opsætningen. En ældre opsætning med én lader bliver til bilen 'ev'."""
+    cars = config.get(CONF_EVS)
+    if cars:
+        return [c for c in cars if c.get("charger")]
+    if config.get(CONF_EV_SWITCH):
+        return [{
+            "id": "ev",
+            "name": "Elbil",
+            "charger": config.get(CONF_EV_SWITCH),
+            "soc": config.get(CONF_EV_SOC),
+            "energy": config.get(CONF_EV_ENERGY),
+        }]
+    return []
 HOTWATER_KEYS: Final = [CONF_HOTWATER_ENTITY]
 HEATING_KEYS: Final = [CONF_HEATING_CLIMATE, CONF_HEATPUMP_ENERGY]
 
@@ -147,6 +167,7 @@ DEFAULT_SETTINGS: Final = {
     S_EV_TARGET_SOC: 80.0,
     S_EV_CAPACITY: 60.0,
     S_EV_CHARGE_POWER: 11.0,
+    S_EV_MAX_TOTAL_POWER: 0.0,
     S_HOTWATER_HOURS: 2.0,
     S_HOTWATER_BOOST_TEMP: 55.0,
     S_HOTWATER_NORMAL_TEMP: 45.0,

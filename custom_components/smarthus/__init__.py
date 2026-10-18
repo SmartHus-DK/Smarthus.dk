@@ -10,7 +10,7 @@ from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.helpers.typing import ConfigType
 
 from .const import CARD_URL, CARD_VERSION, DOMAIN, PLATFORMS, STATIC_URL
@@ -50,9 +50,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry) -> 
     entry.runtime_data = SmartHusData(coordinator, controller)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    _remove_stale_entities(hass, entry, controller.expected_unique_ids)
     await controller.async_start()
     entry.async_on_unload(entry.add_update_listener(_async_reload))
     return True
+
+
+def _remove_stale_entities(hass: HomeAssistant, entry: ConfigEntry, expected: set[str]) -> None:
+    """Fjern entiteter for enheder der ikke længere er sat op (fx en fjernet elbil)."""
+    if not expected:
+        return
+    reg = er.async_get(hass)
+    for ent in er.async_entries_for_config_entry(reg, entry.entry_id):
+        if ent.unique_id not in expected:
+            _LOGGER.debug("Fjerner forældet SmartHus-entitet %s", ent.entity_id)
+            reg.async_remove(ent.entity_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: SmartHusConfigEntry) -> bool:

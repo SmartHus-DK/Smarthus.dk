@@ -38,7 +38,7 @@
         "menu_options": {
           "battery": "Battery / inverter",
           "solar": "Solar",
-          "ev": "EV charger",
+          "ev": "EVs",
           "hotwater": "Hot water",
           "heating": "Heating / heat pump",
           "prices": "Electricity price and tariffs"
@@ -67,12 +67,11 @@
         }
       },
       "ev": {
-        "title": "EV charger",
-        "description": "The charger is enabled in the cheapest hours before your ready time. With the car's SoC selected, charge time is calculated from the target SoC and charging stops when it is reached.",
+        "title": "EVs",
+        "description": "Choose an EV to edit it, or add a new one. Tick 'Remove' to delete the selected car.",
         "data": {
-          "ev_charger_entity": "Switch: allow charging",
-          "ev_soc_sensor": "Car battery level (SoC %)",
-          "ev_energy_sensor": "Energy meter: EV (kWh)"
+          "car": "EV",
+          "remove": "Remove the selected EV"
         }
       },
       "hotwater": {
@@ -106,6 +105,16 @@
           "tariff_summer_low": "Grid tariff summer, low (00–06)",
           "tariff_summer_high": "Grid tariff summer, high (06–17 and 21–24)",
           "tariff_summer_peak": "Grid tariff summer, peak (17–21)"
+        }
+      },
+      "ev_car": {
+        "title": "EV: {car}",
+        "description": "The charger is enabled in the cheapest hours before the car's ready time. With the car's battery level (SoC) selected, it only charges to the target SoC.",
+        "data": {
+          "car_name": "Car name",
+          "ev_charger_entity": "Switch: allow charging",
+          "ev_soc_sensor": "Car battery level (SoC %)",
+          "ev_energy_sensor": "Charger energy meter (kWh)"
         }
       }
     }
@@ -175,10 +184,10 @@
         "name": "Heat pump savings (month)"
       },
       "ev_hours_needed": {
-        "name": "EV: charge time left"
+        "name": "{car}: charge time left"
       },
       "ev_smart_saving": {
-        "name": "EV: smart charging saving"
+        "name": "{car}: smart charging saving"
       }
     },
     "binary_sensor": {
@@ -198,7 +207,7 @@
         "name": "Limit export now"
       },
       "ev_charge_now": {
-        "name": "EV: charge now"
+        "name": "{car}: charge now"
       },
       "hotwater_now": {
         "name": "Hot water: heat now"
@@ -221,7 +230,7 @@
         "name": "Control solar"
       },
       "control_ev": {
-        "name": "Control EV charger"
+        "name": "Control {car}"
       },
       "control_hotwater": {
         "name": "Control hot water"
@@ -230,7 +239,7 @@
         "name": "Control heating"
       },
       "ev_force": {
-        "name": "Charge EV now"
+        "name": "Charge {car} now"
       }
     },
     "number": {
@@ -250,10 +259,10 @@
         "name": "Battery: max. level"
       },
       "ev_hours": {
-        "name": "EV: hours to charge"
+        "name": "{car}: hours to charge"
       },
       "ev_ready_hour": {
-        "name": "EV: ready at"
+        "name": "{car}: ready at"
       },
       "hotwater_hours": {
         "name": "Hot water: hours"
@@ -280,13 +289,13 @@
         "name": "Heating: hours to lower"
       },
       "ev_target_soc": {
-        "name": "EV: charge to"
+        "name": "{car}: charge to"
       },
       "ev_battery_capacity": {
-        "name": "EV: battery size"
+        "name": "{car}: battery size"
       },
       "ev_charge_power": {
-        "name": "EV: charging power"
+        "name": "{car}: charging power"
       },
       "battery_charge_from": {
         "name": "Battery: charge between (from)"
@@ -317,6 +326,9 @@
       },
       "heating_reduce_to": {
         "name": "Heating: lower between (to)"
+      },
+      "ev_max_total_power": {
+        "name": "EVs: max. total charging power"
       }
     }
   }

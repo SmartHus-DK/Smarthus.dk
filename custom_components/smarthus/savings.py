@@ -60,7 +60,8 @@ class SavingsCalculator:
         price, sale = slot.price, slot.sale
         ref = day_avg if day_avg is not None else price
         gained = {c: 0.0 for c in SAVINGS_CATEGORIES}
-        gained["ev"] = deltas.get("ev", 0.0) * (ref - price)
+        ev_kwh = sum(v for k, v in deltas.items() if k == "ev" or k.startswith("ev:"))
+        gained["ev"] = ev_kwh * (ref - price)
         gained["heatpump"] = deltas.get("heatpump", 0.0) * (ref - price)
         gained["battery"] = (deltas.get("battery_discharge", 0.0) - deltas.get("battery_charge", 0.0)) * price
         solar = deltas.get("solar", 0.0)
