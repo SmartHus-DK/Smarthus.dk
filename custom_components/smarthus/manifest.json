@@ -1,0 +1,12 @@
+{
+  "domain": "smarthus",
+  "name": "SmartHus",
+  "codeowners": ["@SmartHus-DK"],
+  "config_flow": true,
+  "documentation": "https://github.com/SmartHus-DK/Smarthus.dk",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/SmartHus-DK/Smarthus.dk/issues",
+  "requirements": [],
+  "version": "1.0.0"
+}

@@ -1,0 +1,6 @@
+{
+  "name": "SmartHus",
+  "homeassistant": "2025.1.0",
+  "country": ["DK"],
+  "render_readme": true
+}

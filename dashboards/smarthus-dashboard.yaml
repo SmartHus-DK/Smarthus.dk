@@ -1,0 +1,160 @@
+# SmartHus-dashboard
+# Indsæt i et nyt dashboard: Indstillinger → Dashboards → Tilføj → "Fra bunden"
+# → ⋮ → Rediger dashboard → ⋮ → Rå konfigurationseditor → indsæt alt nedenfor.
+# Prisgrafen kræver "ApexCharts Card" fra HACS (Frontend). Fjern det kort, hvis du ikke har det.
+
+title: SmartHus
+views:
+  - title: SmartHus
+    path: smarthus
+    icon: mdi:home-lightning-bolt
+    type: sections
+    max_columns: 3
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: Lige nu
+            icon: mdi:home-lightning-bolt
+          - type: tile
+            entity: sensor.smarthus_status
+            name: Status
+            grid_options: { columns: full }
+          - type: tile
+            entity: sensor.smarthus_current_price
+            name: Elpris nu
+          - type: tile
+            entity: sensor.smarthus_sale_price
+            name: Salgspris
+          - type: tile
+            entity: sensor.smarthus_today_min
+            name: Laveste i dag
+          - type: tile
+            entity: sensor.smarthus_today_max
+            name: Højeste i dag
+          - type: tile
+            entity: sensor.smarthus_cheapest_hour
+            name: Billigste time
+            grid_options: { columns: full }
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Besparelser
+            icon: mdi:piggy-bank
+          - type: tile
+            entity: sensor.smarthus_savings_today
+            name: I dag
+          - type: tile
+            entity: sensor.smarthus_savings_month
+            name: Denne måned
+          - type: tile
+            entity: sensor.smarthus_savings_total
+            name: I alt
+            grid_options: { columns: full }
+          - type: glance
+            show_state: true
+            entities:
+              - entity: sensor.smarthus_savings_month_battery
+                name: Batteri
+              - entity: sensor.smarthus_savings_month_solar
+                name: Solceller
+              - entity: sensor.smarthus_savings_month_ev
+                name: Elbil
+              - entity: sensor.smarthus_savings_month_heatpump
+                name: Varmepumpe
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Elpris i dag og i morgen
+            icon: mdi:chart-bar
+          - type: custom:apexcharts-card
+            graph_span: 2d
+            span:
+              start: day
+            now:
+              show: true
+              label: Nu
+            header:
+              show: false
+            yaxis:
+              - min: 0
+                decimals: 1
+            series:
+              - entity: sensor.smarthus_current_price
+                name: Købspris
+                type: column
+                color: "#1f8a70"
+                unit: " kr/kWh"
+                data_generator: |
+                  const all = (entity.attributes.today || []).concat(entity.attributes.tomorrow || []);
+                  return all.map(p => [new Date(p.start).getTime(), p.price]);
+              - entity: sensor.smarthus_current_price
+                name: Salgspris
+                type: line
+                color: "#f2a541"
+                stroke_width: 2
+                unit: " kr/kWh"
+                data_generator: |
+                  const all = (entity.attributes.today || []).concat(entity.attributes.tomorrow || []);
+                  return all.map(p => [new Date(p.start).getTime(), p.sale]);
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Plan
+            icon: mdi:calendar-clock
+          - type: markdown
+            content: |
+              {% set items = [
+                ('🔋 Batteri lader', 'binary_sensor.smarthus_battery_charge_now'),
+                ('⚡ Batteri aflader', 'binary_sensor.smarthus_battery_discharge_now'),
+                ('🚗 Elbil lader', 'binary_sensor.smarthus_ev_charge_now'),
+                ('🚿 Varmt vand', 'binary_sensor.smarthus_hotwater_now'),
+                ('🔥 Ekstra varme', 'binary_sensor.smarthus_heating_boost_now'),
+                ('❄️ Sparer på varmen', 'binary_sensor.smarthus_heating_reduce_now'),
+              ] %}
+              {% for label, ent in items %}
+              {% set p = state_attr(ent, 'periods') %}
+              {% if p %}**{{ label }}:** {{ p | join(', ') }}
+              {% endif %}
+              {% endfor %}
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Styring
+            icon: mdi:tune
+          - type: entities
+            state_color: true
+            entities:
+              - entity: switch.smarthus_control_master
+                name: SmartHus-styring
+              - entity: switch.smarthus_control_battery
+                name: Batteri
+              - entity: switch.smarthus_control_solar
+                name: Solceller
+              - entity: switch.smarthus_control_ev
+                name: Elbillader
+              - entity: switch.smarthus_ev_force
+                name: Lad elbil nu
+              - entity: switch.smarthus_control_hotwater
+                name: Varmt vand
+              - entity: switch.smarthus_control_heating
+                name: Varme
+          - type: entities
+            title: Indstillinger
+            entities:
+              - number.smarthus_battery_charge_hours
+              - number.smarthus_battery_discharge_hours
+              - number.smarthus_battery_min_spread
+              - number.smarthus_ev_hours
+              - number.smarthus_ev_ready_hour
+              - number.smarthus_hotwater_hours
+              - number.smarthus_hotwater_boost_temp
+              - number.smarthus_heating_base_temp
+              - number.smarthus_heating_boost_degrees
+              - number.smarthus_heating_boost_hours
+              - number.smarthus_heating_reduce_degrees
+              - number.smarthus_heating_reduce_hours
