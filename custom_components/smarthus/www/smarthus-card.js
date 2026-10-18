@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.8.0";
+const SMARTHUS_CARD_VERSION = "1.8.1";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -274,6 +274,7 @@ class SmartHusCard extends HTMLElement {
         <div class="modules">
           ${this._modules().map((m) => this._renderModule(m)).join("")}
         </div>
+        <div class="ver">SmartHus v${SMARTHUS_CARD_VERSION}</div>
       </ha-card>`;
   }
 
@@ -889,6 +890,7 @@ class SmartHusCard extends HTMLElement {
       .lg-val { color: var(--secondary-text-color); text-align: right; font-variant-numeric: tabular-nums; }
 
       .modules { border-top: 1px solid var(--sh-line); }
+      .ver { padding: 8px 16px 4px; font-size: 11px; color: var(--secondary-text-color); text-align: right; opacity: .7; }
       .mod { border-bottom: 1px solid var(--sh-line); }
       .mod:last-child { border-bottom: 0; }
       .mod-head { display: flex; align-items: center; gap: 8px; padding: 0 16px 0 0; }

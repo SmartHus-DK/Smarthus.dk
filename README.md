@@ -2,6 +2,8 @@
 
 # SmartHus for Home Assistant
 
+**Version 1.8.1** – kortet viser sin version nederst. Står der et lavere tal på kortet, så genstart Home Assistant og nulstil app-cachen.
+
 Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk).
 
 SmartHus henter dagens og morgendagens spotpriser fra Energi Data Service, lægger tariffer, afgifter og moms oveni, og styrer dine enheder, så strømmen bruges når den er billigst og sælges eller bruges fra batteriet når den er dyrest.
