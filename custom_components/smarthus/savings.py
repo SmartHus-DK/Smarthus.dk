@@ -12,7 +12,7 @@ MAX_DELTA_KWH = 5.0
 
 # Perioder for solcelleoverblikket
 SOLAR_BUCKETS = ("today", "month", "year", "total")
-SOLAR_FIELDS = ("produced", "self_kwh", "export_kwh", "self_value", "export_income")
+SOLAR_FIELDS = ("produced", "self_kwh", "export_kwh", "self_value", "export_income", "import_kwh", "import_cost")
 KEEP_DAYS = 35
 KEEP_MONTHS = 25
 
@@ -129,23 +129,27 @@ class SavingsCalculator:
             for bucket in ("today", "month_values", "total"):
                 self.data[bucket][c] = round(self.data[bucket].get(c, 0.0) + v, 4)
 
-        # --- Solceller ---
-        if "solar" not in readings:
-            return
-        solar = deltas.get("solar", 0.0)
-        if readings.get("export") is not None:
-            export = min(deltas.get("export", 0.0), solar)
-        else:
-            export = 0.0
-        own = max(solar - export, 0.0)
-        add = {
-            "produced": solar,
-            "self_kwh": own,
-            "export_kwh": export,
-            "self_value": own * price,
-            "export_income": export * sale,
-        }
-        if not solar:
+        # --- Solceller og strøm købt fra nettet ---
+        add: dict[str, float] = {}
+        if "solar" in readings:
+            solar = deltas.get("solar", 0.0)
+            if readings.get("export") is not None:
+                export = min(deltas.get("export", 0.0), solar)
+            else:
+                export = 0.0
+            own = max(solar - export, 0.0)
+            if solar:
+                add.update({
+                    "produced": solar,
+                    "self_kwh": own,
+                    "export_kwh": export,
+                    "self_value": own * price,
+                    "export_income": export * sale,
+                })
+        imported = deltas.get("import", 0.0)
+        if imported:
+            add.update({"import_kwh": imported, "import_cost": imported * price})
+        if not add:
             return
         targets = [self.data["solar"][b] for b in SOLAR_BUCKETS]
         day_key, month_key = now_local.date().isoformat(), now_local.strftime("%Y-%m")
@@ -183,3 +187,9 @@ class SavingsCalculator:
         def rows(d: dict) -> list[dict]:
             return [{"period": k, **{f: round(v.get(f, 0.0), 2) for f in SOLAR_FIELDS}} for k, v in sorted(d.items())]
         return {"days": rows(self.data["solar_days"]), "months": rows(self.data["solar_months"])}
+
+
+def import_price(s: dict) -> float | None:
+    """Gennemsnitlig pris for den købte strøm (kr/kWh)."""
+    kwh = s.get("import_kwh", 0.0)
+    return round(s.get("import_cost", 0.0) / kwh, 3) if kwh > 0.05 else None

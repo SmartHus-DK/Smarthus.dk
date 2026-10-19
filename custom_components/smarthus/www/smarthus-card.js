@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.16.5";
+const SMARTHUS_CARD_VERSION = "1.17.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -286,18 +286,49 @@ class SmartHusCard extends HTMLElement {
   _render() {
     if (!this._hass || !this._config) return;
     const priceState = this._st("sensor", "current_price");
-    if (!priceState) {
-      this.shadowRoot.innerHTML = `<ha-card><div class="empty">Kunne ikke finde SmartHus-integrationen. Tjek at den er installeret, eller angiv <code>prefix</code> i kortets opsætning.</div></ha-card>${this._css()}`;
-      return;
-    }
-    this.shadowRoot.innerHTML = `
-      ${this._css()}
-      <ha-card class="${this._hass.themes?.darkMode ? "dark" : ""}">
-        ${(() => { const scene = this._renderScene(), solar = this._renderSolar();
+    const html = !priceState
+      ? `<div class="empty">Kunne ikke finde SmartHus-integrationen. Tjek at den er installeret, eller angiv <code>prefix</code> i kortets opsætning.</div>`
+      : `${(() => { const scene = this._renderScene(), solar = this._renderSolar();
           return `<div class="top${scene ? "" : " no-scene"}${solar ? "" : " no-solar"}">${scene}${this._renderHeader()}${solar}${this._renderStrip()}</div>`; })()}
         ${this._renderDock()}
-        <div class="ver">SmartHus v${SMARTHUS_CARD_VERSION}</div>
-      </ha-card>`;
+        <div class="ver">SmartHus v${SMARTHUS_CARD_VERSION}</div>`;
+    this._update(html, priceState && this._hass.themes?.darkMode ? "dark" : "");
+  }
+
+  /**
+   * Opdatér kortet uden at siden hopper: stilarket og ha-card bevares, højden holdes under
+   * udskiftningen, og rullepositionen i dashboardet sættes tilbage bagefter.
+   */
+  _update(html, cls) {
+    let card = this.shadowRoot.querySelector("ha-card");
+    if (!card) {
+      this.shadowRoot.innerHTML = `${this._css()}<ha-card></ha-card>`;
+      card = this.shadowRoot.querySelector("ha-card");
+    }
+    const scrollers = this._scrollers();
+    const h = card.offsetHeight;
+    if (h) card.style.minHeight = `${h}px`;
+    card.className = cls;
+    card.innerHTML = html;
+    const restore = () => scrollers.forEach(([el, top]) => { if (Math.abs(el.scrollTop - top) > 1) el.scrollTop = top; });
+    restore();
+    requestAnimationFrame(() => {
+      card.style.minHeight = "";
+      restore();
+    });
+  }
+
+  /** Alle elementer over kortet, der er rullet (også gennem Home Assistants shadow DOM). */
+  _scrollers() {
+    const out = [];
+    let n = this;
+    while (n) {
+      if (n.nodeType === 1 && n.scrollTop > 0) out.push([n, n.scrollTop]);
+      n = n.parentNode || n.host;
+    }
+    const root = document.scrollingElement;
+    if (root && root.scrollTop > 0 && !out.some(([el]) => el === root)) out.push([root, root.scrollTop]);
+    return out;
   }
 
   _renderHeader() {
@@ -390,8 +421,22 @@ class SmartHusCard extends HTMLElement {
           <i style="width:${selfShare * 100}%;background:${COLORS.solar_self}"></i><i style="width:${(1 - selfShare) * 100}%;background:${COLORS.solar_sold}"></i>
         </div>
         <div class="share-lbl"><span>${Math.round(selfShare * 100)} % brugt selv</span><span>${Math.round((1 - selfShare) * 100)} % solgt</span></div>` : ""}
+        ${a.has_import_meter ? this._gridKpis(a, tab) : ""}
         ${this._solarForecast(true)}
         ${this._solarChart(tab)}
+      </div>`;
+  }
+
+  /** Strøm købt fra nettet i perioden: mængde, pris, snitpris og hvor selvforsynende huset er. */
+  _gridKpis(a, tab) {
+    const kwh = a.import_kwh || 0;
+    const own = a.self_kwh || 0;
+    const self = own + kwh > 0 ? Math.round((own / (own + kwh)) * 100) : null;
+    return `<div class="fc-title grid-title">Købt fra nettet</div>
+      <div class="kpis fc-kpis">
+        ${this._kpi("Købt", `${nf(kwh, kwh >= 100 ? 0 : 1)} kWh`, self != null ? `${self} % selvforsynende` : null, `grid_import_${tab}`, COLORS.expensive)}
+        ${this._kpi("Betalt", `${nf(a.import_cost || 0, 0)} kr`, null, `grid_cost_${tab}`)}
+        ${this._kpi("Snitpris", a.import_price != null ? `${nf(a.import_price, 2)} kr` : "–", "pr. kWh købt", `grid_cost_${tab}`)}
       </div>`;
   }
 
@@ -636,7 +681,7 @@ class SmartHusCard extends HTMLElement {
     }).join("");
     const g = groups.find((x) => x.id === this._panel);
     const panel = g ? `
-      <section class="panel" aria-label="Indstillinger for ${esc(g.name)}">
+      <section class="panel${this._panelAnim ? " anim" : ""}" aria-label="Indstillinger for ${esc(g.name)}">
         <div class="panel-head">
           <span class="panel-ic">${this._dockIcon(g.icon)}</span>
           <span class="panel-title">${esc(g.name)}<span>Indstillinger</span></span>
@@ -646,6 +691,7 @@ class SmartHusCard extends HTMLElement {
         ${g.id === "ev" ? this._connectedPicker() : ""}
         <div class="panel-mods${g.mods.length > 1 ? " multi" : ""}">${g.mods.map((m) => this._renderModule(m, true)).join("")}</div>
       </section>` : "";
+    this._panelAnim = false;
     return `<div class="dock" role="group" aria-label="Indstillinger">${tiles}</div>${panel}`;
   }
 
@@ -1210,6 +1256,7 @@ class SmartHusCard extends HTMLElement {
     } else if (action === "panel") {
       const id = el.dataset.panel;
       this._panel = this._panel === id ? null : id;
+      this._panelAnim = !!this._panel;
       this._render();
       if (this._panel) requestAnimationFrame(() => this.shadowRoot.querySelector(".panel")?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
     } else if (action === "close-panel") {
@@ -1293,6 +1340,7 @@ class SmartHusCard extends HTMLElement {
       .share-lbl { display: flex; justify-content: space-between; font-size: 11px; color: var(--secondary-text-color); margin-top: 4px; }
       .schart { margin-top: 14px; }
       .fc { margin-top: 14px; }
+      .grid-title { margin-top: 14px; }
       .fc-title { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--secondary-text-color); }
       .fc-kpis { margin-top: 6px; }
       .fc-chart { margin-top: 10px; }
@@ -1397,7 +1445,8 @@ class SmartHusCard extends HTMLElement {
                    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
       @container (max-width: 520px) { .tile-line { display: none; } .tile-ic { width: 46px; height: 46px; } .tile-name { font-size: 12px; } .dock { gap: 4px; padding: 12px 10px; } }
       /* Indstillingspanel */
-      .panel { margin: 0 16px 12px; border-radius: 16px; box-shadow: inset 0 0 0 1px var(--sh-line); overflow: hidden; animation: sh-panel .18s ease-out; }
+      .panel { margin: 0 16px 12px; border-radius: 16px; box-shadow: inset 0 0 0 1px var(--sh-line); overflow: hidden; }
+      .panel.anim { animation: sh-panel .18s ease-out; }
       @keyframes sh-panel { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
       @media (prefers-reduced-motion: reduce) { .panel { animation: none; } }
       .panel-head { display: flex; align-items: center; gap: 12px; padding: 12px 12px 12px 16px; background: color-mix(in srgb, #1E9E5C 8%, transparent); border-bottom: 1px solid var(--sh-line); }

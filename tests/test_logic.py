@@ -464,3 +464,17 @@ def test_summarize_forecast():
     assert f["today_kwh"] == 1.84 and f["remaining_kwh"] == 1.5
     assert f["peak_kw"] == 1.2 and f["peak_time"].startswith("2026-10-19T09:00")
     assert weather.summarize_forecast({}, now, TZ) == {}
+
+
+def test_grid_import():
+    slots = model().build_slots(records("2026-10-18", CURVE))
+    calc = savings.SavingsCalculator()
+    s = slots[48]
+    now_local = s.start.astimezone(TZ)
+    calc.update(now_local, s, None, {"import": 200.0})
+    calc.update(now_local, s, None, {"import": 202.5})          # 2,5 kWh købt – også uden solcellemåler
+    assert calc.solar("today", "import_kwh") == 2.5 and calc.solar("total", "import_kwh") == 2.5
+    assert abs(calc.solar("today", "import_cost") - round(2.5 * s.price, 2)) < 0.011
+    assert abs(savings.import_price(calc.data["solar"]["today"]) - s.price) < 0.001
+    assert calc.solar("today", "produced") == 0
+    assert savings.import_price({"import_kwh": 0, "import_cost": 0}) is None

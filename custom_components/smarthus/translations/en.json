@@ -118,7 +118,8 @@
           "export_script_start": "Script: start export again",
           "grid_power_sensor": "Grid power right now (W or kW) – optional",
           "grid_power_sign": "What does a positive value mean?",
-          "solar_power_sensor": "Solar production right now (W or kW) – optional"
+          "solar_power_sensor": "Solar production right now (W or kW) – optional",
+          "grid_import_energy_sensor": "Energy meter: grid import (kWh) – optional"
         },
         "data_description": {
           "solar_forecast_sensor": "Makes the battery reserve more accurate by subtracting expected solar. Solcast: sensor.solcast_pv_forecast_forecast_remaining_today. Forecast.Solar: sensor.energy_production_today_remaining. Without a forecast, solar is assumed not to cover any house consumption – the cautious choice.",
@@ -133,7 +134,8 @@
           "grid_export_energy_sensor": "Increasing meter (kWh) of all energy exported to the grid.",
           "grid_power_sensor": "Used for solar surplus (hot water and EV). A power sensor showing export/import right now.",
           "grid_power_sign": "Many inverters show export as positive; P1 meters often show import as positive.",
-          "solar_power_sensor": "Current solar power. EV solar charging starts when production is above 'Start at solar above'. Without it, export is used."
+          "solar_power_sensor": "Current solar power. EV solar charging starts when production is above 'Start at solar above'. Without it, export is used.",
+          "grid_import_energy_sensor": "Increasing meter (kWh) of all energy bought from the grid, e.g. from a P1 meter. The card then shows how much you bought, what it cost and your average price."
         }
       },
       "ev": {
@@ -396,6 +398,30 @@
       },
       "solar_forecast": {
         "name": "Solar forecast rest of today"
+      },
+      "grid_import_today": {
+        "name": "Grid import today"
+      },
+      "grid_cost_today": {
+        "name": "Grid cost today"
+      },
+      "grid_import_month": {
+        "name": "Grid import this month"
+      },
+      "grid_cost_month": {
+        "name": "Grid cost this month"
+      },
+      "grid_import_year": {
+        "name": "Grid import this year"
+      },
+      "grid_cost_year": {
+        "name": "Grid cost this year"
+      },
+      "grid_import_total": {
+        "name": "Grid import total"
+      },
+      "grid_cost_total": {
+        "name": "Grid cost total"
       }
     },
     "binary_sensor": {

@@ -125,7 +125,8 @@
           "export_script_start": "Script: start eksport igen",
           "grid_power_sensor": "Effekt til/fra nettet lige nu (W eller kW) – valgfri",
           "grid_power_sign": "Hvad betyder et positivt tal?",
-          "solar_power_sensor": "Solcelleproduktion lige nu (W eller kW) – valgfri"
+          "solar_power_sensor": "Solcelleproduktion lige nu (W eller kW) – valgfri",
+          "grid_import_energy_sensor": "Energimåler: købt fra nettet i alt (kWh) – valgfri"
         },
         "data_description": {
           "solar_forecast_sensor": "Gør batteriets reserve mere præcis, fordi forventet sol trækkes fra. Solcast: sensor.solcast_pv_forecast_forecast_remaining_today. Forecast.Solar: sensor.energy_production_today_remaining.",
@@ -140,7 +141,8 @@
           "export_script_start": "Køres når salgsprisen kommer over grænsen igen, og når styringen slås fra.",
           "grid_power_sensor": "Bruges til solcelleoverskud – både til varmt vand og til elbilen. Vælg en effektsensor, der viser hvad huset sender ud på eller tager fra nettet lige nu, fx fra inverteren ('Grid active power', 'Meter power', 'Grid net power') eller en P1-måler.",
           "grid_power_sign": "Mange invertere viser eksport som positiv, P1-målere viser ofte køb som positiv. Tjek ved at se sensoren, mens solen skinner og huset sender strøm ud.",
-          "solar_power_sensor": "Solcellernes effekt lige nu, fx sensor.[inverter]_power. Elbilen begynder først at lade med sol, når produktionen er over 'Start ved sol over' (fx 4 kW). Uden sensor bruges eksporten i stedet."
+          "solar_power_sensor": "Solcellernes effekt lige nu, fx sensor.[inverter]_power. Elbilen begynder først at lade med sol, når produktionen er over 'Start ved sol over' (fx 4 kW). Uden sensor bruges eksporten i stedet.",
+          "grid_import_energy_sensor": "En stigende måler (kWh) for al strøm, du har købt fra nettet, fx fra en P1-måler (HomeWizard, DSMR) eller inverteren ('Grid imported total'). Så viser kortet under Solceller, hvor meget du har købt, hvad det har kostet, og din gennemsnitspris."
         }
       },
       "ev": {
@@ -408,6 +410,30 @@
       },
       "solar_forecast": {
         "name": "Solprognose resten af dagen"
+      },
+      "grid_import_today": {
+        "name": "Købt fra nettet i dag"
+      },
+      "grid_cost_today": {
+        "name": "Betalt for strøm i dag"
+      },
+      "grid_import_month": {
+        "name": "Købt fra nettet denne måned"
+      },
+      "grid_cost_month": {
+        "name": "Betalt for strøm denne måned"
+      },
+      "grid_import_year": {
+        "name": "Købt fra nettet i år"
+      },
+      "grid_cost_year": {
+        "name": "Betalt for strøm i år"
+      },
+      "grid_import_total": {
+        "name": "Købt fra nettet i alt"
+      },
+      "grid_cost_total": {
+        "name": "Betalt for strøm i alt"
       }
     },
     "binary_sensor": {

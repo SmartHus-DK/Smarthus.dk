@@ -11,7 +11,7 @@ API_URL: Final = "https://api.energidataservice.dk/dataset/DayAheadPrices"
 
 STATIC_URL: Final = "/smarthus_static"
 CARD_URL: Final = f"{STATIC_URL}/smarthus-card.js"
-CARD_VERSION: Final = "1.16.5"
+CARD_VERSION: Final = "1.17.0"
 
 PLATFORMS: Final = ["sensor", "binary_sensor", "switch", "number", "select"]
 
@@ -91,6 +91,7 @@ SIGN_CHARGE_POSITIVE: Final = "charge_positive"
 # Solceller
 CONF_SOLAR_ENERGY: Final = "solar_energy_sensor"
 CONF_EXPORT_ENERGY: Final = "grid_export_energy_sensor"
+CONF_IMPORT_ENERGY: Final = "grid_import_energy_sensor"
 CONF_SOLAR_CURTAIL: Final = "solar_curtail_entity"
 # Eksportstyring: kontakt, rullemenu, tal (eksportgrænse) eller scripts
 CONF_EXPORT_OPT_STOP: Final = "export_option_stop"
@@ -147,7 +148,7 @@ BATTERY_KEYS: Final = [
     CONF_BATTERY_POWER,
     CONF_BATTERY_POWER_SIGN,
 ]
-SOLAR_KEYS: Final = [CONF_SOLAR_ENERGY, CONF_EXPORT_ENERGY, CONF_SOLAR_CURTAIL, CONF_SOLAR_FORECAST,
+SOLAR_KEYS: Final = [CONF_SOLAR_ENERGY, CONF_EXPORT_ENERGY, CONF_IMPORT_ENERGY, CONF_SOLAR_CURTAIL, CONF_SOLAR_FORECAST,
                      CONF_GRID_POWER, CONF_GRID_POWER_SIGN, CONF_SOLAR_POWER,
                      CONF_EXPORT_OPT_STOP, CONF_EXPORT_OPT_NORMAL, CONF_EXPORT_VALUE_STOP,
                      CONF_EXPORT_VALUE_NORMAL, CONF_EXPORT_SCRIPT_STOP, CONF_EXPORT_SCRIPT_START]

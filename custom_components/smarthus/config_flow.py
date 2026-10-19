@@ -45,6 +45,7 @@ from .const import (
     CONF_EV_SOC,
     CONF_EV_SWITCH,
     CONF_EXPORT_ENERGY,
+    CONF_IMPORT_ENERGY,
     CONF_HEATING_CLIMATE,
     CONF_OUTDOOR_TEMP,
     CONF_WEATHER,
@@ -326,7 +327,7 @@ class SmartHusOptionsFlow(OptionsFlow):
             if not errors:
                 return self._save(SOLAR_KEYS, user_input)
         fields = [
-            (CONF_SOLAR_ENERGY, ENERGY), (CONF_EXPORT_ENERGY, ENERGY), (CONF_SOLAR_FORECAST, FORECAST),
+            (CONF_SOLAR_ENERGY, ENERGY), (CONF_EXPORT_ENERGY, ENERGY), (CONF_IMPORT_ENERGY, ENERGY), (CONF_SOLAR_FORECAST, FORECAST),
             (CONF_GRID_POWER, POWER), (CONF_SOLAR_POWER, POWER),
             (CONF_SOLAR_CURTAIL, EXPORT),
             (CONF_EXPORT_OPT_STOP, TEXT), (CONF_EXPORT_OPT_NORMAL, TEXT),

@@ -21,6 +21,7 @@ from . import SmartHusConfigEntry
 from .const import (
     ACTION_OFF,
     CONF_EXPORT_ENERGY,
+    CONF_IMPORT_ENERGY,
     CONF_HOUSE_ENERGY,
     CONF_SOLAR_ENERGY,
     CONF_SOLAR_FORECAST,
@@ -30,6 +31,7 @@ from .const import (
     MODULE_HOTWATER,
     MODULE_SOLAR,
 )
+from .savings import import_price
 from .controller import SmartHusController
 from .entity import SmartHusEntity
 from .planner import EvPlan, Slot, car_settings, cheapest, local_days
@@ -258,6 +260,9 @@ def _solar_value_attrs(bucket: str):
     def fn(c: SmartHusController) -> dict:
         attrs = c.savings.solar_attrs(bucket)
         attrs["has_export_meter"] = c.has(CONF_EXPORT_ENERGY)
+        attrs["has_import_meter"] = c.has(CONF_IMPORT_ENERGY)
+        if c.has(CONF_IMPORT_ENERGY):
+            attrs["import_price"] = import_price(c.savings.data["solar"][bucket])
         if bucket == "total":
             attrs.update(c.savings.solar_history())
         return attrs
@@ -286,6 +291,23 @@ SOLAR_SENSORS: tuple[SmartHusSensorDescription, ...] = tuple(
 )
 
 
+# Strøm købt fra nettet pr. periode (kræver en importmåler)
+GRID_SENSORS: tuple[SmartHusSensorDescription, ...] = tuple(
+    d
+    for bucket, name in _SOLAR_PERIODS
+    for d in (
+        SmartHusSensorDescription(
+            key=f"grid_import_{name}", icon="mdi:transmission-tower-import",
+            value_fn=lambda c, b=bucket: c.savings.solar(b, "import_kwh"),
+            device_class=SensorDeviceClass.ENERGY, native_unit_of_measurement="kWh", suggested_display_precision=1),
+        SmartHusSensorDescription(
+            key=f"grid_cost_{name}", icon="mdi:cash-minus",
+            value_fn=lambda c, b=bucket: c.savings.solar(b, "import_cost"),
+            attrs_fn=lambda c, b=bucket: {"avg_price": import_price(c.savings.data["solar"][b])}, **MONEY),
+    )
+)
+
+
 FORECAST_SENSOR = SmartHusSensorDescription(
     key="solar_forecast", icon="mdi:solar-power-variant-outline", device_class=SensorDeviceClass.ENERGY,
     native_unit_of_measurement="kWh", suggested_display_precision=1,
@@ -300,6 +322,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
         entities += [SmartHusSensor(entry, controller, d) for d in RESERVE_SENSORS]
     if controller.has(CONF_SOLAR_ENERGY):
         entities += [SmartHusSensor(entry, controller, d) for d in SOLAR_SENSORS]
+    if controller.has(CONF_IMPORT_ENERGY):
+        entities += [SmartHusSensor(entry, controller, d) for d in GRID_SENSORS]
     if controller.has(CONF_SOLAR_ENERGY) or controller.has(CONF_SOLAR_POWER) or controller.has(CONF_SOLAR_FORECAST):
         entities.append(SmartHusSensor(entry, controller, FORECAST_SENSOR))
     for car in controller.cars:

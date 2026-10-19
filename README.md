@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.16.5** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
+**Version 1.17.0** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
 
 SmartHus bruger strømmen, når den er billigst, og sparer, når den er dyrest. Den lader elbilen og batteriet i de billige timer, varmer vandet med billig strøm eller solcelleoverskud, skruer lidt op og ned for varmen og stopper salg af solstrøm, når prisen er for lav. Du ser det hele – og hvad du har sparet – på ét kort.
 
@@ -42,7 +42,7 @@ Installér dem, der passer til dit hus. *Indbygget* findes under **Indstillinger
 | [Forecast.Solar](https://www.home-assistant.io/integrations/forecast_solar/) | Indbygget | Solprognose på kortet (i dag, resten af dagen, i morgen) – og batteriets reserve bliver mere præcis. Gratis. |
 | [Solcast](https://github.com/BJReplay/ha-solcast-solar) | HACS | Alternativ til Forecast.Solar – ofte mere præcis. Kræver gratis konto hos Solcast. |
 | [Met.no](https://www.home-assistant.io/integrations/met/) | Indbygget (følger med) | Vejret og udetemperaturen på kortet og varmestyringens grænse. Er normalt installeret i forvejen. |
-| [HomeWizard](https://www.home-assistant.io/integrations/homewizard/) eller [DSMR / P1](https://www.home-assistant.io/integrations/dsmr/) | Indbygget | Måler strøm til og fra nettet lige nu (P1-porten på elmåleren). Giver energiflowet og solcelleoverskud – hvis inverteren ikke selv måler det. |
+| [HomeWizard](https://www.home-assistant.io/integrations/homewizard/) eller [DSMR / P1](https://www.home-assistant.io/integrations/dsmr/) | Indbygget | Måler strøm til og fra nettet (P1-porten på elmåleren). Giver energiflowet, solcelleoverskud og overblik over købt strøm og pris – hvis inverteren ikke selv måler det. |
 
 > Prisgrafen, energiflowet og vejret er bygget ind i SmartHus-kortet, så du behøver **ikke** ApexCharts eller andre kort. ApexCharts bruges kun i det gamle eksempel-dashboard i `dashboards/`.
 
@@ -102,7 +102,7 @@ Klik **Konfigurer** på SmartHus. Under hvert felt står en kort forklaring. Du 
 |---|---|
 | **Elpris og tariffer** | Vælg **Strømligning**, hvis du har den – så er du færdig. Ellers: tillæg og nettarif fra din elregning. |
 | **Batteri / inverter** | Huawei: vælg batteriet. Andre: inverterens rullemenu for driftstilstand og batteriniveau (%). |
-| **Solceller** | **Effekt til/fra nettet lige nu** (giver energiflow og overskud), solcelleproduktion lige nu og "stop eksport"-entiteten. |
+| **Solceller** | **Effekt til/fra nettet lige nu** (giver energiflow og overskud), solcelleproduktion lige nu og "stop eksport"-entiteten. Vælg også **købt fra nettet (kWh)**, så kortet viser, hvor meget strøm du har købt, hvad den kostede og din snitpris. |
 | **Elbiler** | Pr. bil: navn, laderens kontakt, bilens batteriniveau. Easee: vælg bare laderen. Flere biler på samme lader: vælg samme lader til begge. |
 | **Varmt vand** | Varmepumpens kontakt eller knap til varmt vand (fx "Charge") – eller kontakten til elpatronen. Gerne også en temperaturføler i vandet. |
 | **Varme / varmepumpe** | Termostaten (climate) for huset eller varmepumpen. |

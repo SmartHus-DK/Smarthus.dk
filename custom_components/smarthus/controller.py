@@ -43,6 +43,7 @@ from .const import (
     CONF_BATTERY_OPT_NORMAL,
     CONF_BATTERY_SOC,
     CONF_EXPORT_ENERGY,
+    CONF_IMPORT_ENERGY,
     CONF_HEATING_CLIMATE,
     CONF_HEATPUMP_ENERGY,
     CONF_OUTDOOR_TEMP,
@@ -367,6 +368,7 @@ class SmartHusController:
             "battery_discharge": CONF_BATTERY_DISCHARGE_ENERGY,
             "solar": CONF_SOLAR_ENERGY,
             "export": CONF_EXPORT_ENERGY,
+            "import": CONF_IMPORT_ENERGY,
         }
         for name, key in mapping.items():
             if self.has(key):
