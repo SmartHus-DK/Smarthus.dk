@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.13.0";
+const SMARTHUS_CARD_VERSION = "1.13.1";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -277,11 +277,8 @@ class SmartHusCard extends HTMLElement {
     this.shadowRoot.innerHTML = `
       ${this._css()}
       <ha-card class="${this._hass.themes?.darkMode ? "dark" : ""}">
-        ${this._renderScene()}
-        <div class="top">
-          ${this._renderHeader()}
-          ${this._renderSolar()}
-        </div>
+        ${(() => { const scene = this._renderScene(), solar = this._renderSolar();
+          return `<div class="top${scene ? "" : " no-scene"}${solar ? "" : " no-solar"}">${scene}${this._renderHeader()}${solar}</div>`; })()}
         ${this._renderStrip()}
         <div class="modules">
           ${this._connectedPicker()}
@@ -707,14 +704,10 @@ class SmartHusCard extends HTMLElement {
     };
 
     // Grøn bakke (som i logoet) – en rund ø med kant
-    const [cx, cy] = P(5, 5, 0), rx = 4.9 * S * 1.2247, ry = 4.9 * S * 0.7071;
     let svg = `<defs>
-        <radialGradient id="sh-hill" cx="50%" cy="40%" r="65%">
-          <stop offset="0%" stop-color="var(--sh-hill-1)"/><stop offset="100%" stop-color="var(--sh-hill-2)"/></radialGradient>
         <filter id="sh-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2.2"/></filter>
       </defs>
-      <ellipse cx="${cx}" cy="${cy + 7}" rx="${rx}" ry="${ry}" fill="var(--sh-hill-edge)"/>
-      <ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="url(#sh-hill)"/>`;
+`;
 
     // Strømlinjer under objekterne
     const g = f.grid_kw || 0;
@@ -828,7 +821,7 @@ class SmartHusCard extends HTMLElement {
     });
 
     return `<div class="scene" role="img" aria-label="Energiflow: huset bruger ${kwTxt(f.house_kw)}">
-      <svg viewBox="-196 -34 392 262" preserveAspectRatio="xMidYMid meet">${svg}${labels}</svg></div>`;
+      <svg viewBox="-176 -34 360 236" preserveAspectRatio="xMidYMid meet">${svg}${labels}</svg></div>`;
   }
 
   _powerIcon(x, y, r, color, glow) {
@@ -1015,10 +1008,13 @@ class SmartHusCard extends HTMLElement {
   // --- Stil -------------------------------------------------------------
   _css() {
     return `<style>
-      :host { --sh-hill-1: #DDF3E6; --sh-hill-2: #BFE6CF; --sh-hill-edge: #8FCFA9; --sh-track: color-mix(in srgb, var(--primary-text-color) 7%, transparent);
+      :host { --sh-track: color-mix(in srgb, var(--primary-text-color) 7%, transparent);
               --sh-line: var(--divider-color, rgba(127,127,127,.2)); }
       ha-card { display: block; padding: 16px 0 6px; overflow: hidden; color: var(--primary-text-color); container-type: inline-size; }
-      .top { display: grid; grid-template-columns: minmax(0, 1fr); }
+      .top { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "scene" "solar"; }
+      .top > .scene { grid-area: scene; }
+      .top > .head { grid-area: head; }
+      .top > .solar { grid-area: solar; }
       .sec-title { display: flex; align-items: center; gap: 6px; margin-top: 14px; font-size: 12px; font-weight: 600;
                    letter-spacing: .04em; text-transform: uppercase; color: var(--secondary-text-color); }
       .sec-title ha-icon { --mdc-icon-size: 18px; color: ${COLORS.solar_sold}; }
@@ -1063,7 +1059,9 @@ class SmartHusCard extends HTMLElement {
 
       /* Fuld bredde: pris og besparelse ved siden af solcellerne, moduler i kolonner */
       @container (min-width: 760px) {
-        .top { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); }
+        .top { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); grid-template-areas: "scene scene" "head solar"; }
+        .top.no-solar { grid-template-areas: "head scene"; align-items: center; }
+        .top.no-solar > .scene { border-left: 1px solid var(--sh-line); padding-left: 8px; }
         .top > .solar { border-top: 0; border-left: 1px solid var(--sh-line); padding-top: 0; padding-left: 20px; }
         .top > .solar .solar-head .sec-title, .top > .solar .tabs { margin-top: 0; }
         .legend { grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 24px; }
@@ -1075,6 +1073,11 @@ class SmartHusCard extends HTMLElement {
         .mod:last-child { border-bottom: 1px solid var(--sh-line); }
       }
       @container (min-width: 1200px) {
+        .top { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr); grid-template-areas: "head scene solar"; align-items: start; }
+        .top.no-solar { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); grid-template-areas: "head scene"; }
+        .top.no-scene { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); grid-template-areas: "head solar"; }
+        .top > .scene { padding: 0 8px; border-left: 1px solid var(--sh-line); }
+        .top > .scene svg { max-height: 250px; }
         .modules { grid-template-columns: repeat(3, minmax(0, 1fr)); }
         .mod:nth-child(odd) { border-right: 0; }
         .mod:not(:nth-child(3n)) { border-right: 1px solid var(--sh-line); }
@@ -1181,7 +1184,6 @@ class SmartHusCard extends HTMLElement {
       .water-bar { height: 8px; border-radius: 4px; background: var(--sh-track); margin-top: 6px; overflow: hidden; }
       .water-bar i { display: block; height: 100%; border-radius: 4px; background: ${COLORS.hotwater || "#2BA3C9"}; }
       .water-sub { margin-top: 4px; font-size: 12px; color: var(--secondary-text-color); }
-      ha-card.dark { --sh-hill-1: #1E3D2C; --sh-hill-2: #173023; --sh-hill-edge: #0F2219; }
       .scene { padding: 6px 8px 0; }
       .scene svg { display: block; width: 100%; height: auto; max-height: 300px; overflow: visible; }
       .scene .fl-base { fill: none; stroke-width: 2.2; opacity: .18; stroke-linecap: round; }
