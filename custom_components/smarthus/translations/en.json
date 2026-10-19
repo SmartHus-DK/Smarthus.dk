@@ -135,12 +135,16 @@
         "data": {
           "hotwater_entity": "Water heater / heat pump",
           "hotwater_temp_sensor": "Water temperature sensor (°C) – optional",
-          "hotwater_energy_sensor": "Energy meter: hot water (kWh) – optional"
+          "hotwater_energy_sensor": "Energy meter: hot water (kWh) – optional",
+          "grid_power_sensor": "Grid power right now (W or kW) – optional",
+          "grid_power_sign": "What does a positive value mean?"
         },
         "data_description": {
           "hotwater_entity": "A switch for the heater – turned on in the cheapest period. Or a water_heater/climate entity whose temperature is set instead.",
           "hotwater_energy_sensor": "Increasing meter (kWh) for hot water. Only used for savings.",
-          "hotwater_temp_sensor": "Measures the water temperature. With a sensor, SmartHus turns the switch off when the water reaches the max. temperature and on again in the cheap period if it has cooled 3 °C."
+          "hotwater_temp_sensor": "Measures the water temperature. With a sensor, SmartHus turns the switch off when the water reaches the max. temperature and on again in the cheap period if it has cooled 3 °C.",
+          "grid_power_sensor": "Used to heat water with solar surplus. A power sensor showing export to / import from the grid right now.",
+          "grid_power_sign": "Many inverters show export as positive; P1 meters often show import as positive."
         }
       },
       "heating": {
@@ -220,6 +224,12 @@
       "options": {
         "eds": "SmartHus calculates the price (spot price + tariffs below)",
         "stromligning": "Strømligning – my actual price from my electricity plan"
+      }
+    },
+    "grid_power_sign": {
+      "options": {
+        "export_positive": "Positive = export to grid",
+        "import_positive": "Positive = import from grid"
       }
     }
   },
@@ -485,6 +495,9 @@
       },
       "solar_export_min_price": {
         "name": "Solar: stop export below"
+      },
+      "hotwater_surplus_kw": {
+        "name": "Hot water: use surplus above"
       }
     }
   }

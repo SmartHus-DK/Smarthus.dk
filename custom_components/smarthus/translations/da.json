@@ -142,12 +142,16 @@
         "data": {
           "hotwater_entity": "Varmtvandsbeholder / varmepumpe",
           "hotwater_temp_sensor": "Temperaturføler i vandet (°C) – valgfri",
-          "hotwater_energy_sensor": "Energimåler: varmt vand (kWh) – valgfri"
+          "hotwater_energy_sensor": "Energimåler: varmt vand (kWh) – valgfri",
+          "grid_power_sensor": "Effekt til/fra nettet lige nu (W eller kW) – valgfri",
+          "grid_power_sign": "Hvad betyder et positivt tal?"
         },
         "data_description": {
           "hotwater_entity": "Kontakt (switch) til varmelegeme eller varmepumpe – tændes i dagens billigste periode. Eller en water_heater/climate-entitet – så sættes temperaturen i stedet ('Opvarm til' og 'Normal temperatur' på kortet).",
           "hotwater_energy_sensor": "En stigende måler (kWh) for strøm brugt til varmt vand. Bruges kun til at beregne besparelsen.",
-          "hotwater_temp_sensor": "Måler vandets temperatur, fx sensor.varmtvand_temperatur. Med en føler slukker SmartHus kontakten, når vandet når 'Maks. temperatur' (indstilles på kortet), og tænder igen i den billige periode, hvis vandet er kølet 3 °C af. Uden føler kører kontakten hele den billige periode, og varmelegemets egen termostat bestemmer temperaturen."
+          "hotwater_temp_sensor": "Måler vandets temperatur, fx sensor.varmtvand_temperatur. Med en føler slukker SmartHus kontakten, når vandet når 'Maks. temperatur' (indstilles på kortet), og tænder igen i den billige periode, hvis vandet er kølet 3 °C af. Uden føler kører kontakten hele den billige periode, og varmelegemets egen termostat bestemmer temperaturen.",
+          "grid_power_sensor": "Bruges til at varme vand med solcelleoverskud. Vælg en effektsensor der viser, hvad huset sender ud på eller tager fra nettet lige nu – fx fra inverteren ('Grid active power', 'Meter power') eller en P1-måler. Indstil derefter 'Brug overskud over' på kortet.",
+          "grid_power_sign": "Huawei og mange invertere viser eksport som positiv. P1-målere viser ofte køb som positiv. Tjek ved at se sensoren, mens solen skinner og huset sender strøm ud."
         }
       },
       "heating": {
@@ -232,6 +236,12 @@
       "options": {
         "eds": "SmartHus beregner prisen (spotpris + tariffer nedenfor)",
         "stromligning": "Strømligning – min rigtige pris fra mit elabonnement"
+      }
+    },
+    "grid_power_sign": {
+      "options": {
+        "export_positive": "Positiv = eksport til nettet",
+        "import_positive": "Positiv = køb fra nettet"
       }
     }
   },
@@ -497,6 +507,9 @@
       },
       "solar_export_min_price": {
         "name": "Solceller: stop eksport under"
+      },
+      "hotwater_surplus_kw": {
+        "name": "Varmt vand: brug overskud over"
       }
     }
   }

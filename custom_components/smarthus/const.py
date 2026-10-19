@@ -101,6 +101,14 @@ CONF_EV_SOC: Final = "ev_soc_sensor"
 CONF_HOTWATER_ENTITY: Final = "hotwater_entity"
 CONF_HOTWATER_ENERGY: Final = "hotwater_energy_sensor"
 CONF_HOTWATER_TEMP: Final = "hotwater_temp_sensor"
+# Effekt til/fra nettet lige nu (bruges til solcelleoverskud)
+CONF_GRID_POWER: Final = "grid_power_sensor"
+CONF_GRID_POWER_SIGN: Final = "grid_power_sign"
+SIGN_EXPORT_POSITIVE: Final = "export_positive"
+SIGN_IMPORT_POSITIVE: Final = "import_positive"
+S_HOTWATER_SURPLUS_KW: Final = "hotwater_surplus_kw"
+SURPLUS_STOP_IMPORT_KW: Final = 0.3  # stop overskudsopvarmning når der købes mere end dette fra nettet
+SURPLUS_CONFIRM_MINUTES: Final = 2   # betingelsen skal holde i så mange minutter (undgår at slå til/fra)
 HOTWATER_HYSTERESIS: Final = 3.0  # °C – start igen når vandet er kølet så meget af
 # Varme / varmepumpe
 CONF_HEATING_CLIMATE: Final = "heating_climate_entity"
@@ -143,7 +151,7 @@ def get_cars(config: dict) -> list[dict]:
             "energy": config.get(CONF_EV_ENERGY),
         }]
     return []
-HOTWATER_KEYS: Final = [CONF_HOTWATER_ENTITY, CONF_HOTWATER_TEMP, CONF_HOTWATER_ENERGY]
+HOTWATER_KEYS: Final = [CONF_HOTWATER_ENTITY, CONF_HOTWATER_TEMP, CONF_HOTWATER_ENERGY, CONF_GRID_POWER, CONF_GRID_POWER_SIGN]
 HEATING_KEYS: Final = [CONF_HEATING_CLIMATE, CONF_HEATPUMP_ENERGY]
 
 # Standardnavne på SigEnergy-tilstande (kan ændres i opsætningen)
@@ -223,6 +231,7 @@ DEFAULT_SETTINGS: Final = {
     S_BATTERY_DISCHARGE_TO: 24.0,
     S_HOTWATER_FROM: 0.0,
     S_HOTWATER_TO: 24.0,
+    S_HOTWATER_SURPLUS_KW: 0.0,
     S_HEATING_BOOST_FROM: 0.0,
     S_HEATING_BOOST_TO: 24.0,
     S_HEATING_REDUCE_FROM: 0.0,

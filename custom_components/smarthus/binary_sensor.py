@@ -76,6 +76,8 @@ class SmartHusBinary(SmartHusEntity, BinarySensorEntity):
             attrs["water_temp"] = c.hotwater_temp
             attrs["max_temp"] = c.settings.get("hotwater_boost_temp")
             attrs["warm_enough"] = c.hotwater_full
+            attrs["solar_surplus"] = c.hotwater_surplus
+            attrs["export_kw"] = None if c.export_kw is None else round(c.export_kw, 2)
         return attrs
 
 

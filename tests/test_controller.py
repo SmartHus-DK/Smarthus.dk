@@ -50,6 +50,8 @@ def make(config, states):
     c.hass, c.config = hass, config
     c.settings = dict(sys.modules["smarthus.const"].DEFAULT_SETTINGS)
     c._last_cmd, c._script_state = {}, {}
+    c.hotwater_full, c.hotwater_surplus, c._surplus_count = False, False, 0
+    c.enabled = {"master": True}
     c.plan = planner.Plan()
     return c, hass
 
@@ -110,6 +112,28 @@ async def main():
     # Uden føler: følg planen
     c, h = make({"hotwater_entity": "switch.vand"}, {})
     assert c._hotwater_switch_on(True) is True
+    # 9) Solcelleoverskud: start ved eksport >= grænse i 2 min, stop ved køb fra nettet i 2 min
+    grid = {"v": "500", "unit": "W"}
+    c, h = make({"hotwater_entity": "switch.vand", "grid_power_sensor": "sensor.grid",
+                 "grid_power_sign": "export_positive"}, {})
+    c.hass.states = types.SimpleNamespace(get=lambda e: State(grid["v"], unit_of_measurement=grid["unit"]) if e == "sensor.grid" else None)
+    c.settings["hotwater_surplus_kw"] = 2.0
+    c._update_surplus(); assert not c.hotwater_surplus          # 0,5 kW eksport: under grænsen
+    grid["v"] = "2500"
+    c._update_surplus(); assert not c.hotwater_surplus          # 1. minut over grænsen
+    c._update_surplus(); assert c.hotwater_surplus              # 2. minut: start
+    assert c._hotwater_switch_on(False) is True                 # tænd selv uden billig time
+    grid["v"] = "100"
+    c._update_surplus(); c._update_surplus(); assert c.hotwater_surplus   # lav eksport: kør videre
+    grid["v"] = "-800"
+    c._update_surplus(); assert c.hotwater_surplus
+    c._update_surplus(); assert not c.hotwater_surplus          # køber 0,8 kW i 2 min: stop
+    # Fortegn: positiv = køb fra nettet, enhed kW
+    grid.update(v="-3", unit="kW")
+    c.config["grid_power_sign"] = "import_positive"
+    assert abs(c.export_kw - 3.0) < 1e-9
+    c.settings["hotwater_surplus_kw"] = 0
+    c._update_surplus(); assert not c.hotwater_surplus          # 0 = slået fra
     print("controller OK")
 
 def test_controller_control():

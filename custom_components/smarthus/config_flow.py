@@ -43,6 +43,10 @@ from .const import (
     CONF_HEATPUMP_ENERGY,
     CONF_HOTWATER_ENERGY,
     CONF_HOTWATER_TEMP,
+    CONF_GRID_POWER,
+    CONF_GRID_POWER_SIGN,
+    SIGN_EXPORT_POSITIVE,
+    SIGN_IMPORT_POSITIVE,
     CONF_HOUSE_ENERGY,
     CONF_SOLAR_FORECAST,
     CONF_HOTWATER_ENTITY,
@@ -104,6 +108,7 @@ EXPORT_VALUE = selector.NumberSelector(
 HOTWATER = selector.EntitySelector(
     selector.EntitySelectorConfig(domain=["switch", "input_boolean", "water_heater", "climate"])
 )
+POWER = selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor", device_class="power"))
 TEMP = selector.EntitySelector(selector.EntitySelectorConfig(domain=["sensor", "input_number"]))
 CLIMATE = selector.EntitySelector(selector.EntitySelectorConfig(domain="climate"))
 FORECAST = selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor"))
@@ -362,8 +367,14 @@ class SmartHusOptionsFlow(OptionsFlow):
     async def async_step_hotwater(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
             return self._save(HOTWATER_KEYS, user_input)
-        fields = [(CONF_HOTWATER_ENTITY, HOTWATER), (CONF_HOTWATER_TEMP, TEMP), (CONF_HOTWATER_ENERGY, ENERGY)]
-        return self.async_show_form(step_id="hotwater", data_schema=_entity_schema(fields, self._current()))
+        fields = [(CONF_HOTWATER_ENTITY, HOTWATER), (CONF_HOTWATER_TEMP, TEMP), (CONF_HOTWATER_ENERGY, ENERGY),
+                  (CONF_GRID_POWER, POWER)]
+        schema = _entity_schema(fields, self._current())
+        sign = self._current().get(CONF_GRID_POWER_SIGN) or SIGN_EXPORT_POSITIVE
+        schema = schema.extend({vol.Optional(CONF_GRID_POWER_SIGN, default=sign): selector.SelectSelector(
+            selector.SelectSelectorConfig(options=[SIGN_EXPORT_POSITIVE, SIGN_IMPORT_POSITIVE],
+                                          translation_key="grid_power_sign", mode=selector.SelectSelectorMode.LIST))})
+        return self.async_show_form(step_id="hotwater", data_schema=schema)
 
     async def async_step_heating(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:

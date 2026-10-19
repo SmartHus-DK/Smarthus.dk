@@ -231,6 +231,9 @@ Den første bil beholder de oprindelige entity-id'er (fx `switch.smarthus_contro
 ### Varmt vand med kontakt og temperaturføler
 Styres varmt vand med en **kontakt**, tændes den i dagens billigste periode. Vælger du også en **temperaturføler i vandet**, slukker SmartHus kontakten, når vandet når **Maks. temperatur** (på kortet), og tænder igen i den billige periode, hvis vandet er kølet 3 °C af. Uden føler bestemmer varmelegemets egen termostat temperaturen, og der vises ingen temperaturindstillinger på kortet. "Normal temperatur" bruges kun ved en water_heater/climate-entitet.
 
+### Varmt vand med solcelleoverskud
+Vælg under **Konfigurer → Varmt vand** en sensor for **effekt til/fra nettet lige nu** (W eller kW) og angiv, om positiv betyder eksport eller køb. Sæt derefter **Overskud over** på kortet (fx 2 kW). Når huset har sendt mindst så meget ud på nettet i 2 minutter, tændes varmt vand – uanset prisen. Mens det kører, falder eksporten, så der stoppes først, når huset har købt mere end 0,3 kW fra nettet i 2 minutter. Maks. temperatur gælder stadig. 0 kW = slået fra. Tidsrummet for den billige opvarmning er som standard hele døgnet (00–24).
+
 ### Stop eksport under en bestemt pris
 Under **Solceller** på kortet kan du sætte **Stop eksport under** (kr/kWh). Når salgsprisen er under grænsen, tændes kontakten "begræns eksport", og batteriet lader af solstrømmen i stedet. Når prisen kommer over grænsen igen, starter eksporten automatisk. Standard er 0 kr, dvs. der stoppes kun ved negativ pris.
 

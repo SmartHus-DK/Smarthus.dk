@@ -42,6 +42,11 @@ from .const import (
     CONF_HOTWATER_ENERGY,
     CONF_HOTWATER_ENTITY,
     CONF_HOTWATER_TEMP,
+    CONF_GRID_POWER,
+    CONF_GRID_POWER_SIGN,
+    SIGN_IMPORT_POSITIVE,
+    SURPLUS_CONFIRM_MINUTES,
+    SURPLUS_STOP_IMPORT_KW,
     HOTWATER_HYSTERESIS,
     CONF_HOUSE_ENERGY,
     CONF_SOLAR_FORECAST,
@@ -111,6 +116,9 @@ class SmartHusController:
         self._script_state: dict[str, str] = {}
         # Varmt vand med temperaturføler: True når øvre grænse er nået
         self.hotwater_full = False
+        # Opvarmning med solcelleoverskud
+        self.hotwater_surplus = False
+        self._surplus_count = 0
         self._unsub = None
         self._unsub_prices = None
         self.expected_unique_ids: set[str] = set()
@@ -293,6 +301,8 @@ class SmartHusController:
         async_dispatcher_send(self.hass, SIGNAL_TICK.format(entry_id=self.entry.entry_id))
 
     async def _async_tick(self, now: datetime) -> None:
+        if self.active(MODULE_HOTWATER):
+            self._update_surplus()
         self.recalculate()
         await self.async_apply()
         self._update_savings()
@@ -482,10 +492,35 @@ class SmartHusController:
     async def _apply_hotwater(self, on: bool, force: bool) -> None:
         entity_id = self.config[CONF_HOTWATER_ENTITY]
         if entity_id.split(".")[0] in ("water_heater", "climate"):
-            temp = self.settings[S_HOTWATER_BOOST_TEMP if on else S_HOTWATER_NORMAL_TEMP]
+            temp = self.settings[S_HOTWATER_BOOST_TEMP if (on or self.hotwater_surplus) else S_HOTWATER_NORMAL_TEMP]
             await self._ensure_temperature(entity_id, temp, force)
         else:
             await self._ensure_switch(entity_id, self._hotwater_switch_on(on), force)
+
+    @property
+    def export_kw(self) -> float | None:
+        """Eksport til nettet lige nu i kW (negativ = køb fra nettet)."""
+        entity_id = self.config.get(CONF_GRID_POWER)
+        val = self._float_state(entity_id)
+        if val is None:
+            return None
+        unit = (self.hass.states.get(entity_id).attributes.get("unit_of_measurement") or "W").lower()
+        kw = val / 1000 if unit == "w" else val * 1000 if unit == "mw" else val
+        return -kw if self.config.get(CONF_GRID_POWER_SIGN) == SIGN_IMPORT_POSITIVE else kw
+
+    def _update_surplus(self) -> None:
+        """Slå overskudsopvarmning til ved eksport ≥ grænsen og fra igen, når der købes strøm."""
+        limit = float(self.settings.get("hotwater_surplus_kw", 0) or 0)
+        export = self.export_kw
+        if limit <= 0 or export is None:
+            self.hotwater_surplus, self._surplus_count = False, 0
+            return
+        # Mens varmelegemet kører på overskud, falder eksporten – derfor stoppes først ved køb fra nettet
+        want_change = (export < -SURPLUS_STOP_IMPORT_KW) if self.hotwater_surplus else (export >= limit)
+        self._surplus_count = self._surplus_count + 1 if want_change else 0
+        if self._surplus_count >= SURPLUS_CONFIRM_MINUTES:
+            self.hotwater_surplus = not self.hotwater_surplus
+            self._surplus_count = 0
 
     @property
     def hotwater_temp(self) -> float | None:
@@ -493,6 +528,7 @@ class SmartHusController:
 
     def _hotwater_switch_on(self, planned_on: bool) -> bool:
         """Med temperaturføler: sluk ved øvre grænse, start igen når vandet er kølet af."""
+        planned_on = planned_on or self.hotwater_surplus
         if not planned_on:
             self.hotwater_full = False
             return False

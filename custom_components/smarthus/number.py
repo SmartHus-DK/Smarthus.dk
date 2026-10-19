@@ -44,6 +44,8 @@ from .const import (
     S_BATTERY_DISCHARGE_TO,
     S_HOTWATER_FROM,
     S_HOTWATER_TO,
+    S_HOTWATER_SURPLUS_KW,
+    CONF_GRID_POWER,
     S_HEATING_BOOST_FROM,
     S_HEATING_BOOST_TO,
     S_HEATING_REDUCE_FROM,
@@ -108,6 +110,9 @@ NUMBERS: tuple[SmartHusNumberDescription, ...] = (
     SmartHusNumberDescription(key=S_HOTWATER_NORMAL_TEMP, icon="mdi:thermometer", native_min_value=20,
                               native_max_value=70, native_step=0.5, native_unit_of_measurement=C,
                               requires=CONF_HOTWATER_ENTITY),
+    SmartHusNumberDescription(key=S_HOTWATER_SURPLUS_KW, icon="mdi:solar-power-variant", native_min_value=0,
+                              native_max_value=20, native_step=0.1, native_unit_of_measurement="kW",
+                              requires=CONF_GRID_POWER),
     SmartHusNumberDescription(key=S_HEATING_BASE_TEMP, icon="mdi:home-thermometer", native_min_value=10,
                               native_max_value=30, native_step=0.5, native_unit_of_measurement=C,
                               requires=CONF_HEATING_CLIMATE),
@@ -171,6 +176,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
                 entities.append(SmartHusNumber(entry, controller, desc, car.get("name") or "Elbil", d.key))
         elif d.multi_car:
             if len(controller.cars) >= 2:
+                entities.append(SmartHusNumber(entry, controller, d))
+        elif d.key == S_HOTWATER_SURPLUS_KW:
+            if controller.has(CONF_HOTWATER_ENTITY) and controller.has(CONF_GRID_POWER):
                 entities.append(SmartHusNumber(entry, controller, d))
         elif d.key in (S_HOTWATER_BOOST_TEMP, S_HOTWATER_NORMAL_TEMP):
             hw = controller.config.get(CONF_HOTWATER_ENTITY) or ""

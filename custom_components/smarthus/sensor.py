@@ -117,6 +117,8 @@ def _status(c: SmartHusController) -> str:
             parts.append(f"{ep.name} opladet")
     if c.active(MODULE_HOTWATER) and p.hotwater_on:
         parts.append("Varmt vand er varmt nok" if c.hotwater_full else "Opvarmer varmt vand")
+    elif c.active(MODULE_HOTWATER) and c.hotwater_surplus:
+        parts.append("Varmt vand er varmt nok" if c.hotwater_full else "Varmer vand med solcelleoverskud")
     if c.active(MODULE_HEATING) and p.heating_mode == "boost":
         parts.append("Ekstra varme")
     if c.active(MODULE_HEATING) and p.heating_mode == "reduce":

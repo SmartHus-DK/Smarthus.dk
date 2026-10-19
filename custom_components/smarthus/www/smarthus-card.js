@@ -60,6 +60,7 @@ const MODULES = [
     id: "hotwater", name: "Varmt vand", icon: "mdi:water-boiler", sw: "control_hotwater",
     groups: [
       { title: null, items: ["hotwater_hours", ["hotwater_from", "hotwater_to"]] },
+      { title: "Solcelleoverskud", items: ["hotwater_surplus_kw"] },
       { title: "Temperatur", items: ["hotwater_boost_temp", "hotwater_normal_temp"] },
     ],
   },
@@ -96,6 +97,7 @@ const EV_LABELS = {
 };
 
 const NUMBER_LABELS = {
+  hotwater_surplus_kw: "Overskud over",
   solar_export_min_price: "Stop eksport under",
   ev_max_total_power: "Maks. samlet ladeeffekt",
   ev_target_soc: "Lad til",
@@ -597,6 +599,7 @@ class SmartHusCard extends HTMLElement {
         const a = this._st("binary_sensor", "hotwater_now")?.attributes || {};
         const t = a.water_temp != null ? ` · ${nf(a.water_temp, 0)} °C` : "";
         if (isOn("hotwater_now")) return `${prefix}${a.warm_enough ? "Varmt nok – venter" : "Opvarmer nu"}${t}`;
+        if (a.solar_surplus) return `${prefix}${a.warm_enough ? "Varmt nok – venter" : "Varmer med solcelleoverskud"}${t}`;
         return `${prefix}${next("hotwater_now") ? `Opvarmer ${next("hotwater_now")}` : "Ingen plan"}${t}`;
       }
       case "heating":
@@ -749,7 +752,7 @@ class SmartHusCard extends HTMLElement {
       `${nf(v, dec)} ${esc(unit)}`;
     return `
       <div class="step">
-        <span class="step-lbl">${esc(this._label(key))}${key === "ev_max_total_power" ? `<span class="win-note">0 = ingen grænse</span>` : ""}</span>
+        <span class="step-lbl">${esc(this._label(key))}${key === "ev_max_total_power" ? `<span class="win-note">0 = ingen grænse</span>` : key === "hotwater_surplus_kw" ? `<span class="win-note">0 = fra · eksport lige nu ${nf(this._st("binary_sensor", "hotwater_now")?.attributes?.export_kw, 1)} kW</span>` : ""}</span>
         <span class="step-ctl">
           <button data-action="step" data-entity="${s.entity_id}" data-dir="-1" aria-label="Mindre ${esc(this._label(key))}">−</button>
           <span class="step-val">${shown}</span>
