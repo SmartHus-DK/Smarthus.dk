@@ -87,7 +87,7 @@
           "battery_power_sign": "What does a positive battery value mean?"
         },
         "data_description": {
-          "house_energy_sensor": "Increasing meter (kWh) of the house consumption. Used to keep a reserve in the battery.",
+          "house_energy_sensor": "Increasing energy meter (kWh) of the house consumption – e.g. from the inverter ('Load consumption total'), a P1 meter or an electricity meter. Every night SmartHus learns the hourly consumption from the last 14 days (weekdays and weekends separately) and keeps enough in the battery for the house until power is cheap again. Only the surplus is sold. Requires long-term statistics. The reserve is used after 2 days of history.",
           "battery_mode_entity": "A select entity that switches the inverter's mode. Leave empty if you use scripts.",
           "battery_soc_sensor": "Battery state of charge in %.",
           "battery_option_charge": "Exactly as shown in the drop-down, e.g. SigEnergy: Command Charging (Grid First).",

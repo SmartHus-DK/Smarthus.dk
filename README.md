@@ -121,6 +121,18 @@ Energimålere (kWh) er valgfrie, men skal vælges, hvis du vil se, hvad du har s
 
 Slår du styringen fra for et område, sættes udstyret tilbage til normal drift.
 
+### Sådan bruger SmartHus batteriet
+
+SmartHus lader batteriet, når strømmen er billig, og bruger eller sælger strømmen, når den er dyr. Men huset skal også have strøm i de dyre timer – derfor holder SmartHus en **reserve** tilbage:
+
+1. **Den lærer dit forbrug.** Hver nat ser SmartHus på husets forbrug time for time de seneste **14 dage** – hverdage og weekend hver for sig. Så ved den fx, at I bruger meget strøm mellem kl. 17 og 20.
+2. **Den regner reserven ud.** Hvor meget forventer huset at bruge, fra nu og til strømmen bliver billig igen? Forventet sol fra solcellerne trækkes fra.
+3. **Den sælger kun overskuddet.** I de dyre timer sælges kun det, batteriet har ud over reserven og det laveste niveau. Resten bruges i huset, så I ikke skal købe dyr strøm senere.
+
+Under **Batteri** på kortet kan du se reserven, hvor meget der må sælges, og en lille graf over husets forbrug time for time. Reserven bruges, når SmartHus har mindst 2 dages historik – indtil da står der "SmartHus lærer husets forbrug".
+
+Det kræver en energimåler for **husets forbrug** (kWh) under Konfigurer → Batteri / inverter, fx fra inverteren eller en P1-måler. Uden den sælger SmartHus efter prisen alene.
+
 ---
 
 ## Spørgsmål og fejl
