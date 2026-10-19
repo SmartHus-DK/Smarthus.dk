@@ -72,7 +72,7 @@
       },
       "battery": {
         "title": "Batteri / inverter",
-        "description": "SmartHus styrer batteriet i tre tilstande: **lad fra nettet** (i de billigste timer), **aflad** (i de dyreste timer) og **normal drift** (solceller og batteri dækker huset).\n\nDer er to måder at styre inverteren på – brug den, der passer til dit mærke:\n\n**A) Rullemenu** – hvis inverteren har én select-entitet med tilstande (fx SigEnergy, FoxESS, SolaX). Vælg entiteten og skriv de præcise navne på de tre tilstande.\n\n**B) Scripts** – virker med alle invertere (fx Huawei, Deye, Growatt, Solplanet). Lav tre scripts i Home Assistant (Indstillinger → Automatiseringer → Scripts), der gør det, inverteren kræver, og vælg dem her. Er der valgt et script for en tilstand, bruges scriptet i stedet for rullemenuen. Se eksempler pr. mærke i vejledningen på GitHub.\n\nFelterne under A er udfyldt med navnene fra SigEnergy som eksempel.",
+        "description": "SmartHus styrer batteriet i tre tilstande: **lad fra nettet** (billigste timer), **aflad** (dyreste timer) og **normal drift**.\n\nVælg den måde, der passer til inverteren – kun én af dem skal udfyldes:\n\n**A) Rullemenu** – SigEnergy, FoxESS og SolaX m.fl.: vælg inverterens driftstilstand og skriv navnene på de tre tilstande.\n\n**B) Huawei** – vælg bare batteriet. SmartHus klarer resten.\n\n**C) Scripts** – til andre mærker (fx Deye, Growatt, Solplanet). Se skabeloner i vejledningen på GitHub.\n\nFelterne under A er udfyldt med navnene fra SigEnergy som eksempel.",
         "data": {
           "battery_mode_entity": "A) Rullemenu: inverterens driftstilstand",
           "battery_option_charge": "A) Navn på tilstanden: lad fra nettet",
@@ -82,9 +82,11 @@
           "battery_charge_energy_sensor": "Energimåler: batteri opladet i alt (kWh) – valgfri",
           "battery_discharge_energy_sensor": "Energimåler: batteri afladet i alt (kWh) – valgfri",
           "house_energy_sensor": "Energimåler: husets forbrug i alt (kWh) – valgfri",
-          "battery_script_charge": "B) Script: lad batteriet fra nettet",
-          "battery_script_discharge": "B) Script: aflad batteriet",
-          "battery_script_normal": "B) Script: normal drift"
+          "battery_script_charge": "C) Script: lad batteriet fra nettet",
+          "battery_script_discharge": "C) Script: aflad batteriet",
+          "battery_script_normal": "C) Script: normal drift",
+          "battery_huawei_device": "B) Huawei: batteriet (LUNA2000)",
+          "battery_huawei_power": "B) Huawei: effekt ved lad/aflad (W)"
         },
         "data_description": {
           "house_energy_sensor": "En stigende energimåler (kWh) for husets forbrug – fx fra inverteren ('Load consumption total'), en P1-måler (HAN-port) eller en elmåler. SmartHus lærer ud fra de seneste 7 dage, hvor meget huset bruger time for time, og holder så meget i batteriet, at huset klarer sig til strømmen bliver billig igen. Kun det overskydende sælges. Kræver langtidsstatistik (står den i Energi-dashboardet, har den det). Reserven bruges efter 2 dages historik.",
@@ -97,7 +99,9 @@
           "battery_script_discharge": "Køres når batteriet skal aflades i dyre timer. Huawei: huawei_solar.forcible_discharge_soc. Deye: arbejdstilstand 'Selling First'.",
           "battery_script_normal": "Køres når batteriet skal tilbage til normal drift – også når styringen slås fra. Huawei: huawei_solar.stop_forcible_charge. Skal altid sættes, hvis du bruger scripts.",
           "battery_charge_energy_sensor": "En stigende måler (kWh) for al energi, der er ladet ind i batteriet, fx 'Battery charge total'. Bruges kun til at beregne batteriets besparelse.",
-          "battery_discharge_energy_sensor": "En stigende måler (kWh) for al energi, batteriet har leveret, fx 'Battery discharge total'. Bruges kun til at beregne batteriets besparelse."
+          "battery_discharge_energy_sensor": "En stigende måler (kWh) for al energi, batteriet har leveret, fx 'Battery discharge total'. Bruges kun til at beregne batteriets besparelse.",
+          "battery_huawei_device": "Har kunden Huawei med integrationen Huawei Solar, skal du kun vælge batteriet her – så styrer SmartHus selv tvungen opladning (til 'Højeste niveau'), afladning (til 'Laveste niveau') og normal drift. Ingen scripts nødvendige.",
+          "battery_huawei_power": "Hvor hårdt batteriet lades/aflades ved tvungen drift. Standard 5000 W. Sæt den til batteriets maks. effekt."
         }
       },
       "solar": {
@@ -217,15 +221,17 @@
           "ev_soc_sensor": "Bilens batteriniveau (SoC %)",
           "ev_energy_sensor": "Energimåler for laderen (kWh)",
           "ev_current_entity": "Ladestrøm: tal-entitet (A) – valgfri",
-          "ev_current_script": "Ladestrøm: script – valgfri"
+          "ev_current_script": "Ladestrøm: script – valgfri",
+          "ev_easee_device": "Ladestrøm: Easee-lader – valgfri"
         },
         "data_description": {
           "car_name": "Vises på kortet og i entiteternes navne, fx 'Tesla' eller 'Firmabil'.",
           "ev_charger_entity": "Den kontakt der tillader eller stopper opladning – fx Easee switch.easee_is_enabled, Zaptec switch.zaptec_charging, Wallbox switch.wallbox_pause_resume eller en smart-stikkontakt. SmartHus tænder den i de billigste timer og slukker den ellers.",
           "ev_soc_sensor": "Bilens batteriniveau i procent fra bilens egen integration (fx Tesla, Kia/Hyundai, VW, Polestar). Med SoC lades der kun til mål-SoC, og ladetiden beregnes automatisk. Uden SoC lades et fast antal timer.",
           "ev_energy_sensor": "En stigende måler (kWh) for al strøm laderen har leveret – fx Easee 'Lifetime energy', Zaptec 'Total charge energy'. Bruges KUN til at beregne besparelsen ved at lade i billige timer. Styringen virker uden.",
-          "ev_current_entity": "Bruges til at lade med solcelleoverskud. En number-entitet for laderens strøm i ampere – fx Zaptec 'Available current' eller en input_number. Kræver 'Effekt til/fra nettet' under Solceller.",
-          "ev_current_script": "Alternativ til tal-entiteten – virker med alle ladebokse. Scriptet får variablen 'current' (A). Easee: kald easee.set_charger_dynamic_limit med current: \"{{ current }}\" og time_to_live: 0. Se vejledningen på GitHub."
+          "ev_current_entity": "Til andre ladebokse med en tal-entitet for ladestrøm i ampere – fx Zaptec 'Available current'. Ikke nødvendig ved Easee.",
+          "ev_current_script": "Kun til ladebokse, der hverken er Easee eller har en tal-entitet. Scriptet får variablen 'current' (A).",
+          "ev_easee_device": "Har kunden en Easee-lader, så vælg den her – så kan SmartHus styre ladestrømmen ved solcelleladning uden script."
         }
       }
     },

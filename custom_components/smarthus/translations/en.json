@@ -67,7 +67,7 @@
       },
       "battery": {
         "title": "Battery / inverter",
-        "description": "SmartHus controls the battery in three states: charge from grid, discharge and normal operation. Use A) a drop-down (select) with modes (SigEnergy, FoxESS, SolaX) or B) scripts, which work with any inverter (Huawei, Deye, Growatt, Solplanet). If a script is set for a state, it is used instead of the drop-down. See examples per brand in the guide on GitHub.",
+        "description": "Choose one: A) drop-down (SigEnergy, FoxESS, SolaX), B) Huawei – just pick the battery, or C) scripts for other brands.",
         "data": {
           "battery_mode_entity": "A) Drop-down: inverter operating mode",
           "battery_option_charge": "A) Mode name: charge from grid",
@@ -77,9 +77,11 @@
           "battery_charge_energy_sensor": "Energy meter: battery charged (kWh)",
           "battery_discharge_energy_sensor": "Energy meter: battery discharged (kWh)",
           "house_energy_sensor": "Energy meter: house consumption (kWh) – optional",
-          "battery_script_charge": "B) Script: charge battery from grid",
-          "battery_script_discharge": "B) Script: discharge battery",
-          "battery_script_normal": "B) Script: normal operation"
+          "battery_script_charge": "C) Script: charge battery from grid",
+          "battery_script_discharge": "C) Script: discharge battery",
+          "battery_script_normal": "C) Script: normal operation",
+          "battery_huawei_device": "B) Huawei: the battery (LUNA2000)",
+          "battery_huawei_power": "B) Huawei: charge/discharge power (W)"
         },
         "data_description": {
           "house_energy_sensor": "Increasing meter (kWh) of the house consumption. Used to keep a reserve in the battery.",
@@ -90,7 +92,9 @@
           "battery_script_discharge": "Runs when the battery should discharge in expensive hours.",
           "battery_script_normal": "Runs when returning to normal operation, also when control is turned off. Always set it when using scripts.",
           "battery_charge_energy_sensor": "Increasing meter (kWh) of all energy charged into the battery. Only used for savings.",
-          "battery_discharge_energy_sensor": "Increasing meter (kWh) of all energy delivered by the battery. Only used for savings."
+          "battery_discharge_energy_sensor": "Increasing meter (kWh) of all energy delivered by the battery. Only used for savings.",
+          "battery_huawei_device": "With the Huawei Solar integration, just pick the battery here – SmartHus handles forced charge/discharge itself. No scripts needed.",
+          "battery_huawei_power": "Power used for forced charge/discharge. Default 5000 W."
         }
       },
       "solar": {
@@ -205,15 +209,17 @@
           "ev_soc_sensor": "Car battery level (SoC %)",
           "ev_energy_sensor": "Charger energy meter (kWh)",
           "ev_current_entity": "Charging current: number entity (A) – optional",
-          "ev_current_script": "Charging current: script – optional"
+          "ev_current_script": "Charging current: script – optional",
+          "ev_easee_device": "Charging current: Easee charger – optional"
         },
         "data_description": {
           "car_name": "Shown on the card and in entity names.",
           "ev_charger_entity": "The switch that allows or stops charging, e.g. Easee switch.easee_is_enabled.",
           "ev_soc_sensor": "The car's battery level in % from the car's own integration. With SoC it only charges to the target SoC.",
           "ev_energy_sensor": "Increasing meter (kWh) of all energy the charger has delivered, e.g. Easee 'Lifetime energy'. ONLY used to calculate savings; control works without it.",
-          "ev_current_entity": "Used for solar charging. A number entity for the charger current in amps.",
-          "ev_current_script": "Alternative that works with any charger. The script gets the variable 'current' (A). Easee: easee.set_charger_dynamic_limit."
+          "ev_current_entity": "For other chargers with a number entity for the current in amps, e.g. Zaptec 'Available current'.",
+          "ev_current_script": "Only for chargers that are neither Easee nor have a number entity. The script gets 'current' (A).",
+          "ev_easee_device": "For an Easee charger: pick it here and SmartHus controls the current without a script."
         }
       }
     },

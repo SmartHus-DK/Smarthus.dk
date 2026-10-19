@@ -184,6 +184,25 @@ async def main():
     assert c._ev_target(car, ep, "ev_tesla") == (False, None)   # en anden bil lader med sol
     c.flags["ev_solar"] = False
     assert c._ev_target(car, ep, None) == (False, None)         # slået fra: følg planen
+    # 13) Huawei uden scripts: rigtige handlinger, kun ved skift
+    c, h = make({"battery_huawei_device": "dev123"}, {})
+    c.settings.update(battery_max_soc=95, battery_min_soc=15)
+    assert c.has_battery_control
+    await c._apply_battery("charge", False); await c._apply_battery("charge", False)
+    assert h.services.calls == [("huawei_solar", "forcible_charge_soc",
+                                 {"device_id": "dev123", "target_soc": 95, "power": 5000})]
+    await c._apply_battery("discharge", False)
+    assert h.services.calls[-1] == ("huawei_solar", "forcible_discharge_soc",
+                                    {"device_id": "dev123", "target_soc": 15, "power": 5000})
+    await c._apply_battery("normal", False)
+    assert h.services.calls[-1] == ("huawei_solar", "stop_forcible_charge", {"device_id": "dev123"})
+    # 14) Easee uden script
+    c, h = make({}, {})
+    car = {"id": "ev", "name": "Kia", "charger": "switch.lader", "easee_device": "easee1"}
+    assert c.has_current_control(car)
+    await c._apply_current(car, 9, False); await c._apply_current(car, 9, False)
+    assert h.services.calls == [("easee", "set_charger_dynamic_limit",
+                                 {"device_id": "easee1", "current": 9, "time_to_live": 0})]
     print("controller OK")
 
 def test_controller_control():

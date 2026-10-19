@@ -23,6 +23,8 @@ from .const import (
     CONF_BATTERY_SCRIPT_CHARGE,
     CONF_BATTERY_SCRIPT_DISCHARGE,
     CONF_BATTERY_SCRIPT_NORMAL,
+    CONF_HUAWEI_DEVICE,
+    CONF_HUAWEI_POWER,
     CONF_EXPORT_OPT_NORMAL,
     CONF_EXPORT_OPT_STOP,
     CONF_EXPORT_SCRIPT_START,
@@ -121,6 +123,12 @@ CAR_REMOVE = "remove"
 CAR_NAME = "car_name"
 CAR_CURRENT_ENTITY = "ev_current_entity"
 CAR_CURRENT_SCRIPT = "ev_current_script"
+HUAWEI_DEVICE = selector.DeviceSelector(selector.DeviceSelectorConfig(integration="huawei_solar"))
+HUAWEI_POWER = selector.NumberSelector(selector.NumberSelectorConfig(min=100, max=20000, step=100,
+                                                                    mode=selector.NumberSelectorMode.BOX,
+                                                                    unit_of_measurement="W"))
+EASEE_DEVICE = selector.DeviceSelector(selector.DeviceSelectorConfig(integration="easee"))
+CAR_EASEE_DEVICE = "ev_easee_device"
 CURRENT = selector.EntitySelector(selector.EntitySelectorConfig(domain=["number", "input_number"]))
 
 
@@ -279,6 +287,8 @@ class SmartHusOptionsFlow(OptionsFlow):
             (CONF_BATTERY_OPT_CHARGE, TEXT),
             (CONF_BATTERY_OPT_DISCHARGE, TEXT),
             (CONF_BATTERY_OPT_NORMAL, TEXT),
+            (CONF_HUAWEI_DEVICE, HUAWEI_DEVICE),
+            (CONF_HUAWEI_POWER, HUAWEI_POWER),
             (CONF_BATTERY_SCRIPT_CHARGE, SCRIPT),
             (CONF_BATTERY_SCRIPT_DISCHARGE, SCRIPT),
             (CONF_BATTERY_SCRIPT_NORMAL, SCRIPT),
@@ -360,6 +370,7 @@ class SmartHusOptionsFlow(OptionsFlow):
                 "energy": user_input.get(CONF_EV_ENERGY) or None,
                 "current_entity": user_input.get(CAR_CURRENT_ENTITY) or None,
                 "current_script": user_input.get(CAR_CURRENT_SCRIPT) or None,
+                "easee_device": user_input.get(CAR_EASEE_DEVICE) or None,
             }
             if current:
                 current.update(data)
@@ -373,6 +384,7 @@ class SmartHusOptionsFlow(OptionsFlow):
             vol.Required(CONF_EV_SWITCH, **({"default": cur["charger"]} if cur.get("charger") else {})): ONOFF,
             _opt(CONF_EV_SOC, {CONF_EV_SOC: cur.get("soc")}, SOC)[0]: SOC,
             _opt(CONF_EV_ENERGY, {CONF_EV_ENERGY: cur.get("energy")}, ENERGY)[0]: ENERGY,
+            _opt(CAR_EASEE_DEVICE, {CAR_EASEE_DEVICE: cur.get("easee_device")}, EASEE_DEVICE)[0]: EASEE_DEVICE,
             _opt(CAR_CURRENT_ENTITY, {CAR_CURRENT_ENTITY: cur.get("current_entity")}, CURRENT)[0]: CURRENT,
             _opt(CAR_CURRENT_SCRIPT, {CAR_CURRENT_SCRIPT: cur.get("current_script")}, SCRIPT)[0]: SCRIPT,
         })

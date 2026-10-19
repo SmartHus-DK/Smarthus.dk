@@ -25,6 +25,9 @@ from .const import (
     CONF_BATTERY_SCRIPT_DISCHARGE,
     CONF_BATTERY_SCRIPT_NORMAL,
     BATTERY_SCRIPTS,
+    CONF_HUAWEI_DEVICE,
+    CONF_HUAWEI_POWER,
+    DEFAULT_HUAWEI_POWER,
     CONF_EXPORT_OPT_NORMAL,
     CONF_EXPORT_OPT_STOP,
     CONF_EXPORT_SCRIPT_START,
@@ -261,7 +264,8 @@ class SmartHusController:
 
     @property
     def has_battery_control(self) -> bool:
-        return bool(self.config.get(CONF_BATTERY_MODE_ENTITY)) or any(self.config.get(k) for k in BATTERY_SCRIPTS)
+        return (bool(self.config.get(CONF_BATTERY_MODE_ENTITY)) or bool(self.config.get(CONF_HUAWEI_DEVICE))
+                or any(self.config.get(k) for k in BATTERY_SCRIPTS))
 
     @property
     def has_export_control(self) -> bool:
@@ -446,6 +450,9 @@ class SmartHusController:
             action, CONF_BATTERY_SCRIPT_NORMAL)
         if await self._run_script(key, "battery", action, force, self._script_vars(action)):
             return
+        if self.config.get(CONF_HUAWEI_DEVICE):
+            await self._apply_huawei(action, force)
+            return
         if self.config.get(CONF_BATTERY_MODE_ENTITY):
             await self._ensure_option(self.config[CONF_BATTERY_MODE_ENTITY], self._battery_option(action), force)
 
@@ -468,6 +475,35 @@ class SmartHusController:
                 await self._ensure_number(entity_id, float(value), force)
         else:
             await self._ensure_switch(entity_id, stop, force)
+
+    async def _service_once(self, group: str, state: str, force: bool, domain: str, service: str,
+                            data: dict) -> None:
+        """Kald en handling, men kun når tilstanden skifter (eller ved force)."""
+        if not force and self._script_state.get(group) == state:
+            return
+        if not force and not self._rate_ok(f"{group}:{domain}.{service}"):
+            return
+        self._script_state[group] = state
+        self._last_cmd[f"{group}:{domain}.{service}"] = time.monotonic()
+        try:
+            await self.hass.services.async_call(domain, service, data, blocking=False)
+            _LOGGER.info("SmartHus: %s.%s (%s: %s)", domain, service, group, state)
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("SmartHus kunne ikke kalde %s.%s: %s", domain, service, err)
+
+    async def _apply_huawei(self, action: str, force: bool) -> None:
+        """Huawei (huawei_solar): tvungen opladning/afladning via integrationens egne handlinger."""
+        device = self.config[CONF_HUAWEI_DEVICE]
+        power = int(float(self.config.get(CONF_HUAWEI_POWER) or DEFAULT_HUAWEI_POWER))
+        if action == ACTION_CHARGE:
+            await self._service_once("battery", action, force, "huawei_solar", "forcible_charge_soc", {
+                "device_id": device, "target_soc": int(self.settings.get("battery_max_soc", 95)), "power": power})
+        elif action == ACTION_DISCHARGE:
+            await self._service_once("battery", action, force, "huawei_solar", "forcible_discharge_soc", {
+                "device_id": device, "target_soc": int(self.settings.get("battery_min_soc", 15)), "power": power})
+        else:
+            await self._service_once("battery", action, force, "huawei_solar", "stop_forcible_charge",
+                                     {"device_id": device})
 
     def _battery_option(self, action: str) -> str:
         key = {
@@ -507,7 +543,7 @@ class SmartHusController:
             await self._ensure_temperature(self.config[CONF_HEATING_CLIMATE], temp, force)
 
     def has_current_control(self, car: dict) -> bool:
-        return bool(car.get("current_entity") or car.get("current_script"))
+        return bool(car.get("current_entity") or car.get("current_script") or car.get("easee_device"))
 
     def _ev_target(self, car: dict, ep, solar_car: str | None, step: bool = True) -> tuple[bool, int | None]:
         """Skal laderen være tændt, og med hvilken strøm (A)? None = rør ikke strømmen."""
@@ -544,6 +580,12 @@ class SmartHusController:
                     blocking=False)
             except Exception as err:  # noqa: BLE001
                 _LOGGER.warning("SmartHus kunne ikke køre %s: %s", car["current_script"], err)
+        elif car.get("easee_device"):
+            try:
+                await self.hass.services.async_call("easee", "set_charger_dynamic_limit", {
+                    "device_id": car["easee_device"], "current": current, "time_to_live": 0}, blocking=False)
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.warning("SmartHus kunne ikke sætte Easee-ladestrøm: %s", err)
         elif car.get("current_entity"):
             await self._ensure_number(car["current_entity"], float(current), True)
 

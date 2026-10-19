@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.10.0** – kortet viser sin version nederst. Står der et lavere tal på kortet, så genstart Home Assistant og nulstil app-cachen.
+**Version 1.11.0** – kortet viser sin version nederst. Står der et lavere tal på kortet, så genstart Home Assistant og nulstil app-cachen.
 
 Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk).
 
@@ -68,7 +68,8 @@ Navnene skal stå **præcis** som i inverterens rullemenu (se entitetens mulige 
 SmartHus kan styre batteriet på to måder (under **Konfigurer → Batteri / inverter**):
 
 - **A) Rullemenu** – når inverteren har én `select` med tilstande (SigEnergy, ofte FoxESS og SolaX). Skriv navnene præcis som i rullemenuen.
-- **B) Scripts** – virker med **alle** invertere, der har en Home Assistant-integration. Lav tre scripts (lad fra nettet, aflad, normal drift) under **Indstillinger → Automatiseringer → Scripts**, og vælg dem i opsætningen. Er der valgt et script for en tilstand, bruges det i stedet for rullemenuen.
+- **B) Huawei (indbygget)** – vælg bare batteriet (integrationen Huawei Solar). SmartHus kalder selv `forcible_charge_soc`, `forcible_discharge_soc` og `stop_forcible_charge`. Ingen scripts.
+- **C) Scripts** – virker med **alle** invertere, der har en Home Assistant-integration. Lav tre scripts (lad fra nettet, aflad, normal drift) under **Indstillinger → Automatiseringer → Scripts**, og vælg dem i opsætningen. Er der valgt et script for en tilstand, bruges det i stedet for rullemenuen.
 
 SmartHus kører kun et script, når tilstanden **skifter**, og "normal drift" køres også, når styringen slås fra. Scriptet får disse variabler: `smarthus_state` (`charge`, `discharge` eller `normal`), `price`, `sale_price`, `min_soc` og `max_soc`.
 
@@ -77,15 +78,15 @@ SmartHus kører kun et script, når tilstanden **skifter**, og "normal drift" k�
 | Mærke (integration) | Batteri | Stop af eksport |
 |---|---|---|
 | SigEnergy (Modbus) | A) rullemenu – se eksemplet ovenfor | kontakt eller tal |
-| Huawei ([huawei_solar](https://github.com/wlcrs/huawei_solar)) | B) scripts med `forcible_charge_soc` / `forcible_discharge_soc` / `stop_forcible_charge` | tal (eksportgrænse) eller rullemenu |
-| Deye / Sunsynk ([Solarman](https://github.com/davidrapan/ha-solarman)) | B) scripts der sætter tidsprogram, netopladning og SoC | rullemenu ("Work Mode") eller kontakt |
-| Growatt (Modbus) | B) scripts der skriver Battery First / AC charge | script |
-| Solplanet ([solplanet](https://github.com/calvinbui/home-assistant-solplanet)) | B) scripts med arbejdstilstand og tidsplan | script |
-| FoxESS / SolaX (Modbus) | A) rullemenu, hvis integrationen har tilstande for tvungen opladning – ellers B) | tal eller rullemenu |
+| Huawei ([huawei_solar](https://github.com/wlcrs/huawei_solar)) | **B) indbygget – vælg batteriet** | tal (eksportgrænse) eller rullemenu |
+| Deye / Sunsynk ([Solarman](https://github.com/davidrapan/ha-solarman)) | C) scripts der sætter tidsprogram, netopladning og SoC | rullemenu ("Work Mode") eller kontakt |
+| Growatt (Modbus) | C) scripts der skriver Battery First / AC charge | script |
+| Solplanet ([solplanet](https://github.com/calvinbui/home-assistant-solplanet)) | C) scripts med arbejdstilstand og tidsplan | script |
+| FoxESS / SolaX (Modbus) | A) rullemenu, hvis integrationen har tilstande for tvungen opladning – ellers C) | tal eller rullemenu |
 
 > Entiteternes navne varierer med integration, version og model. Brug eksemplerne som skabelon og find dine egne navne under **Udviklerværktøjer → Tilstande** og **Udviklerværktøjer → Handlinger**. Afprøv hvert script manuelt, før du slår SmartHus-styringen til.
 
-<details><summary><b>Huawei – scripts</b></summary>
+<details><summary><b>Huawei – scripts (kun hvis du ikke bruger den indbyggede Huawei-styring)</b></summary>
 
 `device_id` er inverterens/batteriets enhed – vælg den i script-editoren. Feltnavnene kan ses under Udviklerværktøjer → Handlinger.
 
@@ -236,9 +237,9 @@ Vælg under **Konfigurer → Solceller** en sensor for **effekt til/fra nettet l
 
 **Varmt vand:** Sæt **Overskud over** på kortet (fx 2 kW, 0 = fra). Når huset har sendt så meget ud på nettet i 2 minutter, tændes varmt vand. Der stoppes først, når huset har købt mere end 0,3 kW i 2 minutter. Med **Kun når det betaler sig** (standard) bruges overskuddet kun, hvis salgsprisen lige nu er lavere end prisen i den billige time senere – ellers sælges strømmen, og vandet varmes i den billige time. Der varmes **højst én gang om dagen**: når vandet er varmet med overskud (maks. temperatur nået eller timerne brugt), springes dagens billige time over, og er den billige time allerede kørt, bruges overskuddet ikke den dag.
 
-**Elbil:** Vælg under **Konfigurer → Elbiler** hvordan ladestrømmen styres – en **tal-entitet** (A) eller et **script**, der får variablen `current`. Slå **Lad med solcelleoverskud** til på kortet. Hver 30. sekund justeres strømmen 1 A ad gangen: ned ved køb fra nettet (> 0,3 kW), op ved eksport (> 0,5 kW) når solen giver mindst **Start ved sol over** (fx 4 kW), ellers holdes den. Der startes på **Mindste ladestrøm** og lades aldrig over **Største ladestrøm**. Uden sol i 3 minutter stopper solcelleladningen. I billige timer, ved "Lad nu" og når eksporten er stoppet pga. lav salgspris, lades med største strøm. Kun én bil ad gangen lader med sol. Mål-SoC gælder stadig.
+**Elbil:** Vælg under **Konfigurer → Elbiler** hvordan ladestrømmen styres: **Easee** – vælg bare laderen (indbygget, ingen script); **Zaptec og andre** – vælg ladeboksens tal-entitet for ladestrøm (A), fx "Available current"; **andre** – et script, der får variablen `current`. Slå **Lad med solcelleoverskud** til på kortet. Hver 30. sekund justeres strømmen 1 A ad gangen: ned ved køb fra nettet (> 0,3 kW), op ved eksport (> 0,5 kW) når solen giver mindst **Start ved sol over** (fx 4 kW), ellers holdes den. Der startes på **Mindste ladestrøm** og lades aldrig over **Største ladestrøm**. Uden sol i 3 minutter stopper solcelleladningen. I billige timer, ved "Lad nu" og når eksporten er stoppet pga. lav salgspris, lades med største strøm. Kun én bil ad gangen lader med sol. Mål-SoC gælder stadig.
 
-<details><summary><b>Easee – script til ladestrøm</b></summary>
+<details><summary><b>Easee – script (kun hvis du ikke bruger den indbyggede Easee-styring)</b></summary>
 
 ```yaml
 smarthus_easee_strom:
