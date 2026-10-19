@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.16.3";
+const SMARTHUS_CARD_VERSION = "1.16.4";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -860,7 +860,8 @@ class SmartHusCard extends HTMLElement {
       const bk = f.battery_kw;
       svg += bk >= 0 ? flow([8.0, 3.3, 0.1], [6.6, 4.6, 0.5], bk, C.blue, 8) : flow([6.6, 4.6, 0.5], [8.0, 3.3, 0.1], bk, C.blue, 8);
     }
-    const cars = this._visibleCars(f.cars || []).slice(0, 2);
+    // Begge biler vises i billedet (så SoC kan ses), den der ikke sidder i laderen mere gennemsigtig
+    const cars = (f.cars || []).slice(0, 2);
     cars.forEach((c, i) => {
       const at = i === 0 ? [8.1, 6.4, 0.1] : [8.4, 8.1, 0.1];
       if (c.connected !== false) svg += flow([6.6, 5.8, 0.4], at, c.kw || 0, C.ev, 4);
@@ -945,7 +946,7 @@ class SmartHusCard extends HTMLElement {
       + wheel(x + 0.85, y + 0.3) + wheel(x + 0.85, y + 1.3);
     cars.forEach((c, i) => {
       const at = i === 0 ? [7.9, 5.7] : [8.3, 7.5];
-      svg += `<g opacity="${c.connected === false ? 0.35 : 1}">${car(at[0], at[1], i === 0 ? C.ev : "#7489DB")}</g>`;
+      svg += `<g opacity="${c.connected === false ? 0.4 : 1}">${car(at[0], at[1], i === 0 ? C.ev : "#7489DB")}</g>`;
     });
 
     // Etiketter
@@ -974,12 +975,15 @@ class SmartHusCard extends HTMLElement {
     }
     cars.forEach((c, i) => {
       const at = i === 0 ? [8.75, 6.5, 0.2] : [9.15, 8.3, 0.2];
-      const val = c.connected === false ? "ikke tilsluttet" : c.kw == null ? "" : kwTxt(c.kw);
-      labels += label(...at, c.name, val, C.ev, 14, "start");
-      if (c.soc != null && c.connected !== false) {
+      const off = c.connected === false;
+      // Ikke tilsluttet: kort tekst i titlen, så batteriniveauet står lige under navnet
+      const val = off ? (c.soc == null ? "ikke tilsluttet" : "") : c.kw == null ? "" : kwTxt(c.kw);
+      let l = label(...at, off && c.soc != null ? `${c.name} · ikke tilsluttet` : c.name, val, C.ev, 14, "start");
+      if (c.soc != null) {
         const [sx, sy] = P(...at);
-        labels += socPill(sx + 14 + (val ? textW(val) + 6 : 0), sy + 5, c.soc);
+        l += socPill(sx + 14 + (val ? textW(val) + 6 : 0), sy + 5, c.soc);
       }
+      labels += off ? `<g opacity="0.5">${l}</g>` : l;
     });
 
     // Vejret lige nu øverst til venstre
