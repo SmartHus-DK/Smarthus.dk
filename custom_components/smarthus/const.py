@@ -11,7 +11,7 @@ API_URL: Final = "https://api.energidataservice.dk/dataset/DayAheadPrices"
 
 STATIC_URL: Final = "/smarthus_static"
 CARD_URL: Final = f"{STATIC_URL}/smarthus-card.js"
-CARD_VERSION: Final = "1.14.0"
+CARD_VERSION: Final = "1.15.0"
 
 PLATFORMS: Final = ["sensor", "binary_sensor", "switch", "number", "select"]
 
@@ -126,6 +126,7 @@ HOTWATER_HYSTERESIS: Final = 3.0  # °C – start igen når vandet er kølet så
 CONF_HEATING_CLIMATE: Final = "heating_climate_entity"
 CONF_HEATPUMP_ENERGY: Final = "heatpump_energy_sensor"
 CONF_OUTDOOR_TEMP: Final = "outdoor_temp_sensor"
+CONF_WEATHER: Final = "weather_entity"
 S_HEATING_MAX_OUTDOOR: Final = "heating_max_outdoor"
 HEATING_OUTDOOR_HYSTERESIS: Final = 1.0  # °C – aktiv igen når det er så meget koldere end grænsen
 
@@ -172,7 +173,8 @@ def get_cars(config: dict) -> list[dict]:
         }]
     return []
 HOTWATER_KEYS: Final = [CONF_HOTWATER_ENTITY, CONF_HOTWATER_TEMP, CONF_HOTWATER_ENERGY]
-HEATING_KEYS: Final = [CONF_HEATING_CLIMATE, CONF_OUTDOOR_TEMP, CONF_HEATPUMP_ENERGY]
+HEATING_KEYS: Final = [CONF_HEATING_CLIMATE, CONF_HEATPUMP_ENERGY]
+WEATHER_KEYS: Final = [CONF_OUTDOOR_TEMP, CONF_WEATHER]
 
 # Standardnavne på SigEnergy-tilstande (kan ændres i opsætningen)
 DEFAULT_BATTERY_OPTIONS: Final = {

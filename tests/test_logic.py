@@ -29,6 +29,7 @@ planner = _load("planner")
 pricing = _load("pricing")
 savings = _load("savings")
 profile = _load("profile")
+weather = _load("weather")
 
 TZ = ZoneInfo("Europe/Copenhagen")
 
@@ -423,3 +424,41 @@ def test_heating_outdoor_ok():
     assert ok(10, 10, True) is False
     assert ok(9.5, 10, False) is False and ok(9.5, 10, True) is True
     assert ok(8.9, 10, False) is True
+
+
+def test_pick_weather_entity():
+    assert weather.pick_weather_entity(["weather.x", "weather.forecast_home"]) == "weather.forecast_home"
+    assert weather.pick_weather_entity(["weather.b", "weather.a", "sensor.t"]) == "weather.a"
+    assert weather.pick_weather_entity([]) is None
+
+
+def test_forecast_sensor_ids():
+    ex = {"sensor.energy_production_today", "sensor.energy_production_today_remaining",
+          "sensor.energy_production_tomorrow", "sensor.energy_production_today_2"}
+    ids = weather.forecast_sensor_ids(None, ex)
+    assert ids["today"] == "sensor.energy_production_today" and ids["tomorrow"] == "sensor.energy_production_tomorrow"
+    ids = weather.forecast_sensor_ids("sensor.energy_production_today_remaining_2", ex)
+    assert ids == {"today": "sensor.energy_production_today_2", "remaining": "sensor.energy_production_today_remaining_2"}
+    sc = {"sensor.solcast_pv_forecast_forecast_today", "sensor.solcast_pv_forecast_forecast_remaining_today"}
+    ids = weather.forecast_sensor_ids("sensor.solcast_pv_forecast_forecast_remaining_today", sc)
+    assert ids["today"] == "sensor.solcast_pv_forecast_forecast_today"
+    assert weather.forecast_sensor_ids("sensor.min_egen", set()) == {"remaining": "sensor.min_egen"}
+
+
+def test_summarize_forecast():
+    day = datetime(2026, 10, 19, tzinfo=TZ)
+    # Solcast-stil: nøgle = periodens start, 1 kWh pr. time 08–16
+    wh = {(day + timedelta(hours=h)).isoformat(): 1000.0 for h in range(8, 17)}
+    wh[(day + timedelta(days=1, hours=12)).isoformat()] = 2500.0
+    now = (day + timedelta(hours=12, minutes=30)).astimezone(timezone.utc)
+    f = weather.summarize_forecast(wh, now, TZ)
+    assert f["today_kwh"] == 9.0 and f["tomorrow_kwh"] == 2.5
+    assert f["remaining_kwh"] == 4.5          # halvdelen af 12-timen + 13–16
+    assert len(f["hours"]) == 9 and f["hours"][0]["kw"] == 1.0
+    # Forecast.Solar-stil: nøgle = periodens slutning, første punkt er solopgang
+    fs = {(day + timedelta(hours=7, minutes=52)).isoformat(): 0, (day + timedelta(hours=8)).isoformat(): 40,
+          (day + timedelta(hours=9)).isoformat(): 600, (day + timedelta(hours=10)).isoformat(): 1200}
+    f = weather.summarize_forecast(fs, (day + timedelta(hours=8, minutes=30)).astimezone(timezone.utc), TZ, key_is_end=True)
+    assert f["today_kwh"] == 1.84 and f["remaining_kwh"] == 1.5
+    assert f["peak_kw"] == 1.2 and f["peak_time"].startswith("2026-10-19T09:00")
+    assert weather.summarize_forecast({}, now, TZ) == {}

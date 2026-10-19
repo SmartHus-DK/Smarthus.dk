@@ -62,7 +62,8 @@
           "ev": "EVs",
           "hotwater": "Hot water",
           "heating": "Heating / heat pump",
-          "prices": "Electricity price and tariffs"
+          "prices": "Electricity price and tariffs",
+          "weather": "Weather and outdoor temperature"
         }
       },
       "battery": {
@@ -162,13 +163,23 @@
         "description": "The temperature is raised in the cheapest hours and lowered in the most expensive.",
         "data": {
           "heating_climate_entity": "Thermostat / heat pump",
-          "heatpump_energy_sensor": "Energy meter: heat pump (kWh)",
-          "outdoor_temp_sensor": "Outdoor temperature (°C) – optional"
+          "heatpump_energy_sensor": "Energy meter: heat pump (kWh)"
         },
         "data_description": {
           "heating_climate_entity": "The thermostat or heat pump (climate entity) raised in cheap hours and lowered in expensive hours.",
-          "heatpump_energy_sensor": "Increasing meter (kWh) of the heat pump. Only used for savings.",
-          "outdoor_temp_sensor": "An outdoor temperature sensor. With a sensor, heating control is only active when it is colder outside than 'Active below outdoor temperature' (set on the card, default 10 °C). When warmer, the thermostat is set to the base temperature and left alone. It resumes when it is 1 °C below the limit."
+          "heatpump_energy_sensor": "Increasing meter (kWh) of the heat pump. Only used for savings."
+        }
+      },
+      "weather": {
+        "title": "Weather and outdoor temperature",
+        "description": "Used for the weather and outdoor temperature in the energy flow on the card and for the heating limit ('Active below outdoor temperature'). Both are optional – if empty, SmartHus uses Home Assistant's own weather from the cloud (Met.no 'Home').",
+        "data": {
+          "outdoor_temp_sensor": "Outdoor temperature sensor – optional",
+          "weather_entity": "Weather from the cloud – optional"
+        },
+        "data_description": {
+          "outdoor_temp_sensor": "Your own outdoor sensor. Used when available; otherwise the temperature from the weather entity is used.",
+          "weather_entity": "The weather entity for the weather picture (sun, clouds, rain, snow …) and the outdoor temperature if you have no sensor. If empty, Home Assistant's own is found automatically (weather.forecast_home)."
         }
       },
       "prices": {
@@ -379,6 +390,12 @@
       },
       "energy_flow": {
         "name": "Energy flow (house consumption)"
+      },
+      "outdoor_temperature": {
+        "name": "Outdoor temperature"
+      },
+      "solar_forecast": {
+        "name": "Solar forecast rest of today"
       }
     },
     "binary_sensor": {

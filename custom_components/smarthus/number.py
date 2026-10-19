@@ -51,7 +51,6 @@ from .const import (
     S_HEATING_REDUCE_FROM,
     S_HEATING_REDUCE_TO,
     S_HEATING_MAX_OUTDOOR,
-    CONF_OUTDOOR_TEMP,
 )
 from .controller import SmartHusController
 from .entity import SmartHusEntity
@@ -172,7 +171,7 @@ NUMBERS: tuple[SmartHusNumberDescription, ...] = (
                               requires=CONF_HEATING_CLIMATE),
     SmartHusNumberDescription(key=S_HEATING_MAX_OUTDOOR, icon="mdi:sun-thermometer-outline", native_min_value=-20,
                               native_max_value=30, native_step=0.5, native_unit_of_measurement=C,
-                              requires=CONF_OUTDOOR_TEMP),
+                              requires=CONF_HEATING_CLIMATE),
     SmartHusNumberDescription(key=S_SOLAR_EXPORT_MIN, icon="mdi:transmission-tower-off", native_min_value=-2,
                               native_max_value=5, native_step=0.01, native_unit_of_measurement="kr/kWh",
                               requires=CONF_SOLAR_CURTAIL),
@@ -203,7 +202,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
             if thermostat or (d.key == S_HOTWATER_BOOST_TEMP and hw and controller.has(CONF_HOTWATER_TEMP)):
                 entities.append(SmartHusNumber(entry, controller, d))
         elif d.key == S_HEATING_MAX_OUTDOOR:
-            if controller.has(CONF_HEATING_CLIMATE) and controller.has(CONF_OUTDOOR_TEMP):
+            if controller.has(CONF_HEATING_CLIMATE):
                 entities.append(SmartHusNumber(entry, controller, d))
         elif d.requires is None or controller.has(d.requires):
             entities.append(SmartHusNumber(entry, controller, d))

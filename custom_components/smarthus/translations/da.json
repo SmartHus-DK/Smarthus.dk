@@ -67,7 +67,8 @@
           "ev": "Elbiler",
           "hotwater": "Varmt vand",
           "heating": "Varme / varmepumpe",
-          "prices": "Elpris og tariffer"
+          "prices": "Elpris og tariffer",
+          "weather": "Vejr og udetemperatur"
         }
       },
       "battery": {
@@ -169,13 +170,23 @@
         "description": "Temperaturen hæves i de billigste timer og sænkes i de dyreste.",
         "data": {
           "heating_climate_entity": "Termostat / varmepumpe",
-          "heatpump_energy_sensor": "Energimåler: varmepumpe (kWh)",
-          "outdoor_temp_sensor": "Udetemperatur (°C) – valgfri"
+          "heatpump_energy_sensor": "Energimåler: varmepumpe (kWh)"
         },
         "data_description": {
           "heating_climate_entity": "Termostaten eller varmepumpen (climate-entitet), som SmartHus skruer op i billige timer og ned i dyre timer – fx climate.varmepumpe eller climate.stue.",
-          "heatpump_energy_sensor": "En stigende måler (kWh) for varmepumpens strømforbrug. Bruges kun til at beregne besparelsen.",
-          "outdoor_temp_sensor": "En føler for udetemperaturen, fx sensor.udetemperatur eller vejrudsigtens temperatur. Med en føler er varmestyringen kun aktiv, når det er koldere ude end 'Aktiv under udetemperatur' (indstilles på kortet, standard 10 °C). Når det er varmere, sættes termostaten til grundtemperaturen, og SmartHus lader den være. Den starter igen, når det er 1 °C koldere end grænsen."
+          "heatpump_energy_sensor": "En stigende måler (kWh) for varmepumpens strømforbrug. Bruges kun til at beregne besparelsen."
+        }
+      },
+      "weather": {
+        "title": "Vejr og udetemperatur",
+        "description": "Bruges til vejret og udetemperaturen i energiflowet på kortet og til varmestyringens grænse ('Aktiv under udetemperatur'). Begge felter er valgfrie – står de tomme, bruger SmartHus Home Assistants eget vejr fra skyen (Met.no 'Hjem').",
+        "data": {
+          "outdoor_temp_sensor": "Udendørs temperaturføler – valgfri",
+          "weather_entity": "Vejr fra skyen – valgfri"
+        },
+        "data_description": {
+          "outdoor_temp_sensor": "Din egen udeføler, fx sensor.udetemperatur. Den bruges, når den svarer. Er den ikke valgt eller svarer den ikke, bruges temperaturen fra vejr-entiteten.",
+          "weather_entity": "Vejr-entiteten, der giver vejrbilledet (sol, skyer, regn, sne …) og udetemperaturen, hvis du ikke har en føler. Står feltet tomt, findes Home Assistants egen automatisk (weather.forecast_home)."
         }
       },
       "prices": {
@@ -391,6 +402,12 @@
       },
       "energy_flow": {
         "name": "Energiflow (husets forbrug)"
+      },
+      "outdoor_temperature": {
+        "name": "Udetemperatur"
+      },
+      "solar_forecast": {
+        "name": "Solprognose resten af dagen"
       }
     },
     "binary_sensor": {

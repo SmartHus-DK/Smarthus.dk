@@ -46,6 +46,7 @@ from .const import (
     CONF_HEATING_CLIMATE,
     CONF_HEATPUMP_ENERGY,
     CONF_OUTDOOR_TEMP,
+    CONF_WEATHER,
     HEATING_OUTDOOR_HYSTERESIS,
     S_HEATING_MAX_OUTDOOR,
     CONF_HOTWATER_ENERGY,
@@ -93,6 +94,7 @@ from .savings import SavingsCalculator
 from .flow import energy_flow, to_kw
 from .plug import pick_connected, plug_state
 from .solar import EvSolarState, regulate_ev
+from .weather import forecast_sensor_ids, merge_wh, pick_weather_entity, summarize_forecast
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -141,6 +143,11 @@ class SmartHusController:
         # Varmt vand med temperaturføler: True når øvre grænse er nået
         self.hotwater_full = False
         self.heating_outdoor_ok = True     # varmestyringen er aktiv ift. udetemperaturen
+        # Solprognose (Wh pr. periode) fra Forecast.Solar/Solcast – hentes hvert 15. minut
+        self._forecast_wh: dict[str, float] = {}
+        self._forecast_key_is_end = False
+        self._forecast_fetched = 0.0
+        self._fc_ids: dict[str, str] = {}
         # Opvarmning med solcelleoverskud
         self.hotwater_surplus = False
         self._surplus_count = 0
@@ -242,7 +249,8 @@ class SmartHusController:
             self.profile, now.astimezone(self.tz), until.astimezone(self.tz),
             soc=self._float_state(self.config.get(CONF_BATTERY_SOC)),
             capacity=self.settings[S_BATTERY_CAPACITY], min_soc=self.settings[S_BATTERY_MIN_SOC],
-            solar_remaining=self._energy_kwh(CONF_SOLAR_FORECAST) if self.has(CONF_SOLAR_FORECAST) else None,
+            solar_remaining=self._energy_kwh(CONF_SOLAR_FORECAST) if self.has(CONF_SOLAR_FORECAST)
+            else self.solar_forecast.get("remaining_kwh"),
         )
         # Sælg kun det, der er ud over reserven
         if self.plan.battery_action == ACTION_DISCHARGE and self.reserve.sellable_kwh is not None \
@@ -336,6 +344,9 @@ class SmartHusController:
         async_dispatcher_send(self.hass, SIGNAL_TICK.format(entry_id=self.entry.entry_id))
 
     async def _async_tick(self, now: datetime) -> None:
+        if time.monotonic() - self._forecast_fetched > 900 or not self._forecast_fetched:
+            self._forecast_fetched = time.monotonic()
+            await self._async_refresh_forecast()
         if self.active(MODULE_HOTWATER):
             self._update_surplus()
         self.recalculate()
@@ -701,6 +712,7 @@ class SmartHusController:
             self.plan.hotwater_on or self.hotwater_surplus) and not self.hotwater_full
         f["has_hotwater"] = bool(self.config.get(CONF_HOTWATER_ENTITY))
         f["has_heatpump"] = bool(self.config.get(CONF_HEATING_CLIMATE))
+        f["weather"] = self.weather_info
         return f
 
     def _today(self) -> str:
@@ -755,16 +767,124 @@ class SmartHusController:
             self._hw_done_date = today
             self._hw_surplus_sec = 0.0
 
+    # --- Vejr og solprognose ---------------------------------------------
+    @property
+    def weather_entity(self) -> str | None:
+        """Valgt vejr-entitet, ellers Home Assistants egen (Met.no 'Hjem') fra skyen."""
+        if self.config.get(CONF_WEATHER):
+            return self.config[CONF_WEATHER]
+        try:
+            ids = [s.entity_id for s in self.hass.states.async_all("weather")]
+        except AttributeError:
+            return None
+        return pick_weather_entity(ids)
+
+    def _weather_state(self):
+        entity_id = self.weather_entity
+        st = self.hass.states.get(entity_id) if entity_id else None
+        if st is None or st.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            return None
+        return st
+
+    @property
+    def outdoor_source(self) -> str | None:
+        if self._float_state(self.config.get(CONF_OUTDOOR_TEMP)) is not None:
+            return "sensor"
+        st = self._weather_state()
+        return "weather" if st is not None and st.attributes.get("temperature") is not None else None
+
     @property
     def outdoor_temp(self) -> float | None:
-        return self._float_state(self.config.get(CONF_OUTDOOR_TEMP))
+        """Udetemperatur: egen føler, hvis den er valgt og svarer – ellers vejret fra skyen."""
+        temp = self._float_state(self.config.get(CONF_OUTDOOR_TEMP))
+        if temp is not None:
+            return temp
+        st = self._weather_state()
+        try:
+            return float(st.attributes.get("temperature")) if st is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    @property
+    def weather_info(self) -> dict:
+        st = self._weather_state()
+        sun = self.hass.states.get("sun.sun")
+        a = st.attributes if st is not None else {}
+        return {
+            "entity": self.weather_entity,
+            "condition": st.state if st is not None else None,
+            "temperature": self.outdoor_temp,
+            "temp_source": self.outdoor_source,
+            "cloud_coverage": a.get("cloud_coverage"),
+            "humidity": a.get("humidity"),
+            "wind_speed": a.get("wind_speed"),
+            "wind_speed_unit": a.get("wind_speed_unit"),
+            "night": sun.state == "below_horizon" if sun is not None else None,
+        }
+
+    async def _async_refresh_forecast(self) -> None:
+        """Hent timeprognosen fra Forecast.Solar eller Solcast (samme data som energi-dashboardet)."""
+        try:
+            from homeassistant.loader import async_get_integration
+        except ImportError:
+            return
+        for domain, key_is_end in (("forecast_solar", True), ("solcast_solar", False)):
+            try:
+                entries = self.hass.config_entries.async_entries(domain)
+            except AttributeError:
+                return
+            if not entries:
+                continue
+            try:
+                integration = await async_get_integration(self.hass, domain)
+                platform = await integration.async_get_platform("energy")
+                wh: dict[str, float] = {}
+                for entry in entries:
+                    res = await platform.async_get_solar_forecast(self.hass, entry.entry_id)
+                    if res and res.get("wh_hours"):
+                        wh = merge_wh(wh, {str(k): v for k, v in res["wh_hours"].items()})
+            except Exception as err:  # noqa: BLE001 – prognosen er kun til visning
+                _LOGGER.debug("Kunne ikke hente solprognose fra %s: %s", domain, err)
+                continue
+            if wh:
+                self._forecast_wh, self._forecast_key_is_end = wh, key_is_end
+                return
+        self._forecast_wh = {}
+
+    def _forecast_ids(self) -> dict[str, str]:
+        """Prognose-sensorerne – findes igen hvert 15. minut (der kan være mange sensorer)."""
+        now = time.monotonic()
+        at = getattr(self, "_fc_ids_at", None)
+        if at is None or now - at > (900 if self._fc_ids.get("today") else 60):
+            try:
+                existing = {s.entity_id for s in self.hass.states.async_all("sensor")}
+            except AttributeError:
+                existing = set()
+            self._fc_ids = forecast_sensor_ids(self.config.get(CONF_SOLAR_FORECAST), existing)
+            self._fc_ids_at = now
+        return self._fc_ids
+
+    @property
+    def solar_forecast(self) -> dict:
+        """Solprognose for i dag, resten af dagen og i morgen + timekurve for i dag."""
+        out = summarize_forecast(self._forecast_wh, dt_util.utcnow(), self.tz, self._forecast_key_is_end) \
+            if self._forecast_wh else {}
+        ids = self._forecast_ids()
+        # Sensorerne er det, brugeren kender – de vinder over vores egen sum
+        for key, out_key in (("today", "today_kwh"), ("remaining", "remaining_kwh"), ("tomorrow", "tomorrow_kwh")):
+            val = self._energy_entity_kwh(ids.get(key))
+            if val is not None:
+                out[out_key] = round(val, 2)
+        power = self._power_kw(ids.get("power_now"))
+        if power is not None:
+            out["power_now_kw"] = round(power, 2)
+        out["available"] = any(out.get(k) is not None for k in ("today_kwh", "remaining_kwh", "tomorrow_kwh"))
+        return out
 
     def _update_heating_outdoor(self) -> bool:
         """Varmestyringen er kun aktiv, når det er koldere ude end grænsen (med 1 °C hysterese).
-        Uden udeføler – eller hvis føleren ikke svarer – beholdes den seneste tilstand."""
-        if not self.has(CONF_OUTDOOR_TEMP):
-            self.heating_outdoor_ok = True
-            return True
+        Udetemperaturen kommer fra egen føler eller vejret fra skyen. Er der ingen temperatur,
+        beholdes den seneste tilstand."""
         temp = self.outdoor_temp
         if temp is not None:
             self.heating_outdoor_ok = heating_outdoor_ok(

@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.14.0";
+const SMARTHUS_CARD_VERSION = "1.15.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -19,6 +19,13 @@ const COLORS = {
   heating_reduce: "#7B8794",
   solar_self: "#3FA88F",
   solar_sold: "#E0A21B",
+};
+
+// Vejrforhold fra Home Assistants vejr-entiteter
+const WEATHER_DA = {
+  "clear-night": "Klart", cloudy: "Overskyet", exceptional: "Usædvanligt vejr", fog: "Tåge", hail: "Hagl",
+  lightning: "Torden", "lightning-rainy": "Torden og regn", partlycloudy: "Let skyet", pouring: "Skybrud",
+  rainy: "Regn", snowy: "Sne", "snowy-rainy": "Slud", sunny: "Sol", windy: "Blæsende", "windy-variant": "Blæst og skyer",
 };
 
 // Kategorier i SmartHus-besparelsen (solceller vises for sig)
@@ -349,7 +356,10 @@ class SmartHusCard extends HTMLElement {
   _renderSolar() {
     const tab = SOLAR_TABS.some((t) => t.id === this._solarTab) ? this._solarTab : "month";
     const st = this._st("sensor", `solar_value_${tab}`);
-    if (!st) return "";
+    if (!st) {
+      const fc = this._solarForecast();
+      return fc ? `<div class="solar"><div class="solar-head"><div class="sec-title"><ha-icon icon="mdi:solar-power-variant"></ha-icon>Solprognose</div></div>${fc}</div>` : "";
+    }
     const a = st.attributes || {};
     const total = (a.self_value || 0) + (a.export_income || 0);
     const produced = a.produced || 0;
@@ -376,7 +386,53 @@ class SmartHusCard extends HTMLElement {
           <i style="width:${selfShare * 100}%;background:${COLORS.solar_self}"></i><i style="width:${(1 - selfShare) * 100}%;background:${COLORS.solar_sold}"></i>
         </div>
         <div class="share-lbl"><span>${Math.round(selfShare * 100)} % brugt selv</span><span>${Math.round((1 - selfShare) * 100)} % solgt</span></div>` : ""}
+        ${this._solarForecast(true)}
         ${this._solarChart(tab)}
+      </div>`;
+  }
+
+  /** Solprognose: i dag, resten af dagen, i morgen og en timekurve for i dag. */
+  _solarForecast(withTitle = false) {
+    const st = this._st("sensor", "solar_forecast");
+    const a = st?.attributes || {};
+    if (!st || !a.available) return "";
+    const kwh = (v) => (v == null ? "–" : `${nf(v, v >= 100 ? 0 : 1)} kWh`);
+    const peak = a.peak_time ? `top kl. ${hh(new Date(a.peak_time))}${a.peak_kw != null ? ` · ${nf(a.peak_kw, 1)} kW` : ""}` : null;
+    const now = Date.now();
+    const hours = (a.hours || []).filter((h) => h.kw != null);
+    let chart = "";
+    const first = hours.findIndex((h) => h.kw > 0.01);
+    const last = hours.length - 1 - [...hours].reverse().findIndex((h) => h.kw > 0.01);
+    if (first >= 0) {
+      const rows = hours.slice(Math.max(0, first - 1), Math.min(hours.length, last + 2));
+      const W = rows.length * 10, H = 46;
+      const max = Math.max(...rows.map((r) => r.kw), 0.1);
+      let nowX = null;
+      const bars = rows.map((r, i) => {
+        const t = new Date(r.start).getTime();
+        const past = t + 3600e3 <= now;
+        if (t <= now && now < t + 3600e3) nowX = i * 10 + ((now - t) / 3600e3) * 10;
+        const h = (r.kw / max) * H;
+        return `<rect x="${i * 10 + 1.5}" y="${H - h}" width="7" height="${h}" rx="1.5" fill="${COLORS.solar_sold}" opacity="${past ? 0.35 : 1}"><title>${hh(new Date(r.start))}: ${nf(r.kw, 1)} kW</title></rect>`;
+      }).join("");
+      const ticks = rows.map((r, i) => {
+        const d = new Date(r.start);
+        return d.getHours() % 3 === 0 ? `<span style="left:${((i * 10 + 5) / W) * 100}%">${String(d.getHours()).padStart(2, "0")}</span>` : "";
+      }).join("");
+      chart = `<div class="fc-chart">
+          <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Forventet solproduktion time for time i dag">${bars}
+            ${nowX != null ? `<line x1="${nowX}" x2="${nowX}" y1="0" y2="${H}" class="fc-now"/>` : ""}</svg>
+          <div class="ticks c">${ticks}</div></div>`;
+    }
+    const pnow = a.power_now_kw != null ? ` · forventet nu ${nf(a.power_now_kw, 1)} kW` : "";
+    return `<div class="fc">
+        ${withTitle ? `<div class="fc-title">Solprognose${pnow}</div>` : pnow ? `<div class="fc-title">${pnow.slice(3)}</div>` : ""}
+        <div class="kpis fc-kpis">
+          ${this._kpi("I dag", kwh(a.today_kwh), peak, "solar_forecast")}
+          ${this._kpi("Resten af dagen", kwh(a.remaining_kwh), null, "solar_forecast", COLORS.solar_sold)}
+          ${this._kpi("I morgen", kwh(a.tomorrow_kwh), null, "solar_forecast")}
+        </div>
+        ${chart}
       </div>`;
   }
 
@@ -649,7 +705,7 @@ class SmartHusCard extends HTMLElement {
       const a = this._st("binary_sensor", "heating_boost_now")?.attributes || {};
       if (a.outdoor_temp != null) {
         extra = `<div class="water">
-          <div class="water-row"><span>Udetemperatur</span><b>${nf(a.outdoor_temp, 1)} °C</b></div>
+          <div class="water-row"><span>Udetemperatur <small class="muted">${a.outdoor_source === "sensor" ? "fra din føler" : "fra vejret"}</small></span><b>${nf(a.outdoor_temp, 1)} °C</b></div>
           <div class="water-sub">${a.paused_warm_outside
             ? `Varmestyringen holder pause, fordi det er ${nf(a.outdoor_limit, 1)} °C eller varmere ude. Den starter igen ved ${nf(a.outdoor_limit - 1, 1)} °C.`
             : a.outdoor_limit != null ? `Varmestyringen er aktiv, fordi det er koldere end ${nf(a.outdoor_limit, 1)} °C ude.` : ""}</div>
@@ -836,8 +892,75 @@ class SmartHusCard extends HTMLElement {
       labels += label(...at, c.name, c.connected === false ? "ikke tilsluttet" : c.kw == null ? "" : kwTxt(c.kw), C.ev, 14, "start");
     });
 
-    return `<div class="scene" role="img" aria-label="Energiflow: huset bruger ${kwTxt(f.house_kw)}">
+    // Vejret lige nu øverst til venstre
+    const w = f.weather || {};
+    let wxAria = "";
+    if (w.condition || w.temperature != null) {
+      const cond = w.condition === "sunny" && w.night ? "clear-night" : w.condition;
+      const name = WEATHER_DA[cond] || "";
+      svg += this._weatherIcon(cond, -158, -20);
+      labels += `<g class="lbl" style="text-anchor:start" transform="translate(-140,-21)">
+        ${w.temperature != null ? `<text y="3" class="wx-temp">${nf(w.temperature, 1)} °C</text>` : ""}
+        <text y="${w.temperature != null ? 15 : 3}" class="lbl-t">${esc(name || "Ude")}</text></g>`;
+      wxAria = `, ude ${w.temperature != null ? `${nf(w.temperature, 1)} grader` : ""} ${name}`;
+    }
+
+    return `<div class="scene" role="img" aria-label="Energiflow: huset bruger ${kwTxt(f.house_kw)}${wxAria}">
       <svg viewBox="-176 -34 360 236" preserveAspectRatio="xMidYMid meet">${svg}${labels}</svg></div>`;
+  }
+
+  /** Lille vejrikon (sol, måne, skyer, regn, sne, torden, tåge, blæst) centreret i (x, y). */
+  _weatherIcon(cond, x, y) {
+    const amber = "#F7B21B", blue = "#3A8DDE";
+    const sun = (sx, sy, r) => {
+      let rays = "";
+      for (let i = 0; i < 8; i++) {
+        const a = (i * Math.PI) / 4, c = Math.cos(a), s = Math.sin(a);
+        rays += `<line x1="${(sx + c * (r + 2.5)).toFixed(1)}" y1="${(sy + s * (r + 2.5)).toFixed(1)}" x2="${(sx + c * (r + 5.5)).toFixed(1)}" y2="${(sy + s * (r + 5.5)).toFixed(1)}"/>`;
+      }
+      return `<g class="wx-rays" stroke="${amber}" stroke-width="1.8" stroke-linecap="round">${rays}</g><circle cx="${sx}" cy="${sy}" r="${r}" fill="${amber}"/>`;
+    };
+    const moon = (mx, my) => `<path d="M${mx + 3},${my - 8} A8.5,8.5 0 1 0 ${mx + 7},${my + 5} A7,7 0 0 1 ${mx + 3},${my - 8} Z" fill="#F2D27A"/>`;
+    const cloud = (cx, cy, k = 1) => `<path class="wx-cloud" transform="translate(${cx},${cy}) scale(${k})"
+      d="M-11,6 L10,6 A5.5,5.5 0 0 0 10,-5 A7.5,7.5 0 0 0 -4,-7 A6.5,6.5 0 0 0 -11,6 Z"/>`;
+    const drops = (n, color = blue) => {
+      let d = "";
+      for (let i = 0; i < n; i++) {
+        const dx = -7 + (i * 14) / Math.max(n - 1, 1);
+        d += `<line class="wx-drop" style="animation-delay:${(i * 0.37).toFixed(2)}s" x1="${x + dx}" y1="${y + 9}" x2="${x + dx - 1.5}" y2="${y + 13}" stroke="${color}" stroke-width="1.8" stroke-linecap="round"/>`;
+      }
+      return d;
+    };
+    // Snefnug som små stjerner, hagl som runde korn
+    const flakes = (xs, hail = false) => xs.map((dx, i) => {
+      const fx = x + dx, fy = y + 11, r = 2.4;
+      const shape = hail
+        ? `<circle cx="${fx}" cy="${fy}" r="1.8" fill="#FFFFFF" stroke="#8FA2B4" stroke-width=".8"/>`
+        : `<g stroke="#7FA6C9" stroke-width="1.1" stroke-linecap="round"><line x1="${fx - r}" y1="${fy}" x2="${fx + r}" y2="${fy}"/>
+            <line x1="${fx - r / 2}" y1="${fy - r * 0.87}" x2="${fx + r / 2}" y2="${fy + r * 0.87}"/><line x1="${fx - r / 2}" y1="${fy + r * 0.87}" x2="${fx + r / 2}" y2="${fy - r * 0.87}"/></g>`;
+      return `<g class="wx-flake" style="animation-delay:${(i * 0.8).toFixed(2)}s">${shape}</g>`;
+    }).join("");
+    const bolt = `<path d="M${x + 1},${y + 5} L${x - 3},${y + 12} L${x},${y + 12} L${x - 2},${y + 18} L${x + 4},${y + 9} L${x + 1},${y + 9} L${x + 3},${y + 5} Z" fill="${amber}"/>`;
+    const wind = (wx, wy) => `<g fill="none" stroke="#8C9AA8" stroke-width="1.6" stroke-linecap="round">
+      <path d="M${wx - 10},${wy - 3} H${wx + 5} a3,3 0 1 0 -3,-3"/><path d="M${wx - 10},${wy + 2} H${wx + 8} a3,3 0 1 1 -3,3"/></g>`;
+    switch (cond) {
+      case "sunny": return sun(x, y, 6);
+      case "clear-night": return moon(x - 2, y);
+      case "partlycloudy": return sun(x - 5, y - 6, 5) + cloud(x + 4, y + 3, 0.72);
+      case "cloudy": return cloud(x + 4, y - 3, 0.7) + cloud(x - 1, y + 1);
+      case "rainy": return cloud(x, y - 1) + drops(3);
+      case "pouring": return cloud(x, y - 1) + drops(5);
+      case "snowy": return cloud(x, y - 1) + flakes([-7, 0, 7]);
+      case "snowy-rainy": return cloud(x, y - 1) + flakes([-6, 6]) + `<line class="wx-drop" x1="${x}" y1="${y + 9}" x2="${x - 1.5}" y2="${y + 13}" stroke="${blue}" stroke-width="1.8" stroke-linecap="round"/>`;
+      case "hail": return cloud(x, y - 1) + flakes([-7, -2, 3, 8], true);
+      case "lightning": return cloud(x, y - 1) + bolt;
+      case "lightning-rainy": return cloud(x, y - 1) + bolt + drops(2);
+      case "fog": return `<g stroke="#9AA7B4" stroke-width="2" stroke-linecap="round"><line x1="${x - 10}" y1="${y - 5}" x2="${x + 10}" y2="${y - 5}"/><line x1="${x - 7}" y1="${y}" x2="${x + 12}" y2="${y}"/><line x1="${x - 12}" y1="${y + 5}" x2="${x + 7}" y2="${y + 5}"/></g>`;
+      case "windy": return wind(x, y);
+      case "windy-variant": return cloud(x + 3, y - 4, 0.8) + wind(x - 1, y + 6);
+      case "exceptional": return `<path d="M${x},${y - 9} L${x + 10},${y + 8} L${x - 10},${y + 8} Z" fill="${amber}"/><text x="${x}" y="${y + 6}" text-anchor="middle" font-size="11" font-weight="700" fill="#3B2A00">!</text>`;
+      default: return `<g stroke="#8C9AA8" stroke-width="1.6" fill="none"><circle cx="${x}" cy="${y}" r="7"/></g>`;
+    }
   }
 
   _powerIcon(x, y, r, color, glow) {
@@ -1065,6 +1188,12 @@ class SmartHusCard extends HTMLElement {
       .share i { display: block; height: 100%; }
       .share-lbl { display: flex; justify-content: space-between; font-size: 11px; color: var(--secondary-text-color); margin-top: 4px; }
       .schart { margin-top: 14px; }
+      .fc { margin-top: 14px; }
+      .fc-title { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--secondary-text-color); }
+      .fc-kpis { margin-top: 6px; }
+      .fc-chart { margin-top: 10px; }
+      .fc-chart svg { display: block; width: 100%; height: 56px; }
+      .fc-now { stroke: var(--primary-text-color); stroke-width: 1; stroke-dasharray: 2 2; vector-effect: non-scaling-stroke; opacity: .6; }
       .schart svg { display: block; width: 100%; height: 80px; }
       .sbar { cursor: pointer; }
       .sbar:not(.sel) rect + rect { opacity: .85; }
@@ -1214,10 +1343,18 @@ class SmartHusCard extends HTMLElement {
       .scene .wifi.on path:nth-child(2) { animation-delay: .3s; }
       .scene .wifi.on path:nth-child(3) { animation-delay: .6s; }
       @keyframes sh-wifi { 0%, 100% { opacity: .25; } 40% { opacity: 1; } }
+      .scene .wx-rays { animation: sh-spin 24s linear infinite; transform-box: fill-box; transform-origin: center; }
+      .scene .wx-drop { animation: sh-drop 1.2s linear infinite; }
+      .scene .wx-flake { animation: sh-drop 2.6s linear infinite; }
+      .scene .wx-cloud { fill: #EEF2F5; stroke: #B9C4CE; stroke-width: 1; }
+      ha-card.dark .scene .wx-cloud { fill: #C9D2DA; stroke: #8996A3; }
+      .scene .wx-temp { font-size: 15px; font-weight: 700; fill: var(--primary-text-color); font-variant-numeric: tabular-nums; }
+      @keyframes sh-spin { to { transform: rotate(360deg); } }
+      @keyframes sh-drop { 0% { transform: translateY(-3px); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateY(7px); opacity: 0; } }
       .scene .steam path { animation: sh-steam 2.4s ease-in-out infinite; }
       @keyframes sh-flow { to { stroke-dashoffset: -22; } }
       @keyframes sh-steam { 0%, 100% { opacity: .2; } 50% { opacity: .9; } }
-      @media (prefers-reduced-motion: reduce) { .scene .fl-dash, .scene .steam path, .scene .wifi.on path { animation: none; } }
+      @media (prefers-reduced-motion: reduce) { .scene .fl-dash, .scene .steam path, .scene .wifi.on path, .scene .wx-rays, .scene .wx-drop, .scene .wx-flake { animation: none; } }
       .picker { padding: 12px 16px; border-bottom: 1px solid var(--sh-line); }
       .picker-head { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; }
       .picker-head ha-icon { --mdc-icon-size: 20px; color: var(--secondary-text-color); }

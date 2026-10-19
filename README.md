@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.14.0** – kortet viser sin version nederst. Står der et lavere tal på kortet, så genstart Home Assistant og nulstil app-cachen.
+**Version 1.15.0** – kortet viser sin version nederst. Står der et lavere tal på kortet, så genstart Home Assistant og nulstil app-cachen.
 
 Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk).
 
@@ -14,7 +14,7 @@ SmartHus henter dagens og morgendagens spotpriser fra Energi Data Service, lægg
 | ☀️ **Solceller** | Begrænser eksport når salgsprisen er negativ og giver et overblik over produktion, hvad solcellerne har sparet dig, og hvad du har tjent ved salg – i dag, pr. måned, pr. år og i alt. |
 | 🚗 **Elbillader** | Lader bilen op til din mål-SoC (fx 80 %) i de billigste timer inden dit "klar kl."-tidspunkt og stopper, når målet er nået. Knap til "Lad elbil nu". |
 | 🚿 **Varmt vand** | Opvarmer i dagens billigste sammenhængende periode (kontakt eller temperatur). |
-| 🔥 **Varme / varmepumpe** | Hæver temperaturen X grader i de N billigste timer og sænker den i de dyreste. Med en udeføler er styringen kun aktiv, når det er koldere ude end en grænse (standard 10 °C). |
+| 🔥 **Varme / varmepumpe** | Hæver temperaturen X grader i de N billigste timer og sænker den i de dyreste. Kun aktiv, når det er koldere ude end en grænse (standard 10 °C) – fra egen udeføler eller vejret fra skyen. |
 | 💰 **Besparelser** | Viser hvad SmartHus-styringen har sparet i dag, denne måned og i alt – fordelt på elbil, batteri, varme og varmt vand. Solcellerne vises for sig. |
 
 SmartHus styrer via **dine eksisterende entiteter**, så det virker med SigEnergy og de fleste andre invertere, ladebokse og varmepumper der allerede er i Home Assistant.
@@ -318,6 +318,11 @@ Ser du ikke kortet efter en opdatering, så genindlæs siden (træk ned i appen 
 - **Ladeeffekt lige nu** for hver bil (Elbiler)
 
 Husets forbrug beregnes ud fra resten. Data findes også i `sensor.smarthus_energy_flow`.
+
+### Vejr, udetemperatur og solprognose
+- **Vejret** (sol, skyer, regn, sne, torden, tåge, blæst) og **udetemperaturen** vises øverst i energiflowet. Som standard bruges Home Assistants eget vejr fra skyen (Met.no, `weather.forecast_home`). Under Konfigurer → **Vejr og udetemperatur** kan du vælge din egen udeføler – den bruges, når den svarer, ellers bruges temperaturen fra vejret. Se også `sensor.smarthus_outdoor_temperature`.
+- **Varmestyringen** er kun aktiv, når det er koldere ude end **Aktiv under udetemperatur** (standard 10 °C). Over grænsen sættes grundtemperaturen én gang, og termostaten lades være. Sæt grænsen til 30 °C, hvis styringen altid skal være aktiv.
+- **Solprognosen** (i dag, resten af dagen, i morgen og en kurve time for time) vises under Solceller på kortet. Den hentes automatisk fra **Forecast.Solar** eller **Solcast**, hvis en af dem er installeret – samme prognose som i energi-dashboardet. Data findes i `sensor.smarthus_solar_forecast`, og batteriets reserve bruger den også.
 
 ## Dashboard
 Et komplet eksempel-dashboard med standardkort findes i `dashboards/smarthus-dashboard.yaml`. Prisgrafen bruger [ApexCharts Card](https://github.com/RomRider/apexcharts-card) fra HACS.

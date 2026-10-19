@@ -32,7 +32,7 @@ pkg = types.ModuleType("smarthus"); pkg.__path__ = [str(PKG)]; sys.modules["smar
 def load(n):
     spec = importlib.util.spec_from_file_location(f"smarthus.{n}", PKG / f"{n}.py")
     m = importlib.util.module_from_spec(spec); sys.modules[f"smarthus.{n}"] = m; spec.loader.exec_module(m); return m
-for n in ("const", "planner", "pricing", "savings", "profile", "solar", "plug", "coordinator", "controller"):
+for n in ("const", "planner", "pricing", "savings", "profile", "solar", "plug", "flow", "weather", "coordinator", "controller"):
     load(n)
 ctl_mod = sys.modules["smarthus.controller"]; planner = sys.modules["smarthus.planner"]
 
@@ -230,7 +230,21 @@ async def main():
     out["v"] = "unavailable"; assert c._update_heating_outdoor() is False  # føler væk: behold
     out["v"] = "8.9"; assert c._update_heating_outdoor() is True     # 1 °C under: aktiv igen
     c, h = make({"heating_climate_entity": "climate.vp"}, {})
-    assert c._update_heating_outdoor() is True        # uden udeføler: altid aktiv
+    assert c._update_heating_outdoor() is True        # uden udeføler og vejr: altid aktiv
+    # Fallback til vejret fra skyen, når der ikke er en føler (eller den ikke svarer)
+    wx = {"weather.forecast_home": State("rainy", temperature=11.0), "sensor.ude": State("unavailable"),
+          "sun.sun": State("above_horizon")}
+    c, h = make({"heating_climate_entity": "climate.vp", "outdoor_temp_sensor": "sensor.ude"}, {})
+    c.hass.states = types.SimpleNamespace(get=wx.get,
+        async_all=lambda d: [types.SimpleNamespace(entity_id=e) for e in wx if e.startswith(d + ".")])
+    assert c.weather_entity == "weather.forecast_home"
+    assert c.outdoor_temp == 11.0 and c.outdoor_source == "weather"
+    assert c._update_heating_outdoor() is False       # 11 °C fra vejret: pause
+    wx["sensor.ude"] = State("4.5")
+    assert c.outdoor_temp == 4.5 and c.outdoor_source == "sensor"
+    assert c._update_heating_outdoor() is True        # egen føler vinder
+    info = c.weather_info
+    assert info["condition"] == "rainy" and info["temperature"] == 4.5 and info["night"] is False
     print("controller OK")
 
 def test_controller_control():

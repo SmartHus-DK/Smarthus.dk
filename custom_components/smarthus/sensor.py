@@ -23,6 +23,8 @@ from .const import (
     CONF_EXPORT_ENERGY,
     CONF_HOUSE_ENERGY,
     CONF_SOLAR_ENERGY,
+    CONF_SOLAR_FORECAST,
+    CONF_SOLAR_POWER,
     MODULE_BATTERY,
     MODULE_HEATING,
     MODULE_HOTWATER,
@@ -180,6 +182,9 @@ SENSORS: tuple[SmartHusSensorDescription, ...] = (
     SmartHusSensorDescription(key="energy_flow", icon="mdi:home-lightning-bolt-outline", native_unit_of_measurement="kW",
                               suggested_display_precision=2, value_fn=lambda c: c.flow.get("house_kw"),
                               attrs_fn=lambda c: c.flow),
+    SmartHusSensorDescription(key="outdoor_temperature", icon="mdi:thermometer", device_class=SensorDeviceClass.TEMPERATURE,
+                              native_unit_of_measurement="°C", suggested_display_precision=1,
+                              value_fn=lambda c: c.outdoor_temp, attrs_fn=lambda c: c.weather_info),
     SmartHusSensorDescription(key="current_price", icon="mdi:cash-clock", value_fn=lambda c: _current(c, "price"),
                               attrs_fn=_price_attrs, **PRICE),
     SmartHusSensorDescription(key="spot_price", icon="mdi:chart-line", value_fn=lambda c: _current(c, "spot"), **PRICE),
@@ -281,6 +286,12 @@ SOLAR_SENSORS: tuple[SmartHusSensorDescription, ...] = tuple(
 )
 
 
+FORECAST_SENSOR = SmartHusSensorDescription(
+    key="solar_forecast", icon="mdi:solar-power-variant-outline", device_class=SensorDeviceClass.ENERGY,
+    native_unit_of_measurement="kWh", suggested_display_precision=1,
+    value_fn=lambda c: c.solar_forecast.get("remaining_kwh"), attrs_fn=lambda c: c.solar_forecast)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
                             async_add_entities: AddEntitiesCallback) -> None:
     controller = entry.runtime_data.controller
@@ -289,6 +300,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
         entities += [SmartHusSensor(entry, controller, d) for d in RESERVE_SENSORS]
     if controller.has(CONF_SOLAR_ENERGY):
         entities += [SmartHusSensor(entry, controller, d) for d in SOLAR_SENSORS]
+    if controller.has(CONF_SOLAR_ENERGY) or controller.has(CONF_SOLAR_POWER) or controller.has(CONF_SOLAR_FORECAST):
+        entities.append(SmartHusSensor(entry, controller, FORECAST_SENSOR))
     for car in controller.cars:
         for d in EV_SENSORS:
             entities.append(EvSensor(entry, controller, d, car["id"], car.get("name") or "Elbil"))
@@ -298,7 +311,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
 class SmartHusSensor(SmartHusEntity, SensorEntity):
     _domain = "sensor"
     entity_description: SmartHusSensorDescription
-    _unrecorded_attributes = frozenset({"today", "tomorrow", "days", "months"})
+    _unrecorded_attributes = frozenset({"today", "tomorrow", "days", "months", "hours"})
 
     def __init__(self, entry, controller, description: SmartHusSensorDescription) -> None:
         super().__init__(entry, controller, description.key)

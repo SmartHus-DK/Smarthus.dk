@@ -47,6 +47,7 @@ from .const import (
     CONF_EXPORT_ENERGY,
     CONF_HEATING_CLIMATE,
     CONF_OUTDOOR_TEMP,
+    CONF_WEATHER,
     CONF_HEATPUMP_ENERGY,
     CONF_HOTWATER_ENERGY,
     CONF_HOTWATER_TEMP,
@@ -86,6 +87,7 @@ from .const import (
     EV_KEYS,
     get_cars,
     HEATING_KEYS,
+    WEATHER_KEYS,
     HOTWATER_KEYS,
     PRICE_KEYS,
     SOLAR_KEYS,
@@ -119,6 +121,8 @@ HOTWATER = selector.EntitySelector(
 POWER = selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor", device_class="power"))
 TEMP = selector.EntitySelector(selector.EntitySelectorConfig(domain=["sensor", "input_number"]))
 CLIMATE = selector.EntitySelector(selector.EntitySelectorConfig(domain="climate"))
+WEATHER = selector.EntitySelector(selector.EntitySelectorConfig(domain="weather"))
+OUTDOOR = selector.EntitySelector(selector.EntitySelectorConfig(domain=["sensor", "input_number"], device_class="temperature"))
 FORECAST = selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor"))
 
 
@@ -277,7 +281,7 @@ class SmartHusOptionsFlow(OptionsFlow):
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         return self.async_show_menu(
             step_id="init",
-            menu_options=["battery", "solar", "ev", "hotwater", "heating", "prices"],
+            menu_options=["battery", "solar", "ev", "hotwater", "heating", "weather", "prices"],
         )
 
     async def async_step_prices(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
@@ -418,5 +422,11 @@ class SmartHusOptionsFlow(OptionsFlow):
     async def async_step_heating(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
             return self._save(HEATING_KEYS, user_input)
-        fields = [(CONF_HEATING_CLIMATE, CLIMATE), (CONF_OUTDOOR_TEMP, TEMP), (CONF_HEATPUMP_ENERGY, ENERGY)]
+        fields = [(CONF_HEATING_CLIMATE, CLIMATE), (CONF_HEATPUMP_ENERGY, ENERGY)]
         return self.async_show_form(step_id="heating", data_schema=_entity_schema(fields, self._current()))
+
+    async def async_step_weather(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        if user_input is not None:
+            return self._save(WEATHER_KEYS, user_input)
+        fields = [(CONF_OUTDOOR_TEMP, OUTDOOR), (CONF_WEATHER, WEATHER)]
+        return self.async_show_form(step_id="weather", data_schema=_entity_schema(fields, self._current()))

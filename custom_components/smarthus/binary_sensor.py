@@ -88,7 +88,8 @@ class SmartHusBinary(SmartHusEntity, BinarySensorEntity):
         if self.entity_description.key.startswith("heating_"):
             c = self.controller
             attrs["outdoor_temp"] = c.outdoor_temp
-            attrs["outdoor_limit"] = c.settings.get("heating_max_outdoor") if c.has("outdoor_temp_sensor") else None
+            attrs["outdoor_source"] = c.outdoor_source
+            attrs["outdoor_limit"] = c.settings.get("heating_max_outdoor") if c.outdoor_temp is not None else None
             attrs["paused_warm_outside"] = not c.heating_outdoor_ok
         return attrs
 
