@@ -593,8 +593,12 @@ class SmartHusCard extends HTMLElement {
         if (r && ra.reserve_kwh != null && ra.until) return `Reserve ${nf(ra.reserve_kwh, 1)} kWh til kl. ${hh(new Date(ra.until))}`;
         return `${prefix}${next("battery_charge_now") ? `Lader ${next("battery_charge_now")}` : "Normal drift"}`;
       }
-      case "hotwater":
-        return `${prefix}${isOn("hotwater_now") ? "Opvarmer nu" : next("hotwater_now") ? `Opvarmer ${next("hotwater_now")}` : "Ingen plan"}`;
+      case "hotwater": {
+        const a = this._st("binary_sensor", "hotwater_now")?.attributes || {};
+        const t = a.water_temp != null ? ` · ${nf(a.water_temp, 0)} °C` : "";
+        if (isOn("hotwater_now")) return `${prefix}${a.warm_enough ? "Varmt nok – venter" : "Opvarmer nu"}${t}`;
+        return `${prefix}${next("hotwater_now") ? `Opvarmer ${next("hotwater_now")}` : "Ingen plan"}${t}`;
+      }
       case "heating":
         if (isOn("heating_boost_now")) return `${prefix}Ekstra varme nu`;
         if (isOn("heating_reduce_now")) return `${prefix}Sparer på varmen nu`;
@@ -613,6 +617,17 @@ class SmartHusCard extends HTMLElement {
     let extra = "";
     if (m.car) extra = this._evCompare(m.id);
     if (m.id === "battery") extra = this._reserveBox();
+    if (m.id === "hotwater") {
+      const a = this._st("binary_sensor", "hotwater_now")?.attributes || {};
+      if (a.water_temp != null) {
+        const pct = a.max_temp ? Math.max(0, Math.min(1, a.water_temp / a.max_temp)) : 0;
+        extra = `<div class="water">
+          <div class="water-row"><span>Vandets temperatur</span><b>${nf(a.water_temp, 1)} °C</b></div>
+          <div class="water-bar"><i style="width:${pct * 100}%"></i></div>
+          <div class="water-sub">${a.warm_enough ? "Maks. temperatur nået – opvarmningen er sat på pause" : `Maks. ${nf(a.max_temp, 0)} °C`}</div>
+        </div>`;
+      }
+    }
     if (m.id === "solar") extra = `<div class="hint">Eksporten stoppes, når salgsprisen er under grænsen, og starter selv igen, når prisen kommer over. 0 kr betyder, at der kun stoppes ved negativ pris.</div>`;
     const evHasSoc = m.car && this._st("sensor", `${m.id}_smart_saving`)?.attributes?.soc != null;
     const hide = (k) =>
@@ -947,6 +962,12 @@ class SmartHusCard extends HTMLElement {
       .grp { padding-top: 6px; }
       .grp + .grp { margin-top: 6px; border-top: 1px dashed var(--sh-line); }
       .grp-title { font-size: 12px; font-weight: 600; color: var(--secondary-text-color); padding: 6px 0 0; }
+      .water { padding: 4px 0 10px; }
+      .water-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; }
+      .water-row b { font-size: 18px; font-variant-numeric: tabular-nums; }
+      .water-bar { height: 8px; border-radius: 4px; background: var(--sh-track); margin-top: 6px; overflow: hidden; }
+      .water-bar i { display: block; height: 100%; border-radius: 4px; background: ${COLORS.hotwater || "#2BA3C9"}; }
+      .water-sub { margin-top: 4px; font-size: 12px; color: var(--secondary-text-color); }
       .hint { font-size: 13px; color: var(--secondary-text-color); }
       .win-note { display: block; font-size: 11px; color: var(--secondary-text-color); }
       .win-ctl { display: flex; align-items: center; gap: 2px; }

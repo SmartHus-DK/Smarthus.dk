@@ -67,10 +67,16 @@ class SmartHusBinary(SmartHusEntity, BinarySensorEntity):
         if not fn:
             return None
         slots = fn(self.controller.plan)
-        return {
+        attrs = {
             "periods": merge_periods(slots, self.controller.tz),
             "slots": [s.start.isoformat() for s in sorted(slots, key=lambda s: s.start)],
         }
+        if self.entity_description.key == "hotwater_now":
+            c = self.controller
+            attrs["water_temp"] = c.hotwater_temp
+            attrs["max_temp"] = c.settings.get("hotwater_boost_temp")
+            attrs["warm_enough"] = c.hotwater_full
+        return attrs
 
 
 class EvChargeBinary(SmartHusEntity, BinarySensorEntity):
