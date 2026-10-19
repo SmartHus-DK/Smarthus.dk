@@ -59,6 +59,7 @@ from .entity import SmartHusEntity
 class SmartHusNumberDescription(NumberEntityDescription):
     requires: str | None = None
     per_car: bool = False  # én pr. elbil; nøglen "ev_..." bliver til "<bil-id>_..."
+    needs_current: bool = False  # kun for elbiler med styring af ladestrøm
     multi_car: bool = False  # kun når der er mindst to elbiler
 
 
@@ -98,6 +99,15 @@ NUMBERS: tuple[SmartHusNumberDescription, ...] = (
     SmartHusNumberDescription(key=S_EV_CHARGE_POWER, icon="mdi:ev-plug-type2", native_min_value=1,
                               native_max_value=50, native_step=0.1, native_unit_of_measurement="kW",
                               per_car=True),
+    SmartHusNumberDescription(key="ev_solar_min_a", icon="mdi:current-ac", native_min_value=0,
+                              native_max_value=32, native_step=1, native_unit_of_measurement="A",
+                              per_car=True, needs_current=True),
+    SmartHusNumberDescription(key="ev_solar_max_a", icon="mdi:current-ac", native_min_value=1,
+                              native_max_value=32, native_step=1, native_unit_of_measurement="A",
+                              per_car=True, needs_current=True),
+    SmartHusNumberDescription(key="ev_solar_start_kw", icon="mdi:solar-power-variant", native_min_value=0,
+                              native_max_value=30, native_step=0.1, native_unit_of_measurement="kW",
+                              per_car=True, needs_current=True),
     SmartHusNumberDescription(key=S_EV_MAX_TOTAL_POWER, icon="mdi:transmission-tower", native_min_value=0,
                               native_max_value=100, native_step=0.5, native_unit_of_measurement="kW",
                               multi_car=True),
@@ -171,6 +181,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
     for d in NUMBERS:
         if d.per_car:
             for car in controller.cars:
+                if d.needs_current and not (controller.has_current_control(car) and controller.has(CONF_GRID_POWER)):
+                    continue
                 cid = car["id"]
                 desc = replace(d, key=f"{cid}_{d.key[3:]}", translation_key=d.key)
                 entities.append(SmartHusNumber(entry, controller, desc, car.get("name") or "Elbil", d.key))

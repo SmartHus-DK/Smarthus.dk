@@ -231,8 +231,32 @@ Den første bil beholder de oprindelige entity-id'er (fx `switch.smarthus_contro
 ### Varmt vand med kontakt og temperaturføler
 Styres varmt vand med en **kontakt**, tændes den i dagens billigste periode. Vælger du også en **temperaturføler i vandet**, slukker SmartHus kontakten, når vandet når **Maks. temperatur** (på kortet), og tænder igen i den billige periode, hvis vandet er kølet 3 °C af. Uden føler bestemmer varmelegemets egen termostat temperaturen, og der vises ingen temperaturindstillinger på kortet. "Normal temperatur" bruges kun ved en water_heater/climate-entitet.
 
-### Varmt vand med solcelleoverskud
-Vælg under **Konfigurer → Varmt vand** en sensor for **effekt til/fra nettet lige nu** (W eller kW) og angiv, om positiv betyder eksport eller køb. Sæt derefter **Overskud over** på kortet (fx 2 kW). Når huset har sendt mindst så meget ud på nettet i 2 minutter, tændes varmt vand – uanset prisen. Mens det kører, falder eksporten, så der stoppes først, når huset har købt mere end 0,3 kW fra nettet i 2 minutter. Maks. temperatur gælder stadig. 0 kW = slået fra. Tidsrummet for den billige opvarmning er som standard hele døgnet (00–24).
+### Solcelleoverskud (varmt vand og elbil)
+Vælg under **Konfigurer → Solceller** en sensor for **effekt til/fra nettet lige nu** (W eller kW), og angiv om positiv betyder eksport eller køb. Vælg gerne også **solcelleproduktion lige nu**.
+
+**Varmt vand:** Sæt **Overskud over** på kortet (fx 2 kW, 0 = fra). Når huset har sendt så meget ud på nettet i 2 minutter, tændes varmt vand. Der stoppes først, når huset har købt mere end 0,3 kW i 2 minutter. Med **Kun når det betaler sig** (standard) bruges overskuddet kun, hvis salgsprisen lige nu er lavere end prisen i den billige time senere – ellers sælges strømmen, og vandet varmes i den billige time. Der varmes **højst én gang om dagen**: når vandet er varmet med overskud (maks. temperatur nået eller timerne brugt), springes dagens billige time over, og er den billige time allerede kørt, bruges overskuddet ikke den dag.
+
+**Elbil:** Vælg under **Konfigurer → Elbiler** hvordan ladestrømmen styres – en **tal-entitet** (A) eller et **script**, der får variablen `current`. Slå **Lad med solcelleoverskud** til på kortet. Hver 30. sekund justeres strømmen 1 A ad gangen: ned ved køb fra nettet (> 0,3 kW), op ved eksport (> 0,5 kW) når solen giver mindst **Start ved sol over** (fx 4 kW), ellers holdes den. Der startes på **Mindste ladestrøm** og lades aldrig over **Største ladestrøm**. Uden sol i 3 minutter stopper solcelleladningen. I billige timer, ved "Lad nu" og når eksporten er stoppet pga. lav salgspris, lades med største strøm. Kun én bil ad gangen lader med sol. Mål-SoC gælder stadig.
+
+<details><summary><b>Easee – script til ladestrøm</b></summary>
+
+```yaml
+smarthus_easee_strom:
+  alias: SmartHus – Easee ladestrøm
+  mode: restart
+  sequence:
+    - action: easee.set_charger_dynamic_limit
+      data:
+        device_id: DIN_EASEE_ENHED
+        current: "{{ current | int }}"
+        time_to_live: 0
+```
+</details>
+
+<details><summary><b>Zaptec og andre ladebokse</b></summary>
+
+Har ladeboksens integration en **number**-entitet for ladestrøm (fx Zaptec "Available current"), så vælg den direkte som "Ladestrøm: tal-entitet". Ellers lav et script som for Easee med den handling, din integration har (se Udviklerværktøjer → Handlinger). Afprøv scriptet manuelt med fx `current: 6`.
+</details>
 
 ### Stop eksport under en bestemt pris
 Under **Solceller** på kortet kan du sætte **Stop eksport under** (kr/kWh). Når salgsprisen er under grænsen, tændes kontakten "begræns eksport", og batteriet lader af solstrømmen i stedet. Når prisen kommer over grænsen igen, starter eksporten automatisk. Standard er 0 kr, dvs. der stoppes kun ved negativ pris.

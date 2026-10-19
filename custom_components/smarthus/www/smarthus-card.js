@@ -60,7 +60,8 @@ const MODULES = [
     id: "hotwater", name: "Varmt vand", icon: "mdi:water-boiler", sw: "control_hotwater",
     groups: [
       { title: null, items: ["hotwater_hours", ["hotwater_from", "hotwater_to"]] },
-      { title: "Solcelleoverskud", items: ["hotwater_surplus_kw"] },
+      { title: "Solcelleoverskud", items: ["hotwater_surplus_kw", { sw: "hotwater_surplus_smart", label: "Kun når det betaler sig",
+        note: "Sælg i stedet, hvis salgsprisen er højere end den billige time senere" }] },
       { title: "Temperatur", items: ["hotwater_boost_temp", "hotwater_normal_temp"] },
     ],
   },
@@ -83,12 +84,17 @@ function carModule(cid, name, first) {
   const groups = [
     { title: null, items: [`${cid}_target_soc`, `${cid}_ready_hour`, `${cid}_hours`] },
     { title: "Bil og lader", items: [`${cid}_battery_capacity`, `${cid}_charge_power`] },
+    { title: "Solcelleladning", items: [{ sw: `${cid}_solar`, label: "Lad med solcelleoverskud",
+      note: "Ladestrømmen følger overskuddet, 1 A ad gangen" }, `${cid}_solar_start_kw`, `${cid}_solar_min_a`, `${cid}_solar_max_a`] },
   ];
   if (first) groups.push({ title: "Alle elbiler", items: ["ev_max_total_power"] });
   return { id: cid, car: true, name, icon: "mdi:car-electric", sw: `control_${cid}`, groups };
 }
 
 const EV_LABELS = {
+  solar_start_kw: "Start ved sol over",
+  solar_min_a: "Mindste ladestrøm",
+  solar_max_a: "Største ladestrøm",
   target_soc: "Lad til",
   ready_hour: "Klar kl.",
   charge_power: "Ladeeffekt",
@@ -581,6 +587,8 @@ class SmartHusCard extends HTMLElement {
       const a = this._st("sensor", `${m.id}_smart_saving`)?.attributes || {};
       const k = `${m.id}_charge_now`;
       if (a.target_reached) return `${prefix}Ladet til ${nf(a.soc, 0)} %`;
+      const ca = this._st("binary_sensor", k)?.attributes || {};
+      if (ca.solar_active) return `${prefix}Lader med sol · ${ca.solar_current} A${a.soc != null ? ` · ${nf(a.soc, 0)} %` : ""}`;
       if (isOn(k)) return `${prefix}Lader nu${a.soc != null ? ` · ${nf(a.soc, 0)} %` : ""}`;
       const n = next(k);
       return `${prefix}${n ? `Lader ${n}` : "Venter på priser"}${a.soc != null ? ` · ${nf(a.soc, 0)} % af ${nf(a.target_soc, 0)} %` : ""}`;
@@ -599,6 +607,7 @@ class SmartHusCard extends HTMLElement {
         const a = this._st("binary_sensor", "hotwater_now")?.attributes || {};
         const t = a.water_temp != null ? ` · ${nf(a.water_temp, 0)} °C` : "";
         if (isOn("hotwater_now")) return `${prefix}${a.warm_enough ? "Varmt nok – venter" : "Opvarmer nu"}${t}`;
+        if (a.heated_today && !isOn("hotwater_now")) return `${prefix}Varmet op i dag${t}`;
         if (a.solar_surplus) return `${prefix}${a.warm_enough ? "Varmt nok – venter" : "Varmer med solcelleoverskud"}${t}`;
         return `${prefix}${next("hotwater_now") ? `Opvarmer ${next("hotwater_now")}` : "Ingen plan"}${t}`;
       }
@@ -640,6 +649,7 @@ class SmartHusCard extends HTMLElement {
       .map((g) => {
         const rows = g.items
           .map((it) => {
+            if (it && it.sw) return this._st("switch", it.sw) ? this._switchRow(it) : "";
             if (Array.isArray(it)) return this._st("number", it[0]) && this._st("number", it[1]) ? this._window(it[0], it[1]) : "";
             return this._st("number", it) && !hide(it) ? this._stepper(it) : "";
           })
@@ -655,6 +665,16 @@ class SmartHusCard extends HTMLElement {
         <ha-icon icon="mdi:lightning-bolt"></ha-icon>${fon ? "Stop opladning nu" : `Lad ${esc(m.name)} nu`}</button>`;
     }
     return `<div class="mod-body">${extra}${groups}${actions}</div>`;
+  }
+
+  _switchRow(it) {
+    const st = this._st("switch", it.sw);
+    const on = st.state === "on";
+    return `
+      <div class="step">
+        <span class="step-lbl">${esc(it.label)}${it.note ? `<span class="win-note">${esc(it.note)}</span>` : ""}</span>
+        ${this._toggle(st.entity_id, on, it.label)}
+      </div>`;
   }
 
   _window(fromKey, toKey) {

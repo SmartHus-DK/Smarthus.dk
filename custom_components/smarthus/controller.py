@@ -45,7 +45,10 @@ from .const import (
     CONF_GRID_POWER,
     CONF_GRID_POWER_SIGN,
     SIGN_IMPORT_POSITIVE,
-    SURPLUS_CONFIRM_MINUTES,
+    SURPLUS_CONFIRM_TICKS,
+    TICK_SECONDS,
+    CONF_SOLAR_POWER,
+    F_HOTWATER_SURPLUS_SMART,
     SURPLUS_STOP_IMPORT_KW,
     HOTWATER_HYSTERESIS,
     CONF_HOUSE_ENERGY,
@@ -75,9 +78,10 @@ from .const import (
     SIGNAL_TICK,
 )
 from .coordinator import SmartHusPriceCoordinator
-from .planner import CarInput, Plan, build_plan
+from .planner import CarInput, Plan, build_plan, car_settings
 from .profile import LEARN_DAYS, Profile, Reserve, build_profile, calc_reserve
 from .savings import SavingsCalculator
+from .solar import EvSolarState, regulate_ev
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -119,6 +123,13 @@ class SmartHusController:
         # Opvarmning med solcelleoverskud
         self.hotwater_surplus = False
         self._surplus_count = 0
+        self._hw_surplus_sec = 0.0
+        self._hw_done_date: str | None = None   # dag hvor vandet er varmet op
+        # Indstillinger der slås til/fra på kortet (gendannes af kontakterne)
+        self.flags: dict[str, bool] = {F_HOTWATER_SURPLUS_SMART: True}
+        # Solcelleladning pr. elbil
+        self.ev_solar: dict[str, EvSolarState] = {}
+        self._ev_current_sent: dict[str, int] = {}
         self._unsub = None
         self._unsub_prices = None
         self.expected_unique_ids: set[str] = set()
@@ -127,7 +138,7 @@ class SmartHusController:
     async def async_start(self) -> None:
         stored = await self._store.async_load()
         self.savings = SavingsCalculator(stored)
-        self._unsub = async_track_time_change(self.hass, self._async_tick, second=5)
+        self._unsub = async_track_time_change(self.hass, self._async_tick, second=[5, 35])
         self._unsub_prices = self.coordinator.async_add_listener(self._on_prices)
         self._unsub_sl = None
         if self.coordinator.uses_stromligning:
@@ -474,10 +485,16 @@ class SmartHusController:
             await self._apply_battery(p.battery_action, force)
         if self.active(MODULE_SOLAR) and self.has_export_control:
             await self._apply_export(p.solar_curtail, force)
+        solar_car = next((cid for cid, st in self.ev_solar.items() if st.active), None)
         for car in self.cars:
             ep = p.evs.get(car["id"])
             if ep and self.active(car["id"]):
-                await self._ensure_switch(car["charger"], ep.on, force)
+                on, current = self._ev_target(car, ep, solar_car, step=not force)
+                if self.ev_solar.get(car["id"]) and self.ev_solar[car["id"]].active:
+                    solar_car = car["id"]
+                await self._ensure_switch(car["charger"], on, force)
+                if on and current is not None:
+                    await self._apply_current(car, current, force)
         if self.active(MODULE_HOTWATER) and self.has(CONF_HOTWATER_ENTITY):
             await self._apply_hotwater(p.hotwater_on, force)
         if self.active(MODULE_HEATING) and self.has(CONF_HEATING_CLIMATE):
@@ -488,6 +505,47 @@ class SmartHusController:
             elif p.heating_mode == HEATING_REDUCE:
                 temp = base - self.settings[S_HEATING_REDUCE_DEG]
             await self._ensure_temperature(self.config[CONF_HEATING_CLIMATE], temp, force)
+
+    def has_current_control(self, car: dict) -> bool:
+        return bool(car.get("current_entity") or car.get("current_script"))
+
+    def _ev_target(self, car: dict, ep, solar_car: str | None, step: bool = True) -> tuple[bool, int | None]:
+        """Skal laderen være tændt, og med hvilken strøm (A)? None = rør ikke strømmen."""
+        cid = car["id"]
+        cs = car_settings(self.settings, cid)
+        min_a, max_a = int(cs["solar_min_a"]), int(cs["solar_max_a"])
+        st = self.ev_solar.setdefault(cid, EvSolarState())
+        control = self.has_current_control(car)
+        solar_on = control and self.flags.get(f"{cid}_solar", False) and self.export_kw is not None
+        if not solar_on or ep.target_reached:
+            st.reset()
+            return ep.on, (max_a if control and ep.on and not ep.target_reached else None)
+        if ep.on or self.plan.solar_curtail:
+            # Billig time, "Lad nu" eller eksporten er stoppet: lad med fuld strøm
+            st.reset()
+            return True, max_a
+        if solar_car not in (None, cid):
+            st.reset()                   # en anden bil lader allerede med sol
+            return False, None
+        if step:  # kun én reguleringsrunde pr. 30 sekunder
+            regulate_ev(st, self.export_kw, self.solar_kw, min_a, max_a, cs["solar_start_kw"])
+        return (True, st.current) if st.active else (False, None)
+
+    async def _apply_current(self, car: dict, current: int, force: bool) -> None:
+        cid = car["id"]
+        if not force and self._ev_current_sent.get(cid) == current:
+            return
+        self._ev_current_sent[cid] = current
+        if car.get("current_script"):
+            try:
+                await self.hass.services.async_call(
+                    "script", "turn_on",
+                    {"entity_id": car["current_script"], "variables": {"current": current, "car": car.get("name")}},
+                    blocking=False)
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.warning("SmartHus kunne ikke køre %s: %s", car["current_script"], err)
+        elif car.get("current_entity"):
+            await self._ensure_number(car["current_entity"], float(current), True)
 
     async def _apply_hotwater(self, on: bool, force: bool) -> None:
         entity_id = self.config[CONF_HOTWATER_ENTITY]
@@ -508,19 +566,67 @@ class SmartHusController:
         kw = val / 1000 if unit == "w" else val * 1000 if unit == "mw" else val
         return -kw if self.config.get(CONF_GRID_POWER_SIGN) == SIGN_IMPORT_POSITIVE else kw
 
+    @property
+    def solar_kw(self) -> float | None:
+        """Solcelleproduktion lige nu i kW (hvis der er valgt en sensor)."""
+        entity_id = self.config.get(CONF_SOLAR_POWER)
+        val = self._float_state(entity_id)
+        if val is None:
+            return None
+        unit = (self.hass.states.get(entity_id).attributes.get("unit_of_measurement") or "W").lower()
+        return val / 1000 if unit == "w" else val * 1000 if unit == "mw" else val
+
+    def _today(self) -> str:
+        return dt_util.now().date().isoformat()
+
+    @property
+    def hotwater_heated_today(self) -> bool:
+        return self._hw_done_date == self._today()
+
+    def _next_hotwater_price(self) -> float | None:
+        """Prisen i den næste planlagte billige opvarmning (det overskuddet skal slå)."""
+        now = dt_util.utcnow()
+        future = sorted((sl for sl in self.plan.hotwater_slots if sl.start > now), key=lambda sl: sl.start)
+        return future[0].price if future else None
+
+    def surplus_worth_it(self) -> bool:
+        """Kan det betale sig at bruge overskuddet nu frem for at sælge det og varme op senere?"""
+        cur = self.plan.current
+        nxt = self._next_hotwater_price()
+        if cur is None or nxt is None:
+            return True
+        return cur.sale < nxt
+
     def _update_surplus(self) -> None:
-        """Slå overskudsopvarmning til ved eksport ≥ grænsen og fra igen, når der købes strøm."""
+        """Varmt vand med solcelleoverskud – højst én opvarmning om dagen."""
+        today = self._today()
+        # Er dagens billige opvarmning allerede kørt færdig, er vandet varmet i dag
+        todays = [sl for sl in self.plan.hotwater_slots if sl.start.astimezone(self.tz).date().isoformat() == today]
+        if todays and max(sl.end for sl in todays) <= dt_util.utcnow():
+            self._hw_done_date = today
         limit = float(self.settings.get("hotwater_surplus_kw", 0) or 0)
         export = self.export_kw
-        if limit <= 0 or export is None:
+        if limit <= 0 or export is None or self._hw_done_date == today:
             self.hotwater_surplus, self._surplus_count = False, 0
             return
-        # Mens varmelegemet kører på overskud, falder eksporten – derfor stoppes først ved køb fra nettet
-        want_change = (export < -SURPLUS_STOP_IMPORT_KW) if self.hotwater_surplus else (export >= limit)
+        if self.hotwater_surplus:
+            # Mens varmelegemet kører, falder eksporten – stop først ved køb fra nettet
+            want_change = export < -SURPLUS_STOP_IMPORT_KW
+        else:
+            smart = self.flags.get(F_HOTWATER_SURPLUS_SMART, True)
+            want_change = export >= limit and (not smart or self.surplus_worth_it())
         self._surplus_count = self._surplus_count + 1 if want_change else 0
-        if self._surplus_count >= SURPLUS_CONFIRM_MINUTES:
+        if self._surplus_count >= SURPLUS_CONFIRM_TICKS:
             self.hotwater_surplus = not self.hotwater_surplus
             self._surplus_count = 0
+        if self.hotwater_surplus and not self.hotwater_full:
+            self._hw_surplus_sec += TICK_SECONDS
+        # Færdig: maks. temperatur nået eller kørt de indstillede timer
+        hours = float(self.settings.get("hotwater_hours", 1) or 1)
+        if self.hotwater_surplus and (self.hotwater_full or self._hw_surplus_sec >= hours * 3600):
+            self.hotwater_surplus = False
+            self._hw_done_date = today
+            self._hw_surplus_sec = 0.0
 
     @property
     def hotwater_temp(self) -> float | None:
@@ -528,6 +634,10 @@ class SmartHusController:
 
     def _hotwater_switch_on(self, planned_on: bool) -> bool:
         """Med temperaturføler: sluk ved øvre grænse, start igen når vandet er kølet af."""
+        if planned_on and not self.hotwater_surplus and self.hotwater_heated_today:
+            cur = self.plan.current
+            if cur is not None and cur.start.astimezone(self.tz).date().isoformat() == self._today():
+                planned_on = False      # vandet er allerede varmet op i dag
         planned_on = planned_on or self.hotwater_surplus
         if not planned_on:
             self.hotwater_full = False

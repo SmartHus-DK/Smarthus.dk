@@ -108,7 +108,10 @@ SIGN_EXPORT_POSITIVE: Final = "export_positive"
 SIGN_IMPORT_POSITIVE: Final = "import_positive"
 S_HOTWATER_SURPLUS_KW: Final = "hotwater_surplus_kw"
 SURPLUS_STOP_IMPORT_KW: Final = 0.3  # stop overskudsopvarmning når der købes mere end dette fra nettet
-SURPLUS_CONFIRM_MINUTES: Final = 2   # betingelsen skal holde i så mange minutter (undgår at slå til/fra)
+SURPLUS_CONFIRM_TICKS: Final = 4     # betingelsen skal holde i 4 × 30 s (undgår at slå til/fra)
+TICK_SECONDS: Final = 30
+CONF_SOLAR_POWER: Final = "solar_power_sensor"
+F_HOTWATER_SURPLUS_SMART: Final = "hotwater_surplus_smart"
 HOTWATER_HYSTERESIS: Final = 3.0  # °C – start igen når vandet er kølet så meget af
 # Varme / varmepumpe
 CONF_HEATING_CLIMATE: Final = "heating_climate_entity"
@@ -128,6 +131,7 @@ BATTERY_KEYS: Final = [
     CONF_BATTERY_SCRIPT_NORMAL,
 ]
 SOLAR_KEYS: Final = [CONF_SOLAR_ENERGY, CONF_EXPORT_ENERGY, CONF_SOLAR_CURTAIL, CONF_SOLAR_FORECAST,
+                     CONF_GRID_POWER, CONF_GRID_POWER_SIGN, CONF_SOLAR_POWER,
                      CONF_EXPORT_OPT_STOP, CONF_EXPORT_OPT_NORMAL, CONF_EXPORT_VALUE_STOP,
                      CONF_EXPORT_VALUE_NORMAL, CONF_EXPORT_SCRIPT_STOP, CONF_EXPORT_SCRIPT_START]
 EV_KEYS: Final = [CONF_EV_SWITCH, CONF_EV_ENERGY, CONF_EV_SOC]
@@ -151,7 +155,7 @@ def get_cars(config: dict) -> list[dict]:
             "energy": config.get(CONF_EV_ENERGY),
         }]
     return []
-HOTWATER_KEYS: Final = [CONF_HOTWATER_ENTITY, CONF_HOTWATER_TEMP, CONF_HOTWATER_ENERGY, CONF_GRID_POWER, CONF_GRID_POWER_SIGN]
+HOTWATER_KEYS: Final = [CONF_HOTWATER_ENTITY, CONF_HOTWATER_TEMP, CONF_HOTWATER_ENERGY]
 HEATING_KEYS: Final = [CONF_HEATING_CLIMATE, CONF_HEATPUMP_ENERGY]
 
 # Standardnavne på SigEnergy-tilstande (kan ændres i opsætningen)
@@ -215,6 +219,9 @@ DEFAULT_SETTINGS: Final = {
     S_EV_TARGET_SOC: 80.0,
     S_EV_CAPACITY: 60.0,
     S_EV_CHARGE_POWER: 11.0,
+    "ev_solar_min_a": 6.0,
+    "ev_solar_max_a": 16.0,
+    "ev_solar_start_kw": 4.0,
     S_EV_MAX_TOTAL_POWER: 0.0,
     S_HOTWATER_HOURS: 1.0,
     S_HOTWATER_BOOST_TEMP: 55.0,

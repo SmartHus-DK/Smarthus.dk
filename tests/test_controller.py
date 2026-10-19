@@ -32,7 +32,7 @@ pkg = types.ModuleType("smarthus"); pkg.__path__ = [str(PKG)]; sys.modules["smar
 def load(n):
     spec = importlib.util.spec_from_file_location(f"smarthus.{n}", PKG / f"{n}.py")
     m = importlib.util.module_from_spec(spec); sys.modules[f"smarthus.{n}"] = m; spec.loader.exec_module(m); return m
-for n in ("const", "planner", "pricing", "savings", "profile", "coordinator", "controller"):
+for n in ("const", "planner", "pricing", "savings", "profile", "solar", "coordinator", "controller"):
     load(n)
 ctl_mod = sys.modules["smarthus.controller"]; planner = sys.modules["smarthus.planner"]
 
@@ -51,6 +51,10 @@ def make(config, states):
     c.settings = dict(sys.modules["smarthus.const"].DEFAULT_SETTINGS)
     c._last_cmd, c._script_state = {}, {}
     c.hotwater_full, c.hotwater_surplus, c._surplus_count = False, False, 0
+    c._hw_surplus_sec, c._hw_done_date = 0.0, None
+    c.flags = {"hotwater_surplus_smart": True}
+    c.ev_solar, c._ev_current_sent = {}, {}
+    c.tz = ZoneInfo("Europe/Copenhagen")
     c.enabled = {"master": True}
     c.plan = planner.Plan()
     return c, hass
@@ -118,15 +122,19 @@ async def main():
                  "grid_power_sign": "export_positive"}, {})
     c.hass.states = types.SimpleNamespace(get=lambda e: State(grid["v"], unit_of_measurement=grid["unit"]) if e == "sensor.grid" else None)
     c.settings["hotwater_surplus_kw"] = 2.0
+    c.flags["hotwater_surplus_smart"] = False                     # "brug altid overskud"
     c._update_surplus(); assert not c.hotwater_surplus          # 0,5 kW eksport: under grænsen
     grid["v"] = "2500"
-    c._update_surplus(); assert not c.hotwater_surplus          # 1. minut over grænsen
-    c._update_surplus(); assert c.hotwater_surplus              # 2. minut: start
+    for _ in range(3): c._update_surplus()
+    assert not c.hotwater_surplus                               # 1,5 min over grænsen
+    c._update_surplus(); assert c.hotwater_surplus              # 2 min: start
     assert c._hotwater_switch_on(False) is True                 # tænd selv uden billig time
     grid["v"] = "100"
-    c._update_surplus(); c._update_surplus(); assert c.hotwater_surplus   # lav eksport: kør videre
+    for _ in range(4): c._update_surplus()
+    assert c.hotwater_surplus                                   # lav eksport: kør videre
     grid["v"] = "-800"
-    c._update_surplus(); assert c.hotwater_surplus
+    for _ in range(3): c._update_surplus()
+    assert c.hotwater_surplus
     c._update_surplus(); assert not c.hotwater_surplus          # køber 0,8 kW i 2 min: stop
     # Fortegn: positiv = køb fra nettet, enhed kW
     grid.update(v="-3", unit="kW")
@@ -134,6 +142,48 @@ async def main():
     assert abs(c.export_kw - 3.0) < 1e-9
     c.settings["hotwater_surplus_kw"] = 0
     c._update_surplus(); assert not c.hotwater_surplus          # 0 = slået fra
+    # 10) "Kun når det betaler sig": vent, hvis salgsprisen er højere end den billige time
+    from datetime import timedelta as _td
+    now = _dt.datetime.now(timezone.utc)
+    S = planner.Slot
+    cur = S(now - _td(minutes=5), now + _td(minutes=10), 1.0, 2.5, 1.2)    # sælg nu for 1,20 kr
+    later = S(now + _td(hours=3), now + _td(hours=4), 0.2, 0.9, 0.2)      # billig time 0,90 kr
+    grid.update(v="3000", unit="W"); c.config["grid_power_sign"] = "export_positive"
+    c.settings["hotwater_surplus_kw"] = 2.0
+    c.flags["hotwater_surplus_smart"] = True
+    c.hotwater_surplus, c._surplus_count, c._hw_done_date = False, 0, None
+    c.plan = planner.Plan(current=cur, hotwater_slots=[later])
+    assert not c.surplus_worth_it()
+    for _ in range(5): c._update_surplus()
+    assert not c.hotwater_surplus                               # sælger hellere
+    c.plan = planner.Plan(current=S(cur.start, cur.end, 0.1, 1.5, 0.05), hotwater_slots=[later])
+    assert c.surplus_worth_it()                                 # salg giver kun 0,05 kr
+    for _ in range(4): c._update_surplus()
+    assert c.hotwater_surplus
+    # 11) Kun én opvarmning om dagen: når timerne er brugt, er vandet varmet i dag
+    c.settings["hotwater_hours"] = 0.05                         # 3 minutter
+    for _ in range(6): c._update_surplus()
+    assert not c.hotwater_surplus and c.hotwater_heated_today
+    for _ in range(6): c._update_surplus()
+    assert not c.hotwater_surplus                               # ikke igen i dag
+    c.plan = planner.Plan(current=S(now - _td(minutes=5), now + _td(minutes=10), 0.1, 0.9, 0.05),
+                          hotwater_slots=[S(now - _td(minutes=5), now + _td(minutes=10), 0.1, 0.9, 0.05)])
+    assert c._hotwater_switch_on(True) is False                 # dagens billige time springes over
+    # 12) Elbil med sol: fuld strøm i billig time, ellers regulering
+    car = {"id": "ev", "name": "Kia", "charger": "switch.lader", "current_entity": "number.strom"}
+    c.cars = [car]
+    c.flags["ev_solar"] = True
+    ep = planner.EvPlan("ev", "Kia", on=True)
+    assert c._ev_target(car, ep, None) == (True, 16)            # billig time: 16 A
+    ep = planner.EvPlan("ev", "Kia", on=False)
+    c.plan = planner.Plan(current=cur)
+    grid.update(v="5000")
+    assert c._ev_target(car, ep, None) == (False, None)         # 1. måling
+    assert c._ev_target(car, ep, None) == (True, 6)             # starter på 6 A (ingen solsensor: eksport >= 4 kW)
+    assert c._ev_target(car, ep, None) == (True, 7)             # eksport: op
+    assert c._ev_target(car, ep, "ev_tesla") == (False, None)   # en anden bil lader med sol
+    c.flags["ev_solar"] = False
+    assert c._ev_target(car, ep, None) == (False, None)         # slået fra: følg planen
     print("controller OK")
 
 def test_controller_control():

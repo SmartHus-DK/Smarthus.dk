@@ -102,7 +102,7 @@
       },
       "solar": {
         "title": "Solceller",
-        "description": "Bruges til solcelleoverblikket (produceret, sparet og tjent ved salg) og til at stoppe eksport, når salgsprisen er under din grænse ('Stop eksport under' på kortet). Uden eksportmåler regnes al produktion som egetforbrug.\n\n**Stop af eksport** kan styres på fire måder – vælg den, der passer til din inverter:\n• **Kontakt**: tændes når eksporten skal stoppes (fx Deye 'Export surplus' – vend logikken med et script, hvis den betyder det modsatte).\n• **Rullemenu**: skriv navnet på tilstanden for 'stop' og for 'normal'.\n• **Tal (eksportgrænse)**: skriv værdien for 'stop' (fx 0 W) og for 'normal' (fx inverterens maks.).\n• **Scripts**: et script til at stoppe og et til at starte eksporten igen.",
+        "description": "Bruges til solcelleoverblikket (produceret, sparet og tjent ved salg) og til at stoppe eksport, når salgsprisen er under din grænse ('Stop eksport under' på kortet). Uden eksportmåler regnes al produktion som egetforbrug.\n\n**Stop af eksport** kan styres på fire måder – vælg den, der passer til din inverter:\n• **Kontakt**: tændes når eksporten skal stoppes (fx Deye 'Export surplus' – vend logikken med et script, hvis den betyder det modsatte).\n• **Rullemenu**: skriv navnet på tilstanden for 'stop' og for 'normal'.\n• **Tal (eksportgrænse)**: skriv værdien for 'stop' (fx 0 W) og for 'normal' (fx inverterens maks.).\n• **Scripts**: et script til at stoppe og et til at starte eksporten igen.\n\n**Solcelleoverskud:** Vælg 'Effekt til/fra nettet lige nu' for at kunne varme vand og lade elbilen med overskudsstrøm.",
         "data": {
           "solar_energy_sensor": "Energimåler: solcelleproduktion i alt (kWh)",
           "grid_export_energy_sensor": "Energimåler: eksport til nettet i alt (kWh)",
@@ -113,7 +113,10 @@
           "export_value_stop": "Tal: værdi når eksporten er stoppet",
           "export_value_normal": "Tal: værdi ved normal eksport",
           "export_script_stop": "Script: stop eksport",
-          "export_script_start": "Script: start eksport igen"
+          "export_script_start": "Script: start eksport igen",
+          "grid_power_sensor": "Effekt til/fra nettet lige nu (W eller kW) – valgfri",
+          "grid_power_sign": "Hvad betyder et positivt tal?",
+          "solar_power_sensor": "Solcelleproduktion lige nu (W eller kW) – valgfri"
         },
         "data_description": {
           "solar_forecast_sensor": "Gør batteriets reserve mere præcis, fordi forventet sol trækkes fra. Solcast: sensor.solcast_pv_forecast_forecast_remaining_today. Forecast.Solar: sensor.energy_production_today_remaining.",
@@ -125,7 +128,10 @@
           "export_value_stop": "Kun ved tal. Typisk 0 (ingen eksport).",
           "export_value_normal": "Kun ved tal. Fx inverterens maksimale effekt i W, så eksporten ikke begrænses.",
           "export_script_stop": "Køres når salgsprisen falder under grænsen. Skal bruges sammen med 'start eksport igen'.",
-          "export_script_start": "Køres når salgsprisen kommer over grænsen igen, og når styringen slås fra."
+          "export_script_start": "Køres når salgsprisen kommer over grænsen igen, og når styringen slås fra.",
+          "grid_power_sensor": "Bruges til solcelleoverskud – både til varmt vand og til elbilen. Vælg en effektsensor, der viser hvad huset sender ud på eller tager fra nettet lige nu, fx fra inverteren ('Grid active power', 'Meter power', 'Grid net power') eller en P1-måler.",
+          "grid_power_sign": "Mange invertere viser eksport som positiv, P1-målere viser ofte køb som positiv. Tjek ved at se sensoren, mens solen skinner og huset sender strøm ud.",
+          "solar_power_sensor": "Solcellernes effekt lige nu, fx sensor.<inverter>_power. Elbilen begynder først at lade med sol, når produktionen er over 'Start ved sol over' (fx 4 kW). Uden sensor bruges eksporten i stedet."
         }
       },
       "ev": {
@@ -142,16 +148,12 @@
         "data": {
           "hotwater_entity": "Varmtvandsbeholder / varmepumpe",
           "hotwater_temp_sensor": "Temperaturføler i vandet (°C) – valgfri",
-          "hotwater_energy_sensor": "Energimåler: varmt vand (kWh) – valgfri",
-          "grid_power_sensor": "Effekt til/fra nettet lige nu (W eller kW) – valgfri",
-          "grid_power_sign": "Hvad betyder et positivt tal?"
+          "hotwater_energy_sensor": "Energimåler: varmt vand (kWh) – valgfri"
         },
         "data_description": {
           "hotwater_entity": "Kontakt (switch) til varmelegeme eller varmepumpe – tændes i dagens billigste periode. Eller en water_heater/climate-entitet – så sættes temperaturen i stedet ('Opvarm til' og 'Normal temperatur' på kortet).",
           "hotwater_energy_sensor": "En stigende måler (kWh) for strøm brugt til varmt vand. Bruges kun til at beregne besparelsen.",
-          "hotwater_temp_sensor": "Måler vandets temperatur, fx sensor.varmtvand_temperatur. Med en føler slukker SmartHus kontakten, når vandet når 'Maks. temperatur' (indstilles på kortet), og tænder igen i den billige periode, hvis vandet er kølet 3 °C af. Uden føler kører kontakten hele den billige periode, og varmelegemets egen termostat bestemmer temperaturen.",
-          "grid_power_sensor": "Bruges til at varme vand med solcelleoverskud. Vælg en effektsensor der viser, hvad huset sender ud på eller tager fra nettet lige nu – fx fra inverteren ('Grid active power', 'Meter power') eller en P1-måler. Indstil derefter 'Brug overskud over' på kortet.",
-          "grid_power_sign": "Huawei og mange invertere viser eksport som positiv. P1-målere viser ofte køb som positiv. Tjek ved at se sensoren, mens solen skinner og huset sender strøm ud."
+          "hotwater_temp_sensor": "Måler vandets temperatur, fx sensor.varmtvand_temperatur. Med en føler slukker SmartHus kontakten, når vandet når 'Maks. temperatur' (indstilles på kortet), og tænder igen i den billige periode, hvis vandet er kølet 3 °C af. Uden føler kører kontakten hele den billige periode, og varmelegemets egen termostat bestemmer temperaturen."
         }
       },
       "heating": {
@@ -213,13 +215,17 @@
           "car_name": "Navn på bilen",
           "ev_charger_entity": "Kontakt: tillad opladning",
           "ev_soc_sensor": "Bilens batteriniveau (SoC %)",
-          "ev_energy_sensor": "Energimåler for laderen (kWh)"
+          "ev_energy_sensor": "Energimåler for laderen (kWh)",
+          "ev_current_entity": "Ladestrøm: tal-entitet (A) – valgfri",
+          "ev_current_script": "Ladestrøm: script – valgfri"
         },
         "data_description": {
           "car_name": "Vises på kortet og i entiteternes navne, fx 'Tesla' eller 'Firmabil'.",
           "ev_charger_entity": "Den kontakt der tillader eller stopper opladning – fx Easee switch.easee_is_enabled, Zaptec switch.zaptec_charging, Wallbox switch.wallbox_pause_resume eller en smart-stikkontakt. SmartHus tænder den i de billigste timer og slukker den ellers.",
           "ev_soc_sensor": "Bilens batteriniveau i procent fra bilens egen integration (fx Tesla, Kia/Hyundai, VW, Polestar). Med SoC lades der kun til mål-SoC, og ladetiden beregnes automatisk. Uden SoC lades et fast antal timer.",
-          "ev_energy_sensor": "En stigende måler (kWh) for al strøm laderen har leveret – fx Easee 'Lifetime energy', Zaptec 'Total charge energy'. Bruges KUN til at beregne besparelsen ved at lade i billige timer. Styringen virker uden."
+          "ev_energy_sensor": "En stigende måler (kWh) for al strøm laderen har leveret – fx Easee 'Lifetime energy', Zaptec 'Total charge energy'. Bruges KUN til at beregne besparelsen ved at lade i billige timer. Styringen virker uden.",
+          "ev_current_entity": "Bruges til at lade med solcelleoverskud. En number-entitet for laderens strøm i ampere – fx Zaptec 'Available current' eller en input_number. Kræver 'Effekt til/fra nettet' under Solceller.",
+          "ev_current_script": "Alternativ til tal-entiteten – virker med alle ladebokse. Scriptet får variablen 'current' (A). Easee: kald easee.set_charger_dynamic_limit med current: \"{{ current }}\" og time_to_live: 0. Se vejledningen på GitHub."
         }
       }
     },
@@ -412,6 +418,12 @@
       },
       "ev_force": {
         "name": "Lad {car} nu"
+      },
+      "ev_solar": {
+        "name": "{car}: lad med solcelleoverskud"
+      },
+      "hotwater_surplus_smart": {
+        "name": "Varmt vand: kun overskud når det betaler sig"
       }
     },
     "number": {
@@ -510,6 +522,15 @@
       },
       "hotwater_surplus_kw": {
         "name": "Varmt vand: brug overskud over"
+      },
+      "ev_solar_min_a": {
+        "name": "{car}: mindste ladestrøm"
+      },
+      "ev_solar_max_a": {
+        "name": "{car}: største ladestrøm"
+      },
+      "ev_solar_start_kw": {
+        "name": "{car}: start ved sol over"
       }
     }
   }

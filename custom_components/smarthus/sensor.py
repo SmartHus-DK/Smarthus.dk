@@ -111,7 +111,10 @@ def _status(c: SmartHusController) -> str:
     for cid, ep in p.evs.items():
         if not c.active(cid):
             continue
-        if ep.on:
+        st = c.ev_solar.get(cid)
+        if st and st.active:
+            parts.append(f"Lader {ep.name} med sol ({st.current} A)")
+        elif ep.on:
             parts.append(f"Lader {ep.name}")
         elif ep.target_reached:
             parts.append(f"{ep.name} opladet")

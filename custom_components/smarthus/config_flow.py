@@ -43,6 +43,7 @@ from .const import (
     CONF_HEATPUMP_ENERGY,
     CONF_HOTWATER_ENERGY,
     CONF_HOTWATER_TEMP,
+    CONF_SOLAR_POWER,
     CONF_GRID_POWER,
     CONF_GRID_POWER_SIGN,
     SIGN_EXPORT_POSITIVE,
@@ -118,6 +119,9 @@ NEW_CAR = "__new__"
 CAR_CHOICE = "car"
 CAR_REMOVE = "remove"
 CAR_NAME = "car_name"
+CAR_CURRENT_ENTITY = "ev_current_entity"
+CAR_CURRENT_SCRIPT = "ev_current_script"
+CURRENT = selector.EntitySelector(selector.EntitySelectorConfig(domain=["number", "input_number"]))
 
 
 def _new_car_id(name: str, cars: list[dict]) -> str:
@@ -295,13 +299,20 @@ class SmartHusOptionsFlow(OptionsFlow):
                 return self._save(SOLAR_KEYS, user_input)
         fields = [
             (CONF_SOLAR_ENERGY, ENERGY), (CONF_EXPORT_ENERGY, ENERGY), (CONF_SOLAR_FORECAST, FORECAST),
+            (CONF_GRID_POWER, POWER), (CONF_SOLAR_POWER, POWER),
             (CONF_SOLAR_CURTAIL, EXPORT),
             (CONF_EXPORT_OPT_STOP, TEXT), (CONF_EXPORT_OPT_NORMAL, TEXT),
             (CONF_EXPORT_VALUE_STOP, EXPORT_VALUE), (CONF_EXPORT_VALUE_NORMAL, EXPORT_VALUE),
             (CONF_EXPORT_SCRIPT_STOP, SCRIPT), (CONF_EXPORT_SCRIPT_START, SCRIPT),
         ]
-        return self.async_show_form(step_id="solar", errors=errors,
-                                    data_schema=_entity_schema(fields, {**self._current(), **(user_input or {})}))
+        cur = {**self._current(), **(user_input or {})}
+        schema = _entity_schema(fields, cur).extend({
+            vol.Optional(CONF_GRID_POWER_SIGN, default=cur.get(CONF_GRID_POWER_SIGN) or SIGN_EXPORT_POSITIVE):
+                selector.SelectSelector(selector.SelectSelectorConfig(
+                    options=[SIGN_EXPORT_POSITIVE, SIGN_IMPORT_POSITIVE], translation_key="grid_power_sign",
+                    mode=selector.SelectSelectorMode.LIST)),
+        })
+        return self.async_show_form(step_id="solar", errors=errors, data_schema=schema)
 
     # --- Elbiler ---------------------------------------------------------
     def _cars(self) -> list[dict]:
@@ -347,6 +358,8 @@ class SmartHusOptionsFlow(OptionsFlow):
                 "charger": user_input[CONF_EV_SWITCH],
                 "soc": user_input.get(CONF_EV_SOC) or None,
                 "energy": user_input.get(CONF_EV_ENERGY) or None,
+                "current_entity": user_input.get(CAR_CURRENT_ENTITY) or None,
+                "current_script": user_input.get(CAR_CURRENT_SCRIPT) or None,
             }
             if current:
                 current.update(data)
@@ -360,6 +373,8 @@ class SmartHusOptionsFlow(OptionsFlow):
             vol.Required(CONF_EV_SWITCH, **({"default": cur["charger"]} if cur.get("charger") else {})): ONOFF,
             _opt(CONF_EV_SOC, {CONF_EV_SOC: cur.get("soc")}, SOC)[0]: SOC,
             _opt(CONF_EV_ENERGY, {CONF_EV_ENERGY: cur.get("energy")}, ENERGY)[0]: ENERGY,
+            _opt(CAR_CURRENT_ENTITY, {CAR_CURRENT_ENTITY: cur.get("current_entity")}, CURRENT)[0]: CURRENT,
+            _opt(CAR_CURRENT_SCRIPT, {CAR_CURRENT_SCRIPT: cur.get("current_script")}, SCRIPT)[0]: SCRIPT,
         })
         return self.async_show_form(step_id="ev_car", data_schema=schema,
                                     description_placeholders={"car": default_name})
@@ -367,14 +382,8 @@ class SmartHusOptionsFlow(OptionsFlow):
     async def async_step_hotwater(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
             return self._save(HOTWATER_KEYS, user_input)
-        fields = [(CONF_HOTWATER_ENTITY, HOTWATER), (CONF_HOTWATER_TEMP, TEMP), (CONF_HOTWATER_ENERGY, ENERGY),
-                  (CONF_GRID_POWER, POWER)]
-        schema = _entity_schema(fields, self._current())
-        sign = self._current().get(CONF_GRID_POWER_SIGN) or SIGN_EXPORT_POSITIVE
-        schema = schema.extend({vol.Optional(CONF_GRID_POWER_SIGN, default=sign): selector.SelectSelector(
-            selector.SelectSelectorConfig(options=[SIGN_EXPORT_POSITIVE, SIGN_IMPORT_POSITIVE],
-                                          translation_key="grid_power_sign", mode=selector.SelectSelectorMode.LIST))})
-        return self.async_show_form(step_id="hotwater", data_schema=schema)
+        fields = [(CONF_HOTWATER_ENTITY, HOTWATER), (CONF_HOTWATER_TEMP, TEMP), (CONF_HOTWATER_ENERGY, ENERGY)]
+        return self.async_show_form(step_id="hotwater", data_schema=_entity_schema(fields, self._current()))
 
     async def async_step_heating(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:

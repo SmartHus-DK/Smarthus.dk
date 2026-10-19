@@ -77,6 +77,7 @@ class SmartHusBinary(SmartHusEntity, BinarySensorEntity):
             attrs["max_temp"] = c.settings.get("hotwater_boost_temp")
             attrs["warm_enough"] = c.hotwater_full
             attrs["solar_surplus"] = c.hotwater_surplus
+            attrs["heated_today"] = c.hotwater_heated_today
             attrs["export_kw"] = None if c.export_kw is None else round(c.export_kw, 2)
         return attrs
 
@@ -97,13 +98,16 @@ class EvChargeBinary(SmartHusEntity, BinarySensorEntity):
 
     @property
     def is_on(self) -> bool:
-        return self._ep().on
+        st = self.controller.ev_solar.get(self.cid)
+        return self._ep().on or bool(st and st.active)
 
     @property
     def extra_state_attributes(self) -> dict:
         ep = self._ep()
         return {
             "car_id": self.cid,
+            "solar_active": bool(self.controller.ev_solar.get(self.cid) and self.controller.ev_solar[self.cid].active),
+            "solar_current": self.controller.ev_solar[self.cid].current if self.controller.ev_solar.get(self.cid) else None,
             "car_name": ep.name,
             "hours_needed": ep.hours_needed,
             "target_reached": ep.target_reached,

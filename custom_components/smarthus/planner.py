@@ -121,6 +121,9 @@ EV_DEFAULTS = {
     "target_soc": 80.0,
     "battery_capacity": 60.0,
     "charge_power": 11.0,
+    "solar_min_a": 6.0,
+    "solar_max_a": 16.0,
+    "solar_start_kw": 4.0,
 }
 
 

@@ -13,6 +13,8 @@ from .const import (
     CONF_BATTERY_MODE_ENTITY,
     CONF_HEATING_CLIMATE,
     CONF_HOTWATER_ENTITY,
+    CONF_GRID_POWER,
+    F_HOTWATER_SURPLUS_SMART,
     CONF_SOLAR_CURTAIL,
     MODULE_BATTERY,
     MODULE_HEATING,
@@ -44,6 +46,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
         entities.append(ModuleSwitch(entry, controller, cid, f"control_{cid}", "mdi:car-electric",
                                      translation_key="control_ev", car_name=name))
         entities.append(EvForceSwitch(entry, controller, cid, name))
+        if controller.has_current_control(car) and controller.has(CONF_GRID_POWER):
+            entities.append(FlagSwitch(entry, controller, f"{cid}_solar", "mdi:solar-power-variant",
+                                       translation_key="ev_solar", car_name=name, default=False))
+    if controller.has(CONF_HOTWATER_ENTITY) and controller.has(CONF_GRID_POWER):
+        entities.append(FlagSwitch(entry, controller, F_HOTWATER_SURPLUS_SMART, "mdi:cash-sync", default=True))
     async_add_entities(entities)
 
 
@@ -108,4 +115,39 @@ class EvForceSwitch(SmartHusEntity, SwitchEntity, RestoreEntity):
 
     async def async_turn_off(self, **kwargs) -> None:
         await self.controller.async_set_ev_force(self.cid, False)
+        self.async_write_ha_state()
+
+
+class FlagSwitch(SmartHusEntity, SwitchEntity, RestoreEntity):
+    """En indstilling der slås til/fra på kortet (fx solcelleladning eller 'kun når det betaler sig')."""
+
+    _domain = "switch"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, entry, controller: SmartHusController, key: str, icon: str,
+                 translation_key: str | None = None, car_name: str | None = None, default: bool = False) -> None:
+        super().__init__(entry, controller, key, translation_key, car_name)
+        self.flag = key
+        self._attr_icon = icon
+        controller.flags.setdefault(key, default)
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        if last is not None:
+            self.controller.flags[self.flag] = last.state == STATE_ON
+
+    @property
+    def is_on(self) -> bool:
+        return self.controller.flags.get(self.flag, False)
+
+    async def async_turn_on(self, **kwargs) -> None:
+        self.controller.flags[self.flag] = True
+        self.controller.recalculate()
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs) -> None:
+        self.controller.flags[self.flag] = False
+        self.controller.recalculate()
+        await self.controller.async_apply(force=True)
         self.async_write_ha_state()

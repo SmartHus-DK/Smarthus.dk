@@ -348,3 +348,29 @@ def test_export_min_price():
     assert p.solar_curtail and p.battery_action == "charge"
     later = slots[4 * 18].start  # kl. 18: høj pris -> eksport kører igen
     assert not planner.build_plan(slots, later, TZ, s).solar_curtail
+
+
+def test_ev_solar_regulation():
+    solar = _load("solar")
+    st = solar.EvSolarState()
+    # Under 4 kW sol: start ikke
+    solar.regulate_ev(st, 1.0, 3.0, 6, 16, 4.0)
+    assert not st.active
+    # 2 × 30 s med nok sol: start på mindste strøm
+    solar.regulate_ev(st, 1.0, 5.0, 6, 16, 4.0); solar.regulate_ev(st, 1.0, 5.0, 6, 16, 4.0)
+    assert st.active and st.current == 6
+    solar.regulate_ev(st, 0.8, 5.0, 6, 16, 4.0); assert st.current == 7      # eksport > 0,5: op
+    solar.regulate_ev(st, 0.2, 5.0, 6, 16, 4.0); assert st.current == 7      # lille eksport: hold
+    solar.regulate_ev(st, -0.6, 5.0, 6, 16, 4.0); assert st.current == 6     # køber: ned
+    for _ in range(20):
+        solar.regulate_ev(st, 3.0, 9.0, 6, 16, 4.0)
+    assert st.current == 16                                                   # aldrig over maks.
+    # Solen forsvinder: stop efter 6 × 30 s på laveste strøm med køb
+    st.current = 6
+    for _ in range(6):
+        solar.regulate_ev(st, -1.0, 1.0, 6, 16, 4.0)
+    assert not st.active and st.current is None
+    # Uden solsensor: start på eksport
+    st = solar.EvSolarState()
+    solar.regulate_ev(st, 4.5, None, 6, 16, 4.0); solar.regulate_ev(st, 4.5, None, 6, 16, 4.0)
+    assert st.active

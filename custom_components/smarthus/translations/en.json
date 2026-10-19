@@ -106,7 +106,10 @@
           "export_value_stop": "Number: value when export is stopped",
           "export_value_normal": "Number: value for normal export",
           "export_script_stop": "Script: stop export",
-          "export_script_start": "Script: start export again"
+          "export_script_start": "Script: start export again",
+          "grid_power_sensor": "Grid power right now (W or kW) – optional",
+          "grid_power_sign": "What does a positive value mean?",
+          "solar_power_sensor": "Solar production right now (W or kW) – optional"
         },
         "data_description": {
           "solar_forecast_sensor": "Makes the battery reserve more accurate by subtracting expected solar. Solcast: sensor.solcast_pv_forecast_forecast_remaining_today. Forecast.Solar: sensor.energy_production_today_remaining. Without a forecast, solar is assumed not to cover any house consumption – the cautious choice.",
@@ -118,7 +121,10 @@
           "export_script_stop": "Runs when the sale price drops below the limit. Use together with 'start export again'.",
           "export_script_start": "Runs when the sale price is above the limit again, and when control is turned off.",
           "solar_energy_sensor": "Increasing meter (kWh) of all solar production.",
-          "grid_export_energy_sensor": "Increasing meter (kWh) of all energy exported to the grid."
+          "grid_export_energy_sensor": "Increasing meter (kWh) of all energy exported to the grid.",
+          "grid_power_sensor": "Used for solar surplus (hot water and EV). A power sensor showing export/import right now.",
+          "grid_power_sign": "Many inverters show export as positive; P1 meters often show import as positive.",
+          "solar_power_sensor": "Current solar power. EV solar charging starts when production is above 'Start at solar above'. Without it, export is used."
         }
       },
       "ev": {
@@ -135,16 +141,12 @@
         "data": {
           "hotwater_entity": "Water heater / heat pump",
           "hotwater_temp_sensor": "Water temperature sensor (°C) – optional",
-          "hotwater_energy_sensor": "Energy meter: hot water (kWh) – optional",
-          "grid_power_sensor": "Grid power right now (W or kW) – optional",
-          "grid_power_sign": "What does a positive value mean?"
+          "hotwater_energy_sensor": "Energy meter: hot water (kWh) – optional"
         },
         "data_description": {
           "hotwater_entity": "A switch for the heater – turned on in the cheapest period. Or a water_heater/climate entity whose temperature is set instead.",
           "hotwater_energy_sensor": "Increasing meter (kWh) for hot water. Only used for savings.",
-          "hotwater_temp_sensor": "Measures the water temperature. With a sensor, SmartHus turns the switch off when the water reaches the max. temperature and on again in the cheap period if it has cooled 3 °C.",
-          "grid_power_sensor": "Used to heat water with solar surplus. A power sensor showing export to / import from the grid right now.",
-          "grid_power_sign": "Many inverters show export as positive; P1 meters often show import as positive."
+          "hotwater_temp_sensor": "Measures the water temperature. With a sensor, SmartHus turns the switch off when the water reaches the max. temperature and on again in the cheap period if it has cooled 3 °C."
         }
       },
       "heating": {
@@ -201,13 +203,17 @@
           "car_name": "Car name",
           "ev_charger_entity": "Switch: allow charging",
           "ev_soc_sensor": "Car battery level (SoC %)",
-          "ev_energy_sensor": "Charger energy meter (kWh)"
+          "ev_energy_sensor": "Charger energy meter (kWh)",
+          "ev_current_entity": "Charging current: number entity (A) – optional",
+          "ev_current_script": "Charging current: script – optional"
         },
         "data_description": {
           "car_name": "Shown on the card and in entity names.",
           "ev_charger_entity": "The switch that allows or stops charging, e.g. Easee switch.easee_is_enabled.",
           "ev_soc_sensor": "The car's battery level in % from the car's own integration. With SoC it only charges to the target SoC.",
-          "ev_energy_sensor": "Increasing meter (kWh) of all energy the charger has delivered, e.g. Easee 'Lifetime energy'. ONLY used to calculate savings; control works without it."
+          "ev_energy_sensor": "Increasing meter (kWh) of all energy the charger has delivered, e.g. Easee 'Lifetime energy'. ONLY used to calculate savings; control works without it.",
+          "ev_current_entity": "Used for solar charging. A number entity for the charger current in amps.",
+          "ev_current_script": "Alternative that works with any charger. The script gets the variable 'current' (A). Easee: easee.set_charger_dynamic_limit."
         }
       }
     },
@@ -400,6 +406,12 @@
       },
       "ev_force": {
         "name": "Charge {car} now"
+      },
+      "ev_solar": {
+        "name": "{car}: charge with solar surplus"
+      },
+      "hotwater_surplus_smart": {
+        "name": "Hot water: surplus only when worth it"
       }
     },
     "number": {
@@ -498,6 +510,15 @@
       },
       "hotwater_surplus_kw": {
         "name": "Hot water: use surplus above"
+      },
+      "ev_solar_min_a": {
+        "name": "{car}: min. charging current"
+      },
+      "ev_solar_max_a": {
+        "name": "{car}: max. charging current"
+      },
+      "ev_solar_start_kw": {
+        "name": "{car}: start at solar above"
       }
     }
   }
