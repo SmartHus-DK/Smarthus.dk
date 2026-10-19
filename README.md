@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.15.2** – kortet viser sin version nederst. Står der et lavere tal på kortet, så genstart Home Assistant og nulstil app-cachen.
+**Version 1.16.0** – kortet viser sin version nederst. Står der et lavere tal på kortet, så genstart Home Assistant og nulstil app-cachen.
 
 Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk).
 
@@ -305,7 +305,7 @@ Integrationen har sit eget kort, som installeres automatisk – der skal ikke in
 type: custom:smarthus-card
 ```
 
-Kortet viser elprisen nu, besparelser, en prisgraf for i dag og i morgen med et spor for hver enhed (hvornår elbil, batteri, varmt vand og varme kører), og styring af hvert modul med +/− knapper. For elbilen ser kunden, hvad det koster at lade **nu** sammenlignet med i de **billigste timer**, og hvor meget der spares.
+Kortet viser elprisen nu, besparelser, en prisgraf for i dag og i morgen med et spor for hver enhed (hvornår elbil, batteri, varmt vand og varme kører), og en række knapper (Elbil, Varmt vand, Varme, Batteri, Solceller). Et tryk på en knap åbner indstillingerne for området, og **Luk** fører tilbage til overblikket. Den lille prik på knappen viser, om SmartHus styrer området. Deler flere biler én lader, vises kun den valgte bil – den anden bil hverken planlægges eller styres. For elbilen ser kunden, hvad det koster at lade **nu** sammenlignet med i de **billigste timer**, og hvor meget der spares.
 
 Valgfrit: `title: Mit hus` ændrer overskriften. Har du flere SmartHus-opsætninger, kan `prefix` pege på en anden (standard `smarthus`).
 

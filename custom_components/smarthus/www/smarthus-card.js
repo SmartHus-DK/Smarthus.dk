@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.15.2";
+const SMARTHUS_CARD_VERSION = "1.16.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -170,6 +170,7 @@ class SmartHusCard extends HTMLElement {
     super();
     this.attachShadow({ mode: "open" });
     this._closed = new Set(); // alle felter er foldet ud fra start
+    this._panel = null;       // åbent indstillingspanel (null = overblikket)
     this._sel = null;
     this._solarSel = null;
     this._solarTab = "month";
@@ -241,7 +242,8 @@ class SmartHusCard extends HTMLElement {
     return cid === "ev" ? "ev_force" : `${cid}_force`;
   }
   _modules() {
-    const cars = this._cars().map((c, i) => carModule(c.cid, c.name, i === 0));
+    const all = this._cars();
+    const cars = this._visibleCars(all).map((c) => carModule(c.cid, c.name, c.cid === all[0]?.cid));
     return [...cars, ...MODULES].filter((m) => this._st("switch", m.sw));
   }
   _label(key) {
@@ -293,10 +295,7 @@ class SmartHusCard extends HTMLElement {
       <ha-card class="${this._hass.themes?.darkMode ? "dark" : ""}">
         ${(() => { const scene = this._renderScene(), solar = this._renderSolar();
           return `<div class="top${scene ? "" : " no-scene"}${solar ? "" : " no-solar"}">${scene}${this._renderHeader()}${solar}${this._renderStrip()}</div>`; })()}
-        <div class="modules">
-          ${this._connectedPicker()}
-          ${this._modules().map((m) => this._renderModule(m)).join("")}
-        </div>
+        ${this._renderDock()}
         <div class="ver">SmartHus v${SMARTHUS_CARD_VERSION}</div>
       </ha-card>`;
   }
@@ -612,20 +611,87 @@ class SmartHusCard extends HTMLElement {
       </div>`;
   }
 
-  _renderModule(m) {
+  /** Knapper for hvert område + det åbne indstillingspanel. */
+  _renderDock() {
+    const mods = this._modules();
+    const cars = mods.filter((m) => m.car);
+    const groups = [];
+    if (cars.length) groups.push({ id: "ev", name: cars.length > 1 ? "Elbiler" : "Elbil", icon: "car", mods: cars, sub: cars.length === 1 ? cars[0].name : null });
+    for (const [id, icon] of [["hotwater", "water"], ["heating", "heat"], ["battery", "battery"], ["solar", "solar"]]) {
+      const m = mods.find((x) => x.id === id);
+      if (m) groups.push({ id, name: m.name, icon, mods: [m] });
+    }
+    if (!groups.length) return "";
+    if (this._panel && !groups.some((g) => g.id === this._panel)) this._panel = null;
+    const tiles = groups.map((g) => {
+      const on = g.mods.some((m) => this._st("switch", m.sw)?.state === "on");
+      const line = g.mods.length === 1 ? this._moduleLine(g.mods[0], this._st("switch", g.mods[0].sw)?.state === "on") : `${g.mods.length} biler`;
+      const sel = this._panel === g.id;
+      return `<button class="tile${sel ? " sel" : ""}${on ? " on" : ""}" data-action="panel" data-panel="${g.id}" aria-expanded="${sel}"
+          aria-label="${esc(g.name)}: ${esc(line)}">
+        <span class="tile-ic">${this._dockIcon(g.icon)}<i class="tile-dot" title="${on ? "Styres af SmartHus" : "Styring slået fra"}"></i></span>
+        <span class="tile-name">${esc(g.sub || g.name)}</span>
+        <span class="tile-line">${esc(line)}</span>
+      </button>`;
+    }).join("");
+    const g = groups.find((x) => x.id === this._panel);
+    const panel = g ? `
+      <section class="panel" aria-label="Indstillinger for ${esc(g.name)}">
+        <div class="panel-head">
+          <span class="panel-ic">${this._dockIcon(g.icon)}</span>
+          <span class="panel-title">${esc(g.name)}<span>Indstillinger</span></span>
+          <button class="panel-close" data-action="close-panel" aria-label="Luk og vis overblikket">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 6 18 18M18 6 6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>Luk</button>
+        </div>
+        ${g.id === "ev" ? this._connectedPicker() : ""}
+        <div class="panel-mods${g.mods.length > 1 ? " multi" : ""}">${g.mods.map((m) => this._renderModule(m, true)).join("")}</div>
+      </section>` : "";
+    return `<div class="dock" role="group" aria-label="Indstillinger">${tiles}</div>${panel}`;
+  }
+
+  /** Ikoner i SmartHus-stil: grønne streger med gul og blå detalje. */
+  _dockIcon(kind) {
+    const G = "var(--sh-ic, #1E9E5C)", A = "#F7B21B", B = "#0A6FB8";
+    const st = `fill="none" stroke="${G}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"`;
+    const icons = {
+      car: `<path d="M5 20v-4.5l2.4-5.2A2 2 0 0 1 9.2 9h11.6a2 2 0 0 1 1.8 1.3L25 15.5V20" ${st}/>
+            <path d="M3.5 20h25v3.5a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1Z" ${st}/>
+            <circle cx="9.5" cy="24.5" r="2.4" fill="var(--card-background-color,#fff)" ${st}/><circle cx="22.5" cy="24.5" r="2.4" fill="var(--card-background-color,#fff)" ${st}/>
+            <path d="M16.6 10.8 14 15.4h3l-2 4.2" fill="none" stroke="${A}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
+      water: `<rect x="8.5" y="4" width="15" height="23" rx="4" ${st}/>
+            <path d="M16 11.5c2.6 3 3.8 4.9 3.8 6.6a3.8 3.8 0 0 1-7.6 0c0-1.7 1.2-3.6 3.8-6.6Z" fill="${B}" opacity=".9"/>
+            <path d="M12 27.5v2M20 27.5v2" ${st}/>`,
+      heat: `<rect x="5" y="11" width="22" height="14" rx="2.5" ${st}/>
+            <path d="M10.5 11v14M16 11v14M21.5 11v14M7 28h18" ${st}/>
+            <path d="M11 7.5c-1-1.3 1-2.2 0-3.5M16 7.5c-1-1.3 1-2.2 0-3.5M21 7.5c-1-1.3 1-2.2 0-3.5" fill="none" stroke="${A}" stroke-width="1.9" stroke-linecap="round"/>`,
+      battery: `<rect x="9" y="6" width="14" height="22" rx="2.5" ${st}/><path d="M13 3.5h6" ${st}/>
+            <path d="M19.3 12.4a4.6 4.6 0 1 1-6.6 0" fill="none" stroke="${B}" stroke-width="2" stroke-linecap="round"/>
+            <path d="M16 10.5v5" fill="none" stroke="${B}" stroke-width="2" stroke-linecap="round"/>
+            <path d="M12 23.5h8" stroke="${G}" stroke-width="2.6" stroke-linecap="round"/>`,
+      solar: `<circle cx="24" cy="8" r="3" fill="${A}"/>
+            <path d="M24 2.2v1.3M24 12.5v1.3M18.2 8h1.3M28.5 8h1.3M19.9 3.9l.9.9M27.2 11.2l.9.9M28.1 3.9l-.9.9" stroke="${A}" stroke-width="1.6" stroke-linecap="round"/>
+            <path d="M4 25.5 7.5 13h12.5L23.5 25.5Z" ${st}/>
+            <path d="M5.8 19.3h16M11.6 13l-1.8 12.5M15.9 13l1.8 12.5M13.8 25.5v3.5M9.5 29h8.5" ${st}/>`,
+    };
+    return `<svg viewBox="0 0 32 32" width="30" height="30" aria-hidden="true">${icons[kind] || ""}</svg>`;
+  }
+
+  _renderModule(m, inPanel = false) {
     const sw = this._st("switch", m.sw);
     const on = sw.state === "on";
-    const open = !this._closed.has(m.id);
+    const open = inPanel || !this._closed.has(m.id);
     const line = this._moduleLine(m, on);
     const body = open ? this._moduleBody(m) : "";
     return `
       <section class="mod ${open ? "open" : ""} ${on ? "on" : ""}">
         <div class="mod-head">
-          <button class="mod-main" data-action="expand" data-mod="${m.id}" aria-expanded="${open}">
+          ${inPanel
+            ? `<div class="mod-main"><span class="mod-text"><span class="mod-name">${m.car ? esc(m.name) : "Styring"}</span><span class="mod-line">${esc(line)}</span></span></div>`
+            : `<button class="mod-main" data-action="expand" data-mod="${m.id}" aria-expanded="${open}">
             <ha-icon icon="${m.icon}"></ha-icon>
             <span class="mod-text"><span class="mod-name">${m.name}</span><span class="mod-line">${esc(line)}</span></span>
             <span class="chev-lbl">${open ? "Skjul" : "Indstillinger"}</span><ha-icon class="chev" icon="mdi:chevron-down"></ha-icon>
-          </button>
+          </button>`}
           ${this._toggle(sw.entity_id, on, `Styr ${m.name.toLowerCase()}`)}
         </div>
         ${body}
@@ -1118,6 +1184,15 @@ class SmartHusCard extends HTMLElement {
     const { action, entity } = el.dataset;
     if (action === "toggle") {
       this._hass.callService("switch", "toggle", { entity_id: entity });
+    } else if (action === "panel") {
+      const id = el.dataset.panel;
+      this._panel = this._panel === id ? null : id;
+      this._render();
+      if (this._panel) requestAnimationFrame(() => this.shadowRoot.querySelector(".panel")?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
+    } else if (action === "close-panel") {
+      this._panel = null;
+      this._render();
+      requestAnimationFrame(() => this.shadowRoot.querySelector(".dock")?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
     } else if (action === "expand") {
       const id = el.dataset.mod;
       this._closed.has(id) ? this._closed.delete(id) : this._closed.add(id);
@@ -1219,10 +1294,10 @@ class SmartHusCard extends HTMLElement {
         .legend { grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 24px; }
         .lg { grid-template-columns: 10px minmax(0, 1fr); }
         .lg-val { grid-column: 2; text-align: left; font-size: 12px; margin-top: -4px; }
-        .modules { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        .mod { border-bottom: 1px solid var(--sh-line); }
-        .mod:nth-child(odd) { border-right: 1px solid var(--sh-line); }
-        .mod:last-child { border-bottom: 1px solid var(--sh-line); }
+        .panel-mods.multi { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .panel-mods.multi .mod:nth-child(odd) { border-right: 1px solid var(--sh-line); }
+        .panel .mod-body { columns: 2; column-gap: 32px; }
+        .panel-mods.multi .mod-body { columns: 1; }
       }
       @container (min-width: 1200px) {
         /* Prisgrafen rykker op under pris og energiflow, ved siden af solcellerne */
@@ -1234,9 +1309,6 @@ class SmartHusCard extends HTMLElement {
         .top.no-scene { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); grid-template-areas: "head solar" "strip solar"; }
         .top > .scene { padding: 0 8px; border-left: 1px solid var(--sh-line); }
         .top > .scene svg { max-height: 250px; }
-        .modules { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-        .mod:nth-child(odd) { border-right: 0; }
-        .mod:not(:nth-child(3n)) { border-right: 1px solid var(--sh-line); }
       }
       button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
       button:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; border-radius: 6px; }
@@ -1284,6 +1356,41 @@ class SmartHusCard extends HTMLElement {
       .lg-val { color: var(--secondary-text-color); text-align: right; font-variant-numeric: tabular-nums; }
 
       .modules { border-top: 1px solid var(--sh-line); }
+      /* Knapper for områderne */
+      .dock { display: grid; grid-template-columns: repeat(auto-fit, minmax(64px, 1fr)); gap: 8px; padding: 14px 16px; border-top: 1px solid var(--sh-line); }
+      .tile { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 4px 8px; border-radius: 14px; min-width: 0;
+              transition: background .15s, box-shadow .15s; }
+      .tile:hover { background: var(--sh-track); }
+      .tile:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+      .tile-ic { position: relative; display: grid; place-items: center; width: 52px; height: 52px; border-radius: 16px;
+                 background: color-mix(in srgb, #1E9E5C 12%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, #1E9E5C 30%, transparent); }
+      .tile-dot { position: absolute; top: -3px; right: -3px; width: 12px; height: 12px; border-radius: 50%;
+                  background: var(--secondary-text-color); opacity: .5; box-shadow: 0 0 0 2px var(--card-background-color, #fff); }
+      .tile.on .tile-dot { background: #1E9E5C; opacity: 1; }
+      .tile.sel { background: color-mix(in srgb, #1E9E5C 10%, transparent); box-shadow: inset 0 0 0 1.5px #1E9E5C; }
+      .tile.sel .tile-ic { background: #1E9E5C; --sh-ic: #FFFFFF; box-shadow: none; }
+      .tile-name { font-size: 13px; font-weight: 600; max-width: 100%; text-align: center; line-height: 1.25; overflow-wrap: anywhere; }
+      .tile-line { font-size: 11.5px; color: var(--secondary-text-color); max-width: 100%; text-align: center; line-height: 1.3;
+                   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+      @container (max-width: 520px) { .tile-line { display: none; } .tile-ic { width: 46px; height: 46px; } .tile-name { font-size: 12px; } .dock { gap: 4px; padding: 12px 10px; } }
+      /* Indstillingspanel */
+      .panel { margin: 0 16px 12px; border-radius: 16px; box-shadow: inset 0 0 0 1px var(--sh-line); overflow: hidden; animation: sh-panel .18s ease-out; }
+      @keyframes sh-panel { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+      @media (prefers-reduced-motion: reduce) { .panel { animation: none; } }
+      .panel-head { display: flex; align-items: center; gap: 12px; padding: 12px 12px 12px 16px; background: color-mix(in srgb, #1E9E5C 8%, transparent); border-bottom: 1px solid var(--sh-line); }
+      .panel-ic { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: #1E9E5C; --sh-ic: #FFFFFF; }
+      .panel-ic svg { width: 26px; height: 26px; }
+      .panel-title { flex: 1; display: flex; flex-direction: column; font-size: 16px; font-weight: 700; }
+      .panel-title span { font-size: 12px; font-weight: 400; color: var(--secondary-text-color); }
+      .panel-close { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 20px; font-size: 14px; font-weight: 600;
+                     box-shadow: inset 0 0 0 1px var(--sh-line); background: var(--card-background-color, #fff); }
+      .panel-close:hover { background: var(--sh-track); }
+      .panel .mod { border-bottom: 1px solid var(--sh-line); }
+      .panel .mod:last-child { border-bottom: 0; }
+      .panel .mod-main { padding-left: 16px; }
+      .panel .mod-body { padding-left: 16px; }
+      .panel .picker { border-bottom: 1px solid var(--sh-line); }
+      .panel .mod-body > * { break-inside: avoid; }
       .ver { padding: 8px 16px 4px; font-size: 11px; color: var(--secondary-text-color); text-align: right; opacity: .7; }
       .mod { border-bottom: 1px solid var(--sh-line); }
       .mod:last-child { border-bottom: 0; }
