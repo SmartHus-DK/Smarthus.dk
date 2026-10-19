@@ -405,3 +405,13 @@ def test_energy_flow():
     assert f["house_kw"] == 1.6 and f["grid_kw"] == -1.4 and f["battery_kw"] == -1.2
     f = flow.energy_flow(solar_kw=None, export_kw=-2.0, battery_kw=None, ev_kw={})
     assert f["house_kw"] == 2.0 and f["solar_kw"] is None
+
+
+def test_translations_have_no_html():
+    """hassfest afviser tekster med <...> – tjek det her, før det når GitHub."""
+    import json
+    import re
+    for lang in ("da", "en"):
+        text = (PKG / "translations" / f"{lang}.json").read_text(encoding="utf-8")
+        json.loads(text)
+        assert not re.findall(r"<[^>]*>", text), lang

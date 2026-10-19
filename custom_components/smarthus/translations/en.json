@@ -227,7 +227,7 @@
           "ev_current_script": "Only for chargers that are neither Easee nor have a number entity. The script gets 'current' (A).",
           "ev_easee_device": "For an Easee charger: pick it here and SmartHus controls the current without a script.",
           "ev_plug_sensor": "Sensor from the car's integration showing if the cable is plugged in. With several cars on one charger, SmartHus only controls the connected car. Without it, pick the connected car on the card.",
-          "ev_power_sensor": "The charger's current power, e.g. Easee sensor.<charger>_power. Used for the energy flow."
+          "ev_power_sensor": "The charger's current power, e.g. Easee sensor.[charger]_power. Used for the energy flow."
         }
       }
     },
