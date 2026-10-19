@@ -374,3 +374,25 @@ def test_ev_solar_regulation():
     st = solar.EvSolarState()
     solar.regulate_ev(st, 4.5, None, 6, 16, 4.0); solar.regulate_ev(st, 4.5, None, 6, 16, 4.0)
     assert st.active
+
+
+def test_plug_and_connected_car():
+    plug = _load("plug")
+    assert plug.plug_state("on") is True and plug.plug_state("off") is False
+    assert plug.plug_state("Connected") is True and plug.plug_state("Disconnected") is False
+    assert plug.plug_state("charging") is True and plug.plug_state("unavailable") is None
+    assert plug.plug_state(None) is None
+    ids = ["ev", "ev_tesla"]
+    assert plug.pick_connected(ids, {"ev": False, "ev_tesla": True}, None) == "ev_tesla"    # sensor vinder
+    assert plug.pick_connected(ids, {"ev": None, "ev_tesla": None}, "ev_tesla") == "ev_tesla"  # manuelt valg
+    assert plug.pick_connected(ids, {"ev": None, "ev_tesla": None}, None) == "ev"            # standard: første
+    assert plug.pick_connected(ids, {"ev": False, "ev_tesla": None}, "ev") == "ev_tesla"     # ev er ikke tilsluttet
+    assert plug.pick_connected(ids, {"ev": False, "ev_tesla": False}, "ev") is None          # ingen bil
+    # Ikke-tilsluttet bil planlægges ikke
+    recs = records("2026-10-18", CURVE) + records("2026-10-19", CURVE)
+    slots = model().build_slots(recs)
+    now = datetime(2026, 10, 18, 20, 0, tzinfo=TZ).astimezone(timezone.utc)
+    cars = [planner.CarInput("ev", "Kia", soc=50, connected=False), planner.CarInput("ev_tesla", "Tesla", soc=40)]
+    p = planner.build_plan(slots, now, TZ, dict(const.DEFAULT_SETTINGS), cars=cars)
+    assert not p.evs["ev"].connected and p.evs["ev"].slots == [] and not p.evs["ev"].on
+    assert p.evs["ev_tesla"].slots

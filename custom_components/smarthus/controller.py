@@ -84,6 +84,7 @@ from .coordinator import SmartHusPriceCoordinator
 from .planner import CarInput, Plan, build_plan, car_settings
 from .profile import LEARN_DAYS, Profile, Reserve, build_profile, calc_reserve
 from .savings import SavingsCalculator
+from .plug import pick_connected, plug_state
 from .solar import EvSolarState, regulate_ev
 
 _LOGGER = logging.getLogger(__name__)
@@ -109,6 +110,15 @@ class SmartHusController:
         self.enabled: dict[str, bool] = {MODULE_MASTER: True, **{m: False for m in MODULES},
                                          **{cid: False for cid in self.car_ids}}
         self.ev_force: dict[str, bool] = {cid: False for cid in self.car_ids}
+        # Biler der deler en lader: {lader-entitet: [bil-id, ...]} (kun grupper med mindst 2 biler)
+        groups: dict[str, list[str]] = {}
+        for car in self.cars:
+            groups.setdefault(car["charger"], []).append(car["id"])
+        self.shared_chargers: dict[str, list[str]] = {ch: ids for ch, ids in groups.items() if len(ids) > 1}
+        # Manuelt valg af tilsluttet bil pr. delt lader (gendannes af select-entiteten)
+        self.connected_choice: dict[str, str] = {}
+        self.connected: dict[str, bool] = {cid: True for cid in self.car_ids}
+        self.connected_source: dict[str, str] = {}
         self.plan = Plan()
         self.savings = SavingsCalculator()
         self.profile = Profile()
@@ -303,9 +313,11 @@ class SmartHusController:
         """Byg planen på ny og opdatér alle entiteter."""
         slots = self.coordinator.data or []
         soc = self._float_state(self.config.get(CONF_BATTERY_SOC))
+        self._update_connected()
         cars = [
             CarInput(car["id"], car.get("name") or "Elbil",
-                     soc=self._float_state(car.get("soc")), force=self.ev_force.get(car["id"], False))
+                     soc=self._float_state(car.get("soc")), force=self.ev_force.get(car["id"], False),
+                     connected=self.connected.get(car["id"], True))
             for car in self.cars
         ]
         self.plan = build_plan(slots, dt_util.utcnow(), self.tz, self.settings, soc=soc, cars=cars)
@@ -524,6 +536,9 @@ class SmartHusController:
         solar_car = next((cid for cid, st in self.ev_solar.items() if st.active), None)
         for car in self.cars:
             ep = p.evs.get(car["id"])
+            if ep and not ep.connected and car["charger"] in self.shared_chargers:
+                self.ev_solar.get(car["id"], EvSolarState()).reset()
+                continue        # en anden bil sidder i laderen – den styrer laderen
             if ep and self.active(car["id"]):
                 on, current = self._ev_target(car, ep, solar_car, step=not force)
                 if self.ev_solar.get(car["id"]) and self.ev_solar[car["id"]].active:
@@ -542,12 +557,37 @@ class SmartHusController:
                 temp = base - self.settings[S_HEATING_REDUCE_DEG]
             await self._ensure_temperature(self.config[CONF_HEATING_CLIMATE], temp, force)
 
+    def _plug(self, car: dict) -> bool | None:
+        entity_id = car.get("plug")
+        if not entity_id:
+            return None
+        st = self.hass.states.get(entity_id)
+        return plug_state(st.state if st else None)
+
+    def _update_connected(self) -> None:
+        """Find ud af, hvilke biler der sidder i laderen."""
+        for car in self.cars:
+            if car["charger"] in self.shared_chargers:
+                continue
+            plug = self._plug(car)
+            self.connected[car["id"]] = plug is not False
+            self.connected_source[car["id"]] = "sensor" if plug is not None else "assumed"
+        for charger, ids in self.shared_chargers.items():
+            plugs = {cid: self._plug(self.car(cid)) for cid in ids}
+            active = pick_connected(ids, plugs, self.connected_choice.get(charger))
+            for cid in ids:
+                self.connected[cid] = cid == active
+                self.connected_source[cid] = "sensor" if plugs.get(cid) is not None else "manual"
+
     def has_current_control(self, car: dict) -> bool:
         return bool(car.get("current_entity") or car.get("current_script") or car.get("easee_device"))
 
     def _ev_target(self, car: dict, ep, solar_car: str | None, step: bool = True) -> tuple[bool, int | None]:
         """Skal laderen være tændt, og med hvilken strøm (A)? None = rør ikke strømmen."""
         cid = car["id"]
+        if not ep.connected:
+            self.ev_solar.setdefault(cid, EvSolarState()).reset()
+            return False, None
         cs = car_settings(self.settings, cid)
         min_a, max_a = int(cs["solar_min_a"]), int(cs["solar_max_a"])
         st = self.ev_solar.setdefault(cid, EvSolarState())

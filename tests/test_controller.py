@@ -32,7 +32,7 @@ pkg = types.ModuleType("smarthus"); pkg.__path__ = [str(PKG)]; sys.modules["smar
 def load(n):
     spec = importlib.util.spec_from_file_location(f"smarthus.{n}", PKG / f"{n}.py")
     m = importlib.util.module_from_spec(spec); sys.modules[f"smarthus.{n}"] = m; spec.loader.exec_module(m); return m
-for n in ("const", "planner", "pricing", "savings", "profile", "solar", "coordinator", "controller"):
+for n in ("const", "planner", "pricing", "savings", "profile", "solar", "plug", "coordinator", "controller"):
     load(n)
 ctl_mod = sys.modules["smarthus.controller"]; planner = sys.modules["smarthus.planner"]
 
@@ -203,6 +203,21 @@ async def main():
     await c._apply_current(car, 9, False); await c._apply_current(car, 9, False)
     assert h.services.calls == [("easee", "set_charger_dynamic_limit",
                                  {"device_id": "easee1", "current": 9, "time_to_live": 0})]
+    # 15) To biler på én lader: kun den tilsluttede styrer laderen
+    plugs = {"binary_sensor.kia_plug": "off", "binary_sensor.tesla_plug": "on"}
+    c, h = make({}, {})
+    c.hass.states = types.SimpleNamespace(get=lambda e: State(plugs[e]) if e in plugs else None)
+    c.cars = [{"id": "ev", "name": "Kia", "charger": "switch.easee", "plug": "binary_sensor.kia_plug"},
+              {"id": "ev_tesla", "name": "Tesla", "charger": "switch.easee", "plug": "binary_sensor.tesla_plug"}]
+    c.car = lambda cid: next(x for x in c.cars if x["id"] == cid)
+    c.shared_chargers = {"switch.easee": ["ev", "ev_tesla"]}
+    c.connected, c.connected_source, c.connected_choice = {}, {}, {}
+    c._update_connected()
+    assert c.connected == {"ev": False, "ev_tesla": True} and c.connected_source["ev"] == "sensor"
+    plugs.update({"binary_sensor.kia_plug": "unavailable", "binary_sensor.tesla_plug": "unavailable"})
+    c.connected_choice["switch.easee"] = "ev"
+    c._update_connected()
+    assert c.connected == {"ev": True, "ev_tesla": False}            # ukendt: manuelt valg
     print("controller OK")
 
 def test_controller_control():

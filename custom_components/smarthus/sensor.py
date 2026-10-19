@@ -109,7 +109,7 @@ def _status(c: SmartHusController) -> str:
     if c.active(MODULE_SOLAR) and p.solar_curtail:
         parts.append("Begrænser eksport")
     for cid, ep in p.evs.items():
-        if not c.active(cid):
+        if not c.active(cid) or not ep.connected:
             continue
         st = c.ev_solar.get(cid)
         if st and st.active:
@@ -147,6 +147,7 @@ def _ev_attrs(c: SmartHusController, cid: str) -> dict:
     e = ep.energy or 0
     return {
         "car_id": cid,
+        "connected": c.connected.get(cid, True),
         "car_name": (c.car(cid) or {}).get("name") or ep.name,
         "cost_now": ep.cost_now,
         "cost_planned": ep.cost_planned,

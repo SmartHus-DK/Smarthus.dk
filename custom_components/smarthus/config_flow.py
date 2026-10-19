@@ -129,6 +129,8 @@ HUAWEI_POWER = selector.NumberSelector(selector.NumberSelectorConfig(min=100, ma
                                                                     unit_of_measurement="W"))
 EASEE_DEVICE = selector.DeviceSelector(selector.DeviceSelectorConfig(integration="easee"))
 CAR_EASEE_DEVICE = "ev_easee_device"
+CAR_PLUG = "ev_plug_sensor"
+PLUG = selector.EntitySelector(selector.EntitySelectorConfig(domain=["binary_sensor", "sensor"]))
 CURRENT = selector.EntitySelector(selector.EntitySelectorConfig(domain=["number", "input_number"]))
 
 
@@ -371,6 +373,7 @@ class SmartHusOptionsFlow(OptionsFlow):
                 "current_entity": user_input.get(CAR_CURRENT_ENTITY) or None,
                 "current_script": user_input.get(CAR_CURRENT_SCRIPT) or None,
                 "easee_device": user_input.get(CAR_EASEE_DEVICE) or None,
+                "plug": user_input.get(CAR_PLUG) or None,
             }
             if current:
                 current.update(data)
@@ -383,6 +386,7 @@ class SmartHusOptionsFlow(OptionsFlow):
             vol.Required(CAR_NAME, default=default_name): TEXT,
             vol.Required(CONF_EV_SWITCH, **({"default": cur["charger"]} if cur.get("charger") else {})): ONOFF,
             _opt(CONF_EV_SOC, {CONF_EV_SOC: cur.get("soc")}, SOC)[0]: SOC,
+            _opt(CAR_PLUG, {CAR_PLUG: cur.get("plug")}, PLUG)[0]: PLUG,
             _opt(CONF_EV_ENERGY, {CONF_EV_ENERGY: cur.get("energy")}, ENERGY)[0]: ENERGY,
             _opt(CAR_EASEE_DEVICE, {CAR_EASEE_DEVICE: cur.get("easee_device")}, EASEE_DEVICE)[0]: EASEE_DEVICE,
             _opt(CAR_CURRENT_ENTITY, {CAR_CURRENT_ENTITY: cur.get("current_entity")}, CURRENT)[0]: CURRENT,

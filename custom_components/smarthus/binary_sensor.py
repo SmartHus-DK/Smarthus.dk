@@ -106,6 +106,8 @@ class EvChargeBinary(SmartHusEntity, BinarySensorEntity):
         ep = self._ep()
         return {
             "car_id": self.cid,
+            "connected": self.controller.connected.get(self.cid, True),
+            "connected_source": self.controller.connected_source.get(self.cid),
             "solar_active": bool(self.controller.ev_solar.get(self.cid) and self.controller.ev_solar[self.cid].active),
             "solar_current": self.controller.ev_solar[self.cid].current if self.controller.ev_solar.get(self.cid) else None,
             "car_name": ep.name,

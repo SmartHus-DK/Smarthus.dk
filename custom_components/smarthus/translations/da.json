@@ -219,6 +219,7 @@
           "car_name": "Navn på bilen",
           "ev_charger_entity": "Kontakt: tillad opladning",
           "ev_soc_sensor": "Bilens batteriniveau (SoC %)",
+          "ev_plug_sensor": "Ladekabel tilsluttet (fra bilen) – valgfri",
           "ev_energy_sensor": "Energimåler for laderen (kWh)",
           "ev_current_entity": "Ladestrøm: tal-entitet (A) – valgfri",
           "ev_current_script": "Ladestrøm: script – valgfri",
@@ -231,7 +232,8 @@
           "ev_energy_sensor": "En stigende måler (kWh) for al strøm laderen har leveret – fx Easee 'Lifetime energy', Zaptec 'Total charge energy'. Bruges KUN til at beregne besparelsen ved at lade i billige timer. Styringen virker uden.",
           "ev_current_entity": "Til andre ladebokse med en tal-entitet for ladestrøm i ampere – fx Zaptec 'Available current'. Ikke nødvendig ved Easee.",
           "ev_current_script": "Kun til ladebokse, der hverken er Easee eller har en tal-entitet. Scriptet får variablen 'current' (A).",
-          "ev_easee_device": "Har kunden en Easee-lader, så vælg den her – så kan SmartHus styre ladestrømmen ved solcelleladning uden script."
+          "ev_easee_device": "Har kunden en Easee-lader, så vælg den her – så kan SmartHus styre ladestrømmen ved solcelleladning uden script.",
+          "ev_plug_sensor": "Sensor fra bilens egen integration, der viser om ladekablet sidder i – fx Tesla binary_sensor.<bil>_charger, Kia/Hyundai binary_sensor.<bil>_ev_plugged_in, VW sensor.<bil>_plug_status. Deler flere biler samme lader, styrer SmartHus kun den bil, der er tilsluttet. Uden sensor vælger du den tilsluttede bil på kortet."
         }
       }
     },
@@ -537,6 +539,11 @@
       },
       "ev_solar_start_kw": {
         "name": "{car}: start ved sol over"
+      }
+    },
+    "select": {
+      "connected_car": {
+        "name": "Tilsluttet bil"
       }
     }
   }

@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.11.0** – kortet viser sin version nederst. Står der et lavere tal på kortet, så genstart Home Assistant og nulstil app-cachen.
+**Version 1.12.0** – kortet viser sin version nederst. Står der et lavere tal på kortet, så genstart Home Assistant og nulstil app-cachen.
 
 Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk).
 
@@ -264,6 +264,14 @@ Under **Solceller** på kortet kan du sætte **Stop eksport under** (kr/kWh). N�
 
 ### Kortet i fuld skærm
 Kortets bredde bestemmes af dashboard-visningen. Vil du have det til at fylde hele skærmen: **Rediger dashboard → tryk på blyanten ved fanen → Visningstype: Panel (1 kort)**.
+
+### Flere biler på samme lader
+Sæt hver bil op under **Konfigurer → Elbiler** med **samme lader**. SmartHus styrer så kun den bil, der sidder i laderen:
+
+- **Automatisk (valgfrit):** vælg bilens sensor for **"Ladekabel tilsluttet"** fra bilens egen integration (fx Tesla, Kia/Hyundai, VW). Så ved SmartHus selv, hvilken bil der er tilsluttet, og bruger dens SoC, mål og klar-tidspunkt.
+- **Manuelt:** uden sensor vælger du på kortet under **Tilsluttet bil**, hvilken bil der sidder i laderen.
+
+Siger en bils sensor "ikke tilsluttet", bruges den anden bil. Siger alle sensorer "ikke tilsluttet", styres laderen ikke. Bilen, der ikke er tilsluttet, vises som "Ikke tilsluttet laderen" og planlægges ikke.
 
 ### Tidsrum
 Batteri, varmt vand og varme har hvert sit **tidsrum** (fra–til kl.), så kunden kan bestemme, hvornår SmartHus må handle:

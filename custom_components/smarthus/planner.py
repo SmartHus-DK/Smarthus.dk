@@ -138,6 +138,7 @@ class CarInput:
     name: str = "Elbil"
     soc: float | None = None
     force: bool = False
+    connected: bool = True   # False = bilen sidder ikke i laderen
 
 
 @dataclass
@@ -155,6 +156,7 @@ class EvPlan:
     cost_now: float | None = None  # kr hvis der lades med det samme
     cost_planned: float | None = None  # kr i de planlagte billigste timer
     limited: bool = False  # plads blev begrænset af maks. samlet ladeeffekt
+    connected: bool = True  # False = ikke tilsluttet laderen – planlægges ikke
 
 
 @dataclass
@@ -304,6 +306,10 @@ def plan_cars(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
         cs = car_settings(settings, car.cid)
         kw = max(cs["charge_power"], 0.1)
         ep = EvPlan(car.cid, car.name, soc=car.soc)
+        if not car.connected:
+            ep.connected = False
+            result[car.cid] = ep
+            continue
         available = None
         if max_kw > 0:
             available = lambda s, kw=kw: used.get(s.start, 0.0) + kw <= max_kw + 1e-6  # noqa: E731

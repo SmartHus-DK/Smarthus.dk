@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.11.0";
+const SMARTHUS_CARD_VERSION = "1.12.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -283,6 +283,7 @@ class SmartHusCard extends HTMLElement {
         </div>
         ${this._renderStrip()}
         <div class="modules">
+          ${this._connectedPicker()}
           ${this._modules().map((m) => this._renderModule(m)).join("")}
         </div>
         <div class="ver">SmartHus v${SMARTHUS_CARD_VERSION}</div>
@@ -588,6 +589,7 @@ class SmartHusCard extends HTMLElement {
       const k = `${m.id}_charge_now`;
       if (a.target_reached) return `${prefix}Ladet til ${nf(a.soc, 0)} %`;
       const ca = this._st("binary_sensor", k)?.attributes || {};
+      if (ca.connected === false) return `${prefix}Ikke tilsluttet laderen`;
       if (ca.solar_active) return `${prefix}Lader med sol · ${ca.solar_current} A${a.soc != null ? ` · ${nf(a.soc, 0)} %` : ""}`;
       if (isOn(k)) return `${prefix}Lader nu${a.soc != null ? ` · ${nf(a.soc, 0)} %` : ""}`;
       const n = next(k);
@@ -665,6 +667,21 @@ class SmartHusCard extends HTMLElement {
         <ha-icon icon="mdi:lightning-bolt"></ha-icon>${fon ? "Stop opladning nu" : `Lad ${esc(m.name)} nu`}</button>`;
     }
     return `<div class="mod-body">${extra}${groups}${actions}</div>`;
+  }
+
+  _connectedPicker() {
+    const pre = `select.${this._config.prefix}_connected_car`;
+    return Object.keys(this._hass.states)
+      .filter((id) => id === pre || id.startsWith(`${pre}_`))
+      .map((id) => {
+        const st = this._hass.states[id];
+        const a = st.attributes;
+        const chips = (a.options || []).map((o) => `<button class="chip ${o === st.state && !a.none_connected ? "on" : ""}" data-action="select"
+            data-entity="${id}" data-option="${esc(o)}" aria-pressed="${o === st.state}">${esc(o)}</button>`).join("");
+        const note = a.none_connected ? "Ingen bil er tilsluttet" : a.detected_automatically ? "Registreret automatisk fra bilen" : "Vælg den bil, der sidder i laderen";
+        return `<div class="picker"><div class="picker-head"><ha-icon icon="mdi:ev-plug-type2"></ha-icon><span>Tilsluttet bil</span>
+          <span class="picker-note">${note}</span></div><div class="chips">${chips}</div></div>`;
+      }).join("");
   }
 
   _switchRow(it) {
@@ -817,6 +834,8 @@ class SmartHusCard extends HTMLElement {
       let v = parseFloat(s.state) + step * parseInt(el.dataset.dir, 10);
       v = Math.min(max, Math.max(min, Math.round(v / step) * step));
       this._hass.callService("number", "set_value", { entity_id: entity, value: Number(v.toFixed(3)) });
+    } else if (action === "select") {
+      this._hass.callService("select", "select_option", { entity_id: entity, option: el.dataset.option });
     } else if (action === "more") {
       this.dispatchEvent(new CustomEvent("hass-more-info", { bubbles: true, composed: true, detail: { entityId: entity } }));
     }
@@ -991,6 +1010,13 @@ class SmartHusCard extends HTMLElement {
       .water-bar { height: 8px; border-radius: 4px; background: var(--sh-track); margin-top: 6px; overflow: hidden; }
       .water-bar i { display: block; height: 100%; border-radius: 4px; background: ${COLORS.hotwater || "#2BA3C9"}; }
       .water-sub { margin-top: 4px; font-size: 12px; color: var(--secondary-text-color); }
+      .picker { padding: 12px 16px; border-bottom: 1px solid var(--sh-line); }
+      .picker-head { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; }
+      .picker-head ha-icon { --mdc-icon-size: 20px; color: var(--secondary-text-color); }
+      .picker-note { margin-left: auto; font-size: 12px; font-weight: 400; color: var(--secondary-text-color); }
+      .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+      .chip { padding: 7px 14px; border-radius: 18px; font-size: 14px; box-shadow: inset 0 0 0 1px var(--sh-line); }
+      .chip.on { background: var(--primary-color); color: var(--text-primary-color, #fff); box-shadow: none; }
       .hint { font-size: 13px; color: var(--secondary-text-color); }
       .win-note { display: block; font-size: 11px; color: var(--secondary-text-color); }
       .win-ctl { display: flex; align-items: center; gap: 2px; }
