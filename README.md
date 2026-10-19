@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.16.1** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
+**Version 1.16.2** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
 
 SmartHus bruger strømmen, når den er billigst, og sparer, når den er dyrest. Den lader elbilen og batteriet i de billige timer, varmer vandet med billig strøm eller solcelleoverskud, skruer lidt op og ned for varmen og stopper salg af solstrøm, når prisen er for lav. Du ser det hele – og hvad du har sparet – på ét kort.
 
@@ -86,7 +86,8 @@ Med bilens egen integration kan SmartHus lade præcis til fx 80 % og selv se, hv
 | Nibe | [myUplink](https://www.home-assistant.io/integrations/myuplink/) | Indbygget |
 | Mitsubishi | [MELCloud](https://www.home-assistant.io/integrations/melcloud/) | Indbygget |
 | Daikin | [Daikin Onecta](https://github.com/jwillemsen/daikin_onecta) | HACS |
-| Varmtvandsbeholder | En kontakt/relæ, fx [Shelly](https://www.home-assistant.io/integrations/shelly/) – gerne med temperaturføler | Indbygget |
+| Varmt vand fra varmepumpen | Varmepumpens egen integration – brug dens kontakt eller knap til varmt vand (fx "Charge" eller "Hot water boost") | – |
+| Varmtvandsbeholder med elpatron | Kun hvis varmepumpen ikke kan: en kontakt/relæ, fx [Shelly](https://www.home-assistant.io/integrations/shelly/) – gerne med temperaturføler | Indbygget |
 | Andre | Alt med en termostat (climate) i Home Assistant virker | – |
 
 > Navnene på entiteterne varierer med mærke og version. Find dine egne under **Indstillinger → Enheder og tjenester → Entiteter**.
@@ -103,7 +104,7 @@ Klik **Konfigurer** på SmartHus. Under hvert felt står en kort forklaring. Du 
 | **Batteri / inverter** | Huawei: vælg batteriet. Andre: inverterens rullemenu for driftstilstand og batteriniveau (%). |
 | **Solceller** | **Effekt til/fra nettet lige nu** (giver energiflow og overskud), solcelleproduktion lige nu og "stop eksport"-entiteten. |
 | **Elbiler** | Pr. bil: navn, laderens kontakt, bilens batteriniveau. Easee: vælg bare laderen. Flere biler på samme lader: vælg samme lader til begge. |
-| **Varmt vand** | Kontakten til varmelegemet – og gerne en temperaturføler i vandet. |
+| **Varmt vand** | Varmepumpens kontakt eller knap til varmt vand (fx "Charge") – eller kontakten til elpatronen. Gerne også en temperaturføler i vandet. |
 | **Varme / varmepumpe** | Termostaten (climate) for huset eller varmepumpen. |
 | **Vejr og udetemperatur** | Valgfrit: din egen udeføler. Ellers bruges vejret fra skyen automatisk. |
 
@@ -324,6 +325,7 @@ Har ladeboksens integration en **number**-entitet for ladestrøm (fx Zaptec "Ava
 - **Tidsrum:** batteri, varmt vand og varme har hvert sit fra–til (0–24 = hele døgnet, 22–06 går over midnat).
 - **Stop eksport under:** når salgsprisen er under grænsen, stoppes eksporten (standard 0 kr = kun ved negativ pris).
 - **Varmestyring:** kun aktiv under **Aktiv under udetemperatur** (standard 10 °C, start igen 1 °C under). Sæt 30 °C for altid aktiv.
+- **Varmt vand via knap** (fx varmepumpens "Charge"): SmartHus trykker én gang, når den billige periode (eller solcelleoverskuddet) starter, og varmepumpen stopper selv, når vandet er varmt.
 - **Varmt vand med føler:** slukker ved maks. temperatur og tænder igen i den billige periode, når vandet er kølet 3 °C af.
 </details>
 

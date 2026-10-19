@@ -245,6 +245,13 @@ async def main():
     assert c._update_heating_outdoor() is True        # egen føler vinder
     info = c.weather_info
     assert info["condition"] == "rainy" and info["temperature"] == 4.5 and info["night"] is False
+    # 17) Varmt vand via varmepumpens knap ("charge"): tryk én gang pr. periode
+    c, h = make({"hotwater_entity": "button.vp_charge"}, {"button.vp_charge": State("unknown")})
+    c._hw_button_on = False
+    await c._apply_hotwater(True, False); await c._apply_hotwater(True, False)
+    assert h.services.calls == [("button", "press", {"entity_id": "button.vp_charge"})], h.services.calls
+    await c._apply_hotwater(False, False); await c._apply_hotwater(True, False)
+    assert len(h.services.calls) == 2                 # ny periode: nyt tryk
     print("controller OK")
 
 def test_controller_control():

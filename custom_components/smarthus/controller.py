@@ -143,6 +143,7 @@ class SmartHusController:
         # Varmt vand med temperaturføler: True når øvre grænse er nået
         self.hotwater_full = False
         self.heating_outdoor_ok = True     # varmestyringen er aktiv ift. udetemperaturen
+        self._hw_button_on = False         # varmt vand via knap: trykket i den nuværende periode
         # Solprognose (Wh pr. periode) fra Forecast.Solar/Solcast – hentes hvert 15. minut
         self._forecast_wh: dict[str, float] = {}
         self._forecast_key_is_end = False
@@ -659,6 +660,13 @@ class SmartHusController:
         if entity_id.split(".")[0] in ("water_heater", "climate"):
             temp = self.settings[S_HOTWATER_BOOST_TEMP if (on or self.hotwater_surplus) else S_HOTWATER_NORMAL_TEMP]
             await self._ensure_temperature(entity_id, temp, force)
+        elif entity_id.split(".")[0] in ("button", "input_button"):
+            # Knap (fx varmepumpens "charge"): tryk én gang, når opvarmningen skal starte
+            want = self._hotwater_switch_on(on)
+            if want and not self._hw_button_on:
+                domain = entity_id.split(".")[0]
+                await self._call(domain, "press", {"entity_id": entity_id})
+            self._hw_button_on = want
         else:
             await self._ensure_switch(entity_id, self._hotwater_switch_on(on), force)
 
@@ -927,6 +935,8 @@ class SmartHusController:
             entity_id = self.config[CONF_HOTWATER_ENTITY]
             if entity_id.split(".")[0] in ("water_heater", "climate"):
                 await self._ensure_temperature(entity_id, self.settings[S_HOTWATER_NORMAL_TEMP], True)
+            elif entity_id.split(".")[0] in ("button", "input_button"):
+                self._hw_button_on = False     # varmepumpen styrer selv igen
             else:
                 await self._ensure_switch(entity_id, True, True)
         elif module == MODULE_HEATING and self.has(CONF_HEATING_CLIMATE):

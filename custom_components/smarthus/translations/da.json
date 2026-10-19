@@ -160,7 +160,7 @@
           "hotwater_energy_sensor": "Energimåler: varmt vand (kWh) – valgfri"
         },
         "data_description": {
-          "hotwater_entity": "Kontakt (switch) til varmelegeme eller varmepumpe – tændes i dagens billigste periode. Eller en water_heater/climate-entitet – så sættes temperaturen i stedet ('Opvarm til' og 'Normal temperatur' på kortet).",
+          "hotwater_entity": "Det SmartHus bruger til at varme vandet op i dagens billigste periode: • varmepumpens egen funktion til varmt vand, fx en kontakt eller knap som 'Charge' eller 'Hot water boost' • en kontakt/relæ til varmelegemet, fx en Shelly • en water_heater/climate-entitet – så sættes temperaturen i stedet ('Opvarm til' og 'Normal temperatur' på kortet). En knap trykkes én gang, når opvarmningen skal starte, og varmepumpen stopper selv.",
           "hotwater_energy_sensor": "En stigende måler (kWh) for strøm brugt til varmt vand. Bruges kun til at beregne besparelsen.",
           "hotwater_temp_sensor": "Måler vandets temperatur, fx sensor.varmtvand_temperatur. Med en føler slukker SmartHus kontakten, når vandet når 'Maks. temperatur' (indstilles på kortet), og tænder igen i den billige periode, hvis vandet er kølet 3 °C af. Uden føler kører kontakten hele den billige periode, og varmelegemets egen termostat bestemmer temperaturen."
         }

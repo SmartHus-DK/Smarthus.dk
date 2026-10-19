@@ -116,7 +116,7 @@ EXPORT_VALUE = selector.NumberSelector(
     selector.NumberSelectorConfig(min=-100000, max=100000, step="any", mode=selector.NumberSelectorMode.BOX)
 )
 HOTWATER = selector.EntitySelector(
-    selector.EntitySelectorConfig(domain=["switch", "input_boolean", "water_heater", "climate"])
+    selector.EntitySelectorConfig(domain=["switch", "input_boolean", "button", "input_button", "water_heater", "climate"])
 )
 POWER = selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor", device_class="power"))
 TEMP = selector.EntitySelector(selector.EntitySelectorConfig(domain=["sensor", "input_number"]))
