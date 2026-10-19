@@ -1,0 +1,44 @@
+name: Release
+
+# Opretter automatisk en GitHub-release (fx v1.16.0), når versionen i manifest.json ændres.
+# HACS viser så versionsnummeret i stedet for commit-nummeret.
+on:
+  push:
+    branches: [main]
+    paths: [custom_components/smarthus/manifest.json]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Opret release, hvis versionen er ny
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(jq -r .version custom_components/smarthus/manifest.json)
+          TAG="v${VERSION}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG findes allerede"
+            exit 0
+          fi
+          PREV=$(gh release list --limit 1 --json tagName -q '.[0].tagName' || true)
+          if [ -n "$PREV" ] && git rev-parse "$PREV" >/dev/null 2>&1; then
+            RANGE="$PREV..HEAD"
+          else
+            RANGE="HEAD~20..HEAD"
+          fi
+          {
+            echo "## SmartHus ${VERSION}"
+            echo
+            git log --no-merges --pretty='- %s' $RANGE | grep -v '^- Merge' || true
+            echo
+            echo "Opdatér i HACS, genstart Home Assistant og ryd app-cachen, så kortet viser ${VERSION} nederst."
+          } > notes.md
+          gh release create "$TAG" --target "$GITHUB_SHA" --title "SmartHus ${VERSION}" --notes-file notes.md --latest
