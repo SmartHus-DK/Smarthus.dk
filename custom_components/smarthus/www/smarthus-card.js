@@ -286,8 +286,7 @@ class SmartHusCard extends HTMLElement {
       ${this._css()}
       <ha-card class="${this._hass.themes?.darkMode ? "dark" : ""}">
         ${(() => { const scene = this._renderScene(), solar = this._renderSolar();
-          return `<div class="top${scene ? "" : " no-scene"}${solar ? "" : " no-solar"}">${scene}${this._renderHeader()}${solar}</div>`; })()}
-        ${this._renderStrip()}
+          return `<div class="top${scene ? "" : " no-scene"}${solar ? "" : " no-solar"}">${scene}${this._renderHeader()}${solar}${this._renderStrip()}</div>`; })()}
         <div class="modules">
           ${this._connectedPicker()}
           ${this._modules().map((m) => this._renderModule(m)).join("")}
@@ -1150,7 +1149,8 @@ class SmartHusCard extends HTMLElement {
       :host { --sh-track: color-mix(in srgb, var(--primary-text-color) 7%, transparent);
               --sh-line: var(--divider-color, rgba(127,127,127,.2)); }
       ha-card { display: block; padding: 16px 0 6px; overflow: hidden; color: var(--primary-text-color); container-type: inline-size; }
-      .top { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "scene" "solar"; }
+      .top { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "scene" "solar" "strip"; }
+      .top > .strip { grid-area: strip; }
       .top > .scene { grid-area: scene; }
       .top > .head { grid-area: head; }
       .top > .solar { grid-area: solar; }
@@ -1204,8 +1204,9 @@ class SmartHusCard extends HTMLElement {
 
       /* Fuld bredde: pris og besparelse ved siden af solcellerne, moduler i kolonner */
       @container (min-width: 760px) {
-        .top { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); grid-template-areas: "scene scene" "head solar"; }
-        .top.no-solar { grid-template-areas: "head scene"; align-items: center; }
+        .top { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); grid-template-areas: "scene scene" "head solar" "strip strip"; }
+        .top.no-solar { grid-template-areas: "head scene" "strip strip"; align-items: center; }
+        .top.no-scene { grid-template-areas: "head solar" "strip strip"; }
         .top.no-solar > .scene { border-left: 1px solid var(--sh-line); padding-left: 8px; }
         .top > .solar { border-top: 0; border-left: 1px solid var(--sh-line); padding-top: 0; padding-left: 20px; }
         .top > .solar .solar-head .sec-title, .top > .solar .tabs { margin-top: 0; }
@@ -1218,9 +1219,13 @@ class SmartHusCard extends HTMLElement {
         .mod:last-child { border-bottom: 1px solid var(--sh-line); }
       }
       @container (min-width: 1200px) {
-        .top { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr); grid-template-areas: "head scene solar"; align-items: start; }
-        .top.no-solar { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); grid-template-areas: "head scene"; }
-        .top.no-scene { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); grid-template-areas: "head solar"; }
+        /* Prisgrafen rykker op under pris og energiflow, ved siden af solcellerne */
+        .top { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr); grid-template-rows: auto 1fr;
+               grid-template-areas: "head scene solar" "strip strip solar"; align-items: start; }
+        .top > .solar { align-self: stretch; }
+        .top > .strip { align-self: start; }
+        .top.no-solar { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); grid-template-areas: "head scene" "strip strip"; }
+        .top.no-scene { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); grid-template-areas: "head solar" "strip solar"; }
         .top > .scene { padding: 0 8px; border-left: 1px solid var(--sh-line); }
         .top > .scene svg { max-height: 250px; }
         .modules { grid-template-columns: repeat(3, minmax(0, 1fr)); }
