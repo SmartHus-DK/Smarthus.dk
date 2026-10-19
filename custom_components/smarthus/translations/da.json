@@ -169,11 +169,13 @@
         "description": "Temperaturen hæves i de billigste timer og sænkes i de dyreste.",
         "data": {
           "heating_climate_entity": "Termostat / varmepumpe",
-          "heatpump_energy_sensor": "Energimåler: varmepumpe (kWh)"
+          "heatpump_energy_sensor": "Energimåler: varmepumpe (kWh)",
+          "outdoor_temp_sensor": "Udetemperatur (°C) – valgfri"
         },
         "data_description": {
           "heating_climate_entity": "Termostaten eller varmepumpen (climate-entitet), som SmartHus skruer op i billige timer og ned i dyre timer – fx climate.varmepumpe eller climate.stue.",
-          "heatpump_energy_sensor": "En stigende måler (kWh) for varmepumpens strømforbrug. Bruges kun til at beregne besparelsen."
+          "heatpump_energy_sensor": "En stigende måler (kWh) for varmepumpens strømforbrug. Bruges kun til at beregne besparelsen.",
+          "outdoor_temp_sensor": "En føler for udetemperaturen, fx sensor.udetemperatur eller vejrudsigtens temperatur. Med en føler er varmestyringen kun aktiv, når det er koldere ude end 'Aktiv under udetemperatur' (indstilles på kortet, standard 10 °C). Når det er varmere, sættes termostaten til grundtemperaturen, og SmartHus lader den være. Den starter igen, når det er 1 °C koldere end grænsen."
         }
       },
       "prices": {
@@ -554,6 +556,9 @@
       },
       "ev_solar_start_kw": {
         "name": "{car}: start ved sol over"
+      },
+      "heating_max_outdoor": {
+        "name": "Varme: aktiv under udetemperatur"
       }
     },
     "select": {

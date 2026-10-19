@@ -45,6 +45,9 @@ from .const import (
     CONF_EXPORT_ENERGY,
     CONF_HEATING_CLIMATE,
     CONF_HEATPUMP_ENERGY,
+    CONF_OUTDOOR_TEMP,
+    HEATING_OUTDOOR_HYSTERESIS,
+    S_HEATING_MAX_OUTDOOR,
     CONF_HOTWATER_ENERGY,
     CONF_HOTWATER_ENTITY,
     CONF_HOTWATER_TEMP,
@@ -84,7 +87,7 @@ from .const import (
     SIGNAL_TICK,
 )
 from .coordinator import SmartHusPriceCoordinator
-from .planner import CarInput, Plan, build_plan, car_settings
+from .planner import CarInput, Plan, build_plan, car_settings, heating_outdoor_ok
 from .profile import LEARN_DAYS, Profile, Reserve, build_profile, calc_reserve
 from .savings import SavingsCalculator
 from .flow import energy_flow, to_kw
@@ -137,6 +140,7 @@ class SmartHusController:
         self._script_state: dict[str, str] = {}
         # Varmt vand med temperaturføler: True når øvre grænse er nået
         self.hotwater_full = False
+        self.heating_outdoor_ok = True     # varmestyringen er aktiv ift. udetemperaturen
         # Opvarmning med solcelleoverskud
         self.hotwater_surplus = False
         self._surplus_count = 0
@@ -553,6 +557,12 @@ class SmartHusController:
         if self.active(MODULE_HOTWATER) and self.has(CONF_HOTWATER_ENTITY):
             await self._apply_hotwater(p.hotwater_on, force)
         if self.active(MODULE_HEATING) and self.has(CONF_HEATING_CLIMATE):
+            was_ok = self.heating_outdoor_ok
+            if not self._update_heating_outdoor():
+                if was_ok or force:     # sæt grundtemperaturen én gang, og lad så termostaten være
+                    await self._ensure_temperature(self.config[CONF_HEATING_CLIMATE],
+                                                   self.settings[S_HEATING_BASE_TEMP], True)
+                return
             base = self.settings[S_HEATING_BASE_TEMP]
             temp = base
             if p.heating_mode == HEATING_BOOST:
@@ -744,6 +754,22 @@ class SmartHusController:
             self.hotwater_surplus = False
             self._hw_done_date = today
             self._hw_surplus_sec = 0.0
+
+    @property
+    def outdoor_temp(self) -> float | None:
+        return self._float_state(self.config.get(CONF_OUTDOOR_TEMP))
+
+    def _update_heating_outdoor(self) -> bool:
+        """Varmestyringen er kun aktiv, når det er koldere ude end grænsen (med 1 °C hysterese).
+        Uden udeføler – eller hvis føleren ikke svarer – beholdes den seneste tilstand."""
+        if not self.has(CONF_OUTDOOR_TEMP):
+            self.heating_outdoor_ok = True
+            return True
+        temp = self.outdoor_temp
+        if temp is not None:
+            self.heating_outdoor_ok = heating_outdoor_ok(
+                temp, self.settings[S_HEATING_MAX_OUTDOOR], self.heating_outdoor_ok)
+        return self.heating_outdoor_ok
 
     @property
     def hotwater_temp(self) -> float | None:

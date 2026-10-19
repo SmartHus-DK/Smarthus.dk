@@ -162,11 +162,13 @@
         "description": "The temperature is raised in the cheapest hours and lowered in the most expensive.",
         "data": {
           "heating_climate_entity": "Thermostat / heat pump",
-          "heatpump_energy_sensor": "Energy meter: heat pump (kWh)"
+          "heatpump_energy_sensor": "Energy meter: heat pump (kWh)",
+          "outdoor_temp_sensor": "Outdoor temperature (°C) – optional"
         },
         "data_description": {
           "heating_climate_entity": "The thermostat or heat pump (climate entity) raised in cheap hours and lowered in expensive hours.",
-          "heatpump_energy_sensor": "Increasing meter (kWh) of the heat pump. Only used for savings."
+          "heatpump_energy_sensor": "Increasing meter (kWh) of the heat pump. Only used for savings.",
+          "outdoor_temp_sensor": "An outdoor temperature sensor. With a sensor, heating control is only active when it is colder outside than 'Active below outdoor temperature' (set on the card, default 10 °C). When warmer, the thermostat is set to the base temperature and left alone. It resumes when it is 1 °C below the limit."
         }
       },
       "prices": {
@@ -542,6 +544,9 @@
       },
       "ev_solar_start_kw": {
         "name": "{car}: start at solar above"
+      },
+      "heating_max_outdoor": {
+        "name": "Heating: active below outdoor temperature"
       }
     },
     "select": {

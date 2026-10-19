@@ -51,6 +51,7 @@ def make(config, states):
     c.settings = dict(sys.modules["smarthus.const"].DEFAULT_SETTINGS)
     c._last_cmd, c._script_state = {}, {}
     c.hotwater_full, c.hotwater_surplus, c._surplus_count = False, False, 0
+    c.heating_outdoor_ok = True
     c._hw_surplus_sec, c._hw_done_date = 0.0, None
     c.flags = {"hotwater_surplus_smart": True}
     c.ev_solar, c._ev_current_sent = {}, {}
@@ -218,6 +219,18 @@ async def main():
     c.connected_choice["switch.easee"] = "ev"
     c._update_connected()
     assert c.connected == {"ev": True, "ev_tesla": False}            # ukendt: manuelt valg
+    # 16) Varme: kun aktiv under udetemperaturgrænsen (1 °C hysterese)
+    out = {"v": "8"}
+    c, h = make({"heating_climate_entity": "climate.vp", "outdoor_temp_sensor": "sensor.ude"}, {})
+    c.hass.states = types.SimpleNamespace(get=lambda e: State(out["v"]) if e == "sensor.ude" else None)
+    assert c.settings["heating_max_outdoor"] == 10.0
+    assert c._update_heating_outdoor() is True        # 8 °C: aktiv
+    out["v"] = "10.2"; assert c._update_heating_outdoor() is False   # over grænsen: pause
+    out["v"] = "9.5"; assert c._update_heating_outdoor() is False    # inden for hysteresen
+    out["v"] = "unavailable"; assert c._update_heating_outdoor() is False  # føler væk: behold
+    out["v"] = "8.9"; assert c._update_heating_outdoor() is True     # 1 °C under: aktiv igen
+    c, h = make({"heating_climate_entity": "climate.vp"}, {})
+    assert c._update_heating_outdoor() is True        # uden udeføler: altid aktiv
     print("controller OK")
 
 def test_controller_control():

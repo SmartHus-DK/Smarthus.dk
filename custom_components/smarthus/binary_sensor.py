@@ -58,7 +58,13 @@ class SmartHusBinary(SmartHusEntity, BinarySensorEntity):
         self.entity_description = description
 
     @property
+    def _heating_paused(self) -> bool:
+        return self.entity_description.key.startswith("heating_") and not self.controller.heating_outdoor_ok
+
+    @property
     def is_on(self) -> bool:
+        if self._heating_paused:
+            return False
         return self.entity_description.is_on_fn(self.controller.plan)
 
     @property
@@ -66,7 +72,7 @@ class SmartHusBinary(SmartHusEntity, BinarySensorEntity):
         fn = self.entity_description.slots_fn
         if not fn:
             return None
-        slots = fn(self.controller.plan)
+        slots = [] if self._heating_paused else fn(self.controller.plan)
         attrs = {
             "periods": merge_periods(slots, self.controller.tz),
             "slots": [s.start.isoformat() for s in sorted(slots, key=lambda s: s.start)],
@@ -79,6 +85,11 @@ class SmartHusBinary(SmartHusEntity, BinarySensorEntity):
             attrs["solar_surplus"] = c.hotwater_surplus
             attrs["heated_today"] = c.hotwater_heated_today
             attrs["export_kw"] = None if c.export_kw is None else round(c.export_kw, 2)
+        if self.entity_description.key.startswith("heating_"):
+            c = self.controller
+            attrs["outdoor_temp"] = c.outdoor_temp
+            attrs["outdoor_limit"] = c.settings.get("heating_max_outdoor") if c.has("outdoor_temp_sensor") else None
+            attrs["paused_warm_outside"] = not c.heating_outdoor_ok
         return attrs
 
 

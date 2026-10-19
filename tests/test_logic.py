@@ -415,3 +415,11 @@ def test_translations_have_no_html():
         text = (PKG / "translations" / f"{lang}.json").read_text(encoding="utf-8")
         json.loads(text)
         assert not re.findall(r"<[^>]*>", text), lang
+
+
+def test_heating_outdoor_ok():
+    ok = planner.heating_outdoor_ok
+    assert ok(5, 10, False) is True
+    assert ok(10, 10, True) is False
+    assert ok(9.5, 10, False) is False and ok(9.5, 10, True) is True
+    assert ok(8.9, 10, False) is True

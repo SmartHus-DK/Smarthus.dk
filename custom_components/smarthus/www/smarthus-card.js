@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.13.1";
+const SMARTHUS_CARD_VERSION = "1.14.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -68,7 +68,7 @@ const MODULES = [
   {
     id: "heating", name: "Varme", icon: "mdi:heat-pump", sw: "control_heating",
     groups: [
-      { title: null, items: ["heating_base_temp"] },
+      { title: null, items: ["heating_base_temp", "heating_max_outdoor"] },
       { title: "Ekstra varme i billige timer", items: ["heating_boost_degrees", "heating_boost_hours", ["heating_boost_from", "heating_boost_to"]] },
       { title: "Spar i dyre timer", items: ["heating_reduce_degrees", "heating_reduce_hours", ["heating_reduce_from", "heating_reduce_to"]] },
     ],
@@ -121,6 +121,7 @@ const NUMBER_LABELS = {
   hotwater_boost_temp: "Opvarm til",
   hotwater_normal_temp: "Normal temperatur",
   heating_base_temp: "Grundtemperatur",
+  heating_max_outdoor: "Aktiv under udetemperatur",
   heating_boost_degrees: "Hæv med",
   heating_boost_hours: "Timer at hæve",
   heating_reduce_degrees: "Sænk med",
@@ -611,10 +612,14 @@ class SmartHusCard extends HTMLElement {
         if (a.solar_surplus) return `${prefix}${a.warm_enough ? "Varmt nok – venter" : "Varmer med solcelleoverskud"}${t}`;
         return `${prefix}${next("hotwater_now") ? `Opvarmer ${next("hotwater_now")}` : "Ingen plan"}${t}`;
       }
-      case "heating":
-        if (isOn("heating_boost_now")) return `${prefix}Ekstra varme nu`;
-        if (isOn("heating_reduce_now")) return `${prefix}Sparer på varmen nu`;
-        return `${prefix}${next("heating_boost_now") ? `Ekstra varme ${next("heating_boost_now")}` : "Normal drift"}`;
+      case "heating": {
+        const ha = this._st("binary_sensor", "heating_boost_now")?.attributes || {};
+        const out = ha.outdoor_temp != null ? ` · ${nf(ha.outdoor_temp, 1)} °C` : "";
+        if (ha.paused_warm_outside) return `${prefix}Pause – varmt ude${out}`;
+        if (isOn("heating_boost_now")) return `${prefix}Ekstra varme nu${out}`;
+        if (isOn("heating_reduce_now")) return `${prefix}Sparer på varmen nu${out}`;
+        return `${prefix}${next("heating_boost_now") ? `Ekstra varme ${next("heating_boost_now")}` : "Normal drift"}${out}`;
+      }
       case "solar":
         {
           const lim = this._num("number", "solar_export_min_price");
@@ -637,6 +642,17 @@ class SmartHusCard extends HTMLElement {
           <div class="water-row"><span>Vandets temperatur</span><b>${nf(a.water_temp, 1)} °C</b></div>
           <div class="water-bar"><i style="width:${pct * 100}%"></i></div>
           <div class="water-sub">${a.warm_enough ? "Maks. temperatur nået – opvarmningen er sat på pause" : `Maks. ${nf(a.max_temp, 0)} °C`}</div>
+        </div>`;
+      }
+    }
+    if (m.id === "heating") {
+      const a = this._st("binary_sensor", "heating_boost_now")?.attributes || {};
+      if (a.outdoor_temp != null) {
+        extra = `<div class="water">
+          <div class="water-row"><span>Udetemperatur</span><b>${nf(a.outdoor_temp, 1)} °C</b></div>
+          <div class="water-sub">${a.paused_warm_outside
+            ? `Varmestyringen holder pause, fordi det er ${nf(a.outdoor_limit, 1)} °C eller varmere ude. Den starter igen ved ${nf(a.outdoor_limit - 1, 1)} °C.`
+            : a.outdoor_limit != null ? `Varmestyringen er aktiv, fordi det er koldere end ${nf(a.outdoor_limit, 1)} °C ude.` : ""}</div>
         </div>`;
       }
     }

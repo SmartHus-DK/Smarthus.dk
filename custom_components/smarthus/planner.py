@@ -75,6 +75,16 @@ def local_days(slots: list[Slot], tz: tzinfo) -> dict[str, list[Slot]]:
     return days
 
 
+def heating_outdoor_ok(temp: float, limit: float, was_ok: bool, hysteresis: float = 1.0) -> bool:
+    """Varmestyringen er aktiv, når udetemperaturen er under grænsen.
+    Slås fra ved grænsen og til igen, når det er `hysteresis` grader koldere (undgår at hoppe)."""
+    if temp >= limit:
+        return False
+    if temp < limit - hysteresis:
+        return True
+    return was_ok
+
+
 def in_window(slots: list[Slot], tz: tzinfo, start_h: float, end_h: float) -> list[Slot]:
     """Tidsrum inden for et dagligt tidsvindue, fx 22–6 (går over midnat) eller 0–24 (hele døgnet)."""
     if end_h - start_h >= 24 or start_h == end_h:

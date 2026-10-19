@@ -122,9 +122,10 @@ def _status(c: SmartHusController) -> str:
         parts.append("Varmt vand er varmt nok" if c.hotwater_full else "Opvarmer varmt vand")
     elif c.active(MODULE_HOTWATER) and c.hotwater_surplus:
         parts.append("Varmt vand er varmt nok" if c.hotwater_full else "Varmer vand med solcelleoverskud")
-    if c.active(MODULE_HEATING) and p.heating_mode == "boost":
+    heating = c.active(MODULE_HEATING) and c.heating_outdoor_ok
+    if heating and p.heating_mode == "boost":
         parts.append("Ekstra varme")
-    if c.active(MODULE_HEATING) and p.heating_mode == "reduce":
+    if heating and p.heating_mode == "reduce":
         parts.append("Sparer på varmen")
     if not parts:
         return "Billig strøm – klar" if p.cheap_now else "Normal drift"
