@@ -396,3 +396,12 @@ def test_plug_and_connected_car():
     p = planner.build_plan(slots, now, TZ, dict(const.DEFAULT_SETTINGS), cars=cars)
     assert not p.evs["ev"].connected and p.evs["ev"].slots == [] and not p.evs["ev"].on
     assert p.evs["ev_tesla"].slots
+
+
+def test_energy_flow():
+    flow = _load("flow")
+    assert flow.to_kw(2500, "W") == 2.5 and flow.to_kw(2.5, "kW") == 2.5
+    f = flow.energy_flow(solar_kw=5.6, export_kw=1.4, battery_kw=-1.2, ev_kw={"ev": 1.4})
+    assert f["house_kw"] == 1.6 and f["grid_kw"] == -1.4 and f["battery_kw"] == -1.2
+    f = flow.energy_flow(solar_kw=None, export_kw=-2.0, battery_kw=None, ev_kw={})
+    assert f["house_kw"] == 2.0 and f["solar_kw"] is None

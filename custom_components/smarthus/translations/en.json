@@ -81,7 +81,9 @@
           "battery_script_discharge": "C) Script: discharge battery",
           "battery_script_normal": "C) Script: normal operation",
           "battery_huawei_device": "B) Huawei: the battery (LUNA2000)",
-          "battery_huawei_power": "B) Huawei: charge/discharge power (W)"
+          "battery_huawei_power": "B) Huawei: charge/discharge power (W)",
+          "battery_power_sensor": "Battery power right now (W or kW) – optional",
+          "battery_power_sign": "What does a positive battery value mean?"
         },
         "data_description": {
           "house_energy_sensor": "Increasing meter (kWh) of the house consumption. Used to keep a reserve in the battery.",
@@ -94,7 +96,9 @@
           "battery_charge_energy_sensor": "Increasing meter (kWh) of all energy charged into the battery. Only used for savings.",
           "battery_discharge_energy_sensor": "Increasing meter (kWh) of all energy delivered by the battery. Only used for savings.",
           "battery_huawei_device": "With the Huawei Solar integration, just pick the battery here – SmartHus handles forced charge/discharge itself. No scripts needed.",
-          "battery_huawei_power": "Power used for forced charge/discharge. Default 5000 W."
+          "battery_huawei_power": "Power used for forced charge/discharge. Default 5000 W.",
+          "battery_power_sensor": "Only used for the energy flow at the top of the card.",
+          "battery_power_sign": "Huawei and SigEnergy usually show charging as positive."
         }
       },
       "solar": {
@@ -211,7 +215,8 @@
           "ev_energy_sensor": "Charger energy meter (kWh)",
           "ev_current_entity": "Charging current: number entity (A) – optional",
           "ev_current_script": "Charging current: script – optional",
-          "ev_easee_device": "Charging current: Easee charger – optional"
+          "ev_easee_device": "Charging current: Easee charger – optional",
+          "ev_power_sensor": "Charging power right now (W or kW) – optional"
         },
         "data_description": {
           "car_name": "Shown on the card and in entity names.",
@@ -221,7 +226,8 @@
           "ev_current_entity": "For other chargers with a number entity for the current in amps, e.g. Zaptec 'Available current'.",
           "ev_current_script": "Only for chargers that are neither Easee nor have a number entity. The script gets 'current' (A).",
           "ev_easee_device": "For an Easee charger: pick it here and SmartHus controls the current without a script.",
-          "ev_plug_sensor": "Sensor from the car's integration showing if the cable is plugged in. With several cars on one charger, SmartHus only controls the connected car. Without it, pick the connected car on the card."
+          "ev_plug_sensor": "Sensor from the car's integration showing if the cable is plugged in. With several cars on one charger, SmartHus only controls the connected car. Without it, pick the connected car on the card.",
+          "ev_power_sensor": "The charger's current power, e.g. Easee sensor.<charger>_power. Used for the energy flow."
         }
       }
     },
@@ -244,6 +250,12 @@
       "options": {
         "export_positive": "Positive = export to grid",
         "import_positive": "Positive = import from grid"
+      }
+    },
+    "battery_power_sign": {
+      "options": {
+        "discharge_positive": "Positive = discharging",
+        "charge_positive": "Positive = charging"
       }
     }
   },
@@ -362,6 +374,9 @@
       },
       "battery_sellable": {
         "name": "Battery: sellable now"
+      },
+      "energy_flow": {
+        "name": "Energy flow (house consumption)"
       }
     },
     "binary_sensor": {

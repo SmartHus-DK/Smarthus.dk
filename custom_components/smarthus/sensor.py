@@ -176,6 +176,9 @@ MONEY = dict(device_class=SensorDeviceClass.MONETARY, native_unit_of_measurement
              suggested_display_precision=2)
 
 SENSORS: tuple[SmartHusSensorDescription, ...] = (
+    SmartHusSensorDescription(key="energy_flow", icon="mdi:home-lightning-bolt-outline", native_unit_of_measurement="kW",
+                              suggested_display_precision=2, value_fn=lambda c: c.flow.get("house_kw"),
+                              attrs_fn=lambda c: c.flow),
     SmartHusSensorDescription(key="current_price", icon="mdi:cash-clock", value_fn=lambda c: _current(c, "price"),
                               attrs_fn=_price_attrs, **PRICE),
     SmartHusSensorDescription(key="spot_price", icon="mdi:chart-line", value_fn=lambda c: _current(c, "spot"), **PRICE),

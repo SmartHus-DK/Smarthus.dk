@@ -86,7 +86,9 @@
           "battery_script_discharge": "C) Script: aflad batteriet",
           "battery_script_normal": "C) Script: normal drift",
           "battery_huawei_device": "B) Huawei: batteriet (LUNA2000)",
-          "battery_huawei_power": "B) Huawei: effekt ved lad/aflad (W)"
+          "battery_huawei_power": "B) Huawei: effekt ved lad/aflad (W)",
+          "battery_power_sensor": "Batteriets effekt lige nu (W eller kW) – valgfri",
+          "battery_power_sign": "Hvad betyder et positivt tal for batteriet?"
         },
         "data_description": {
           "house_energy_sensor": "En stigende energimåler (kWh) for husets forbrug – fx fra inverteren ('Load consumption total'), en P1-måler (HAN-port) eller en elmåler. SmartHus lærer ud fra de seneste 7 dage, hvor meget huset bruger time for time, og holder så meget i batteriet, at huset klarer sig til strømmen bliver billig igen. Kun det overskydende sælges. Kræver langtidsstatistik (står den i Energi-dashboardet, har den det). Reserven bruges efter 2 dages historik.",
@@ -101,7 +103,9 @@
           "battery_charge_energy_sensor": "En stigende måler (kWh) for al energi, der er ladet ind i batteriet, fx 'Battery charge total'. Bruges kun til at beregne batteriets besparelse.",
           "battery_discharge_energy_sensor": "En stigende måler (kWh) for al energi, batteriet har leveret, fx 'Battery discharge total'. Bruges kun til at beregne batteriets besparelse.",
           "battery_huawei_device": "Har kunden Huawei med integrationen Huawei Solar, skal du kun vælge batteriet her – så styrer SmartHus selv tvungen opladning (til 'Højeste niveau'), afladning (til 'Laveste niveau') og normal drift. Ingen scripts nødvendige.",
-          "battery_huawei_power": "Hvor hårdt batteriet lades/aflades ved tvungen drift. Standard 5000 W. Sæt den til batteriets maks. effekt."
+          "battery_huawei_power": "Hvor hårdt batteriet lades/aflades ved tvungen drift. Standard 5000 W. Sæt den til batteriets maks. effekt.",
+          "battery_power_sensor": "Bruges kun til energiflowet øverst på kortet – fx Huawei sensor.battery_charge_discharge_power eller SigEnergy sensor.sigen_plant_battery_power.",
+          "battery_power_sign": "Huawei og SigEnergy viser typisk opladning som positiv. Tjek ved at se sensoren, mens batteriet lader."
         }
       },
       "solar": {
@@ -223,7 +227,8 @@
           "ev_energy_sensor": "Energimåler for laderen (kWh)",
           "ev_current_entity": "Ladestrøm: tal-entitet (A) – valgfri",
           "ev_current_script": "Ladestrøm: script – valgfri",
-          "ev_easee_device": "Ladestrøm: Easee-lader – valgfri"
+          "ev_easee_device": "Ladestrøm: Easee-lader – valgfri",
+          "ev_power_sensor": "Ladeeffekt lige nu (W eller kW) – valgfri"
         },
         "data_description": {
           "car_name": "Vises på kortet og i entiteternes navne, fx 'Tesla' eller 'Firmabil'.",
@@ -233,7 +238,8 @@
           "ev_current_entity": "Til andre ladebokse med en tal-entitet for ladestrøm i ampere – fx Zaptec 'Available current'. Ikke nødvendig ved Easee.",
           "ev_current_script": "Kun til ladebokse, der hverken er Easee eller har en tal-entitet. Scriptet får variablen 'current' (A).",
           "ev_easee_device": "Har kunden en Easee-lader, så vælg den her – så kan SmartHus styre ladestrømmen ved solcelleladning uden script.",
-          "ev_plug_sensor": "Sensor fra bilens egen integration, der viser om ladekablet sidder i – fx Tesla binary_sensor.<bil>_charger, Kia/Hyundai binary_sensor.<bil>_ev_plugged_in, VW sensor.<bil>_plug_status. Deler flere biler samme lader, styrer SmartHus kun den bil, der er tilsluttet. Uden sensor vælger du den tilsluttede bil på kortet."
+          "ev_plug_sensor": "Sensor fra bilens egen integration, der viser om ladekablet sidder i – fx Tesla binary_sensor.<bil>_charger, Kia/Hyundai binary_sensor.<bil>_ev_plugged_in, VW sensor.<bil>_plug_status. Deler flere biler samme lader, styrer SmartHus kun den bil, der er tilsluttet. Uden sensor vælger du den tilsluttede bil på kortet.",
+          "ev_power_sensor": "Laderens effekt lige nu, fx Easee sensor.<lader>_power. Bruges til energiflowet øverst på kortet."
         }
       }
     },
@@ -256,6 +262,12 @@
       "options": {
         "export_positive": "Positiv = eksport til nettet",
         "import_positive": "Positiv = køb fra nettet"
+      }
+    },
+    "battery_power_sign": {
+      "options": {
+        "discharge_positive": "Positiv = afladning",
+        "charge_positive": "Positiv = opladning"
       }
     }
   },
@@ -374,6 +386,9 @@
       },
       "battery_sellable": {
         "name": "Batteri: kan sælges nu"
+      },
+      "energy_flow": {
+        "name": "Energiflow (husets forbrug)"
       }
     },
     "binary_sensor": {

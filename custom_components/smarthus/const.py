@@ -11,7 +11,7 @@ API_URL: Final = "https://api.energidataservice.dk/dataset/DayAheadPrices"
 
 STATIC_URL: Final = "/smarthus_static"
 CARD_URL: Final = f"{STATIC_URL}/smarthus-card.js"
-CARD_VERSION: Final = "1.12.0"
+CARD_VERSION: Final = "1.13.0"
 
 PLATFORMS: Final = ["sensor", "binary_sensor", "switch", "number", "select"]
 
@@ -83,6 +83,11 @@ BATTERY_SCRIPTS: Final = [CONF_BATTERY_SCRIPT_CHARGE, CONF_BATTERY_SCRIPT_DISCHA
 CONF_HUAWEI_DEVICE: Final = "battery_huawei_device"
 CONF_HUAWEI_POWER: Final = "battery_huawei_power"
 DEFAULT_HUAWEI_POWER: Final = 5000
+# Batteriets effekt lige nu (til energiflowet)
+CONF_BATTERY_POWER: Final = "battery_power_sensor"
+CONF_BATTERY_POWER_SIGN: Final = "battery_power_sign"
+SIGN_DISCHARGE_POSITIVE: Final = "discharge_positive"
+SIGN_CHARGE_POSITIVE: Final = "charge_positive"
 # Solceller
 CONF_SOLAR_ENERGY: Final = "solar_energy_sensor"
 CONF_EXPORT_ENERGY: Final = "grid_export_energy_sensor"
@@ -135,6 +140,8 @@ BATTERY_KEYS: Final = [
     CONF_BATTERY_SCRIPT_NORMAL,
     CONF_HUAWEI_DEVICE,
     CONF_HUAWEI_POWER,
+    CONF_BATTERY_POWER,
+    CONF_BATTERY_POWER_SIGN,
 ]
 SOLAR_KEYS: Final = [CONF_SOLAR_ENERGY, CONF_EXPORT_ENERGY, CONF_SOLAR_CURTAIL, CONF_SOLAR_FORECAST,
                      CONF_GRID_POWER, CONF_GRID_POWER_SIGN, CONF_SOLAR_POWER,

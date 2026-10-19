@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.12.0";
+const SMARTHUS_CARD_VERSION = "1.13.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -277,6 +277,7 @@ class SmartHusCard extends HTMLElement {
     this.shadowRoot.innerHTML = `
       ${this._css()}
       <ha-card>
+        ${this._renderScene()}
         <div class="top">
           ${this._renderHeader()}
           ${this._renderSolar()}
@@ -669,6 +670,138 @@ class SmartHusCard extends HTMLElement {
     return `<div class="mod-body">${extra}${groups}${actions}</div>`;
   }
 
+  // --- 3D-energiflow ------------------------------------------------------
+  _renderScene() {
+    const st = this._st("sensor", "energy_flow");
+    if (!st || st.attributes.grid_kw == null) return "";
+    const f = st.attributes;
+    const S = 19, OX = 0, OY = 0;
+    const P = (x, y, z = 0) => [((x - y) * 0.866 * S + OX).toFixed(1), ((x + y) * 0.5 * S - z * S + OY).toFixed(1)];
+    const poly = (pts, fill, extra = "") => `<polygon points="${pts.map((p) => P(...p).join(",")).join(" ")}" fill="${fill}" ${extra}/>`;
+    // Kasse med top og to synlige sider (x-side og y-side)
+    const box = (x, y, w, d, h, c, z = 0) =>
+      poly([[x, y + d, z], [x + w, y + d, z], [x + w, y + d, z + h], [x, y + d, z + h]], c.l) +
+      poly([[x + w, y, z], [x + w, y + d, z], [x + w, y + d, z + h], [x + w, y, z + h]], c.r) +
+      poly([[x, y, z + h], [x + w, y, z + h], [x + w, y + d, z + h], [x, y + d, z + h]], c.t);
+    const C = {
+      wall: { t: "#E8ECEF", l: "#D3DAE0", r: "#B9C3CC" },
+      roof: "#1E8E5A", roofDark: "#16714A",
+      panel: "#123B66", cell: "#2D6AA6",
+      batt: { t: "#F2F4F7", l: "#DCE2E8", r: "#C2CBD4" },
+      solar: "#F2A51A", grid: "#6F7F91", battery: "#0A6FB8", house: "#1E9E5A", ev: "#3E6FD8",
+    };
+    const kwTxt = (v) => `${nf(Math.abs(v || 0), Math.abs(v || 0) < 10 ? 1 : 0)} kW`;
+    const label = (x, y, z, title, value, color, dx = 0, anchor = "middle") => {
+      const [sx, sy] = P(x, y, z);
+      return `<g class="lbl" style="text-anchor:${anchor}" transform="translate(${+sx + dx},${sy})">
+        <text y="-4" class="lbl-t">${esc(title)}</text>
+        <text y="9" class="lbl-v" fill="${color}">${value}</text></g>`;
+    };
+    // Flowlinje fra a til b; retning = energiens retning
+    const flow = (a, b, kw, color, bend = 0) => {
+      const [ax, ay] = P(...a), [bx, by] = P(...b);
+      const mx = (+ax + +bx) / 2, my = (+ay + +by) / 2 + bend;
+      const d = `M${ax},${ay} Q${mx},${my} ${bx},${by}`;
+      const live = Math.abs(kw || 0) >= 0.05;
+      const dur = Math.min(6, Math.max(0.5, 2.6 / Math.max(Math.abs(kw || 0), 0.15))).toFixed(2);
+      return `<path d="${d}" class="fl-base" stroke="${color}"/>` +
+        (live ? `<path d="${d}" class="fl-dash" stroke="${color}" style="animation-duration:${dur}s"/>` : "");
+    };
+    const hub = [5, 6.6, 0.6];
+
+    // Jord
+    let svg = poly([[0.4, 0.4, 0], [9.6, 0.4, 0], [9.6, 9.6, 0], [0.4, 9.6, 0]], "var(--sh-ground)");
+
+    // Flows (tegnes under objekterne)
+    const g = f.grid_kw || 0;
+    svg += g >= 0 ? flow([1.6, 8.0, 0.1], hub, g, C.grid, 10) : flow(hub, [1.6, 8.0, 0.1], g, C.grid, 10);
+    if (f.has_battery && f.battery_kw != null) {
+      const b = f.battery_kw;
+      svg += b >= 0 ? flow([8.2, 3.0, 0.1], [6.6, 4.6, 0.6], b, C.battery, 8) : flow([6.6, 4.6, 0.6], [8.2, 3.0, 0.1], b, C.battery, 8);
+    }
+    const cars = (f.cars || []).slice(0, 2);
+    cars.forEach((c, i) => {
+      const at = i === 0 ? [8.2, 6.3, 0.1] : [8.6, 8.1, 0.1];
+      if (c.connected !== false) svg += flow([6.6, 5.8, 0.4], at, c.kw || 0, C.ev, 4);
+    });
+
+    // Elmast (bag huset til venstre)
+    const [px, py] = P(1.6, 8.0, 0), [tx, ty] = P(1.6, 8.0, 3.2);
+    svg += `<g class="pylon" stroke="${C.grid}" stroke-width="1.6" fill="none" stroke-linecap="round">
+      <line x1="${+px - 7}" y1="${py}" x2="${tx}" y2="${ty}"/><line x1="${+px + 7}" y1="${py}" x2="${tx}" y2="${ty}"/>
+      <line x1="${+tx - 12}" y1="${+ty + 9}" x2="${+tx + 12}" y2="${+ty + 9}"/>
+      <line x1="${+tx - 9}" y1="${+ty + 17}" x2="${+tx + 9}" y2="${+ty + 17}"/>
+      <line x1="${+px - 4.5}" y1="${+py - 18}" x2="${+px + 4.5}" y2="${+py - 18}"/></g>`;
+
+    // Batteri (til højre)
+    if (f.has_battery) {
+      svg += box(7.6, 2.4, 1.1, 0.8, 2.0, C.batt);
+      const soc = f.battery_soc;
+      if (soc != null) {
+        const h = 1.7 * Math.max(0, Math.min(100, soc)) / 100;
+        svg += poly([[8.7, 2.55, 0.15], [8.7, 3.05, 0.15], [8.7, 3.05, 0.15 + h], [8.7, 2.55, 0.15 + h]], C.battery, 'opacity=".9"');
+      }
+    }
+
+    // Hus
+    svg += box(3.4, 3.6, 3.2, 3.0, 2.0, C.wall);
+    // Dør og vinduer på forsiden (y-siden)
+    svg += poly([[4.5, 6.6, 0], [5.1, 6.6, 0], [5.1, 6.6, 1.2], [4.5, 6.6, 1.2]], "#8C98A4");
+    svg += poly([[3.8, 6.6, 0.9], [4.3, 6.6, 0.9], [4.3, 6.6, 1.5], [3.8, 6.6, 1.5]], "#9EC3E6");
+    svg += poly([[5.5, 6.6, 0.9], [6.1, 6.6, 0.9], [6.1, 6.6, 1.5], [5.5, 6.6, 1.5]], "#9EC3E6");
+    svg += poly([[6.6, 4.2, 0.9], [6.6, 4.9, 0.9], [6.6, 4.9, 1.5], [6.6, 4.2, 1.5]], "#8FB4D8");
+    // Tag: ryg langs x ved y = 5.1, gavl mod højre
+    svg += poly([[3.2, 3.35, 1.9], [6.8, 3.35, 1.9], [6.8, 5.1, 3.4], [3.2, 5.1, 3.4]], C.roofDark);
+    svg += poly([[3.2, 5.1, 3.4], [6.8, 5.1, 3.4], [6.8, 6.85, 1.9], [3.2, 6.85, 1.9]], C.roof);
+    svg += poly([[6.6, 3.6, 2.0], [6.6, 6.6, 2.0], [6.6, 5.1, 3.4]], C.wall.r);
+    svg += poly([[6.8, 3.35, 1.9], [6.8, 5.1, 3.4], [6.8, 5.1, 3.4]], C.roofDark);
+    // Solpaneler på taget
+    if (f.has_solar) {
+      for (let i = 0; i < 3; i++) {
+        const x0 = 3.55 + i * 1.08;
+        const a = [x0, 5.35, 3.18], b = [x0 + 0.95, 5.35, 3.18], c2 = [x0 + 0.95, 6.5, 2.2], d = [x0, 6.5, 2.2];
+        svg += poly([a, b, c2, d], C.panel, `class="panel${(f.solar_kw || 0) > 0.05 ? " on" : ""}"`);
+        svg += `<line x1="${P(x0, 5.92, 2.69)[0]}" y1="${P(x0, 5.92, 2.69)[1]}" x2="${P(x0 + 0.95, 5.92, 2.69)[0]}" y2="${P(x0 + 0.95, 5.92, 2.69)[1]}" stroke="${C.cell}" stroke-width=".8"/>`;
+      }
+      svg += flow([5.1, 5.9, 2.7], [5.1, 6.7, 1.7], f.solar_kw || 0, C.solar, 0);
+    }
+    // Varmt vand: lille damp over taget
+    if (f.hotwater_on) {
+      const [hx, hy] = P(6.1, 4.3, 3.4);
+      svg += `<g class="steam" stroke="#9AA6B2" stroke-width="1.4" fill="none" stroke-linecap="round">
+        <path d="M${hx},${hy} q4,-5 0,-10 q-4,-5 0,-10"/><path d="M${+hx + 7},${+hy + 2} q4,-5 0,-10 q-4,-5 0,-10"/></g>`;
+    }
+
+    // Biler
+    const wheel = (x, y) => { const [wx, wy] = P(x, y, 0.14); return `<ellipse cx="${wx}" cy="${wy}" rx="3.2" ry="3.6" fill="#2B3440"/>`; };
+    const car = (x, y, color) => box(x, y, 0.85, 1.6, 0.42, { t: color, l: color, r: color }, 0.12)
+      + box(x + 0.05, y + 0.35, 0.75, 0.85, 0.32, { t: "#DCE7F5", l: "#BFD0E6", r: "#A9BDD8" }, 0.54)
+      + wheel(x + 0.85, y + 0.3) + wheel(x + 0.85, y + 1.3);
+    cars.forEach((c, i) => {
+      const at = i === 0 ? [8.0, 5.6] : [8.4, 7.4];
+      svg += `<g opacity="${c.connected === false ? 0.35 : 1}">${car(at[0], at[1], i === 0 ? C.ev : "#6A7FD8")}</g>`;
+    });
+
+    // Etiketter
+    let labels = "";
+    labels += label(1.6, 8.0, 4.1, "Net", `${kwTxt(g)} ${g >= 0.05 ? "køb" : g <= -0.05 ? "salg" : ""}`, C.grid);
+    if (f.has_solar) labels += label(2.6, 4.2, 3.9, "Sol", kwTxt(f.solar_kw), C.solar, -6, "end");
+    labels += label(5.0, 7.6, -0.9, "Huset", kwTxt(f.house_kw), C.house);
+    if (f.has_battery) {
+      const b = f.battery_kw;
+      const dir = b == null ? "" : b >= 0.05 ? "afgiver" : b <= -0.05 ? "lader" : "";
+      labels += label(8.2, 2.8, 3.1, `Batteri${f.battery_soc != null ? ` ${nf(f.battery_soc, 0)} %` : ""}`,
+        b == null ? "" : `${kwTxt(b)} ${dir}`, C.battery);
+    }
+    cars.forEach((c, i) => {
+      const at = i === 0 ? [8.85, 6.4, 0.2] : [9.25, 8.2, 0.2];
+      labels += label(...at, c.name, c.connected === false ? "ikke tilsluttet" : c.kw == null ? "" : kwTxt(c.kw), C.ev, 14, "start");
+    });
+
+    return `<div class="scene" role="img" aria-label="Energiflow: huset bruger ${kwTxt(f.house_kw)}">
+      <svg viewBox="-190 -24 380 250" preserveAspectRatio="xMidYMid meet">${svg}${labels}</svg></div>`;
+  }
+
   _connectedPicker() {
     const pre = `select.${this._config.prefix}_connected_car`;
     return Object.keys(this._hass.states)
@@ -844,7 +977,7 @@ class SmartHusCard extends HTMLElement {
   // --- Stil -------------------------------------------------------------
   _css() {
     return `<style>
-      :host { --sh-track: color-mix(in srgb, var(--primary-text-color) 7%, transparent);
+      :host { --sh-ground: color-mix(in srgb, var(--primary-text-color) 5%, transparent); --sh-track: color-mix(in srgb, var(--primary-text-color) 7%, transparent);
               --sh-line: var(--divider-color, rgba(127,127,127,.2)); }
       ha-card { display: block; padding: 16px 0 6px; overflow: hidden; color: var(--primary-text-color); container-type: inline-size; }
       .top { display: grid; grid-template-columns: minmax(0, 1fr); }
@@ -1010,6 +1143,18 @@ class SmartHusCard extends HTMLElement {
       .water-bar { height: 8px; border-radius: 4px; background: var(--sh-track); margin-top: 6px; overflow: hidden; }
       .water-bar i { display: block; height: 100%; border-radius: 4px; background: ${COLORS.hotwater || "#2BA3C9"}; }
       .water-sub { margin-top: 4px; font-size: 12px; color: var(--secondary-text-color); }
+      .scene { padding: 6px 8px 0; }
+      .scene svg { display: block; width: 100%; height: auto; max-height: 300px; overflow: visible; }
+      .scene .fl-base { fill: none; stroke-width: 2.2; opacity: .18; stroke-linecap: round; }
+      .scene .fl-dash { fill: none; stroke-width: 2.6; stroke-dasharray: 2 9; stroke-linecap: round; animation: sh-flow linear infinite; }
+      .scene .lbl text { paint-order: stroke; stroke: var(--card-background-color, #fff); stroke-width: 3px; }
+      .scene .lbl-t { font-size: 8.5px; fill: var(--secondary-text-color); }
+      .scene .lbl-v { font-size: 10.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+      .scene .panel.on { filter: drop-shadow(0 0 2px rgba(242,165,26,.55)); }
+      .scene .steam path { animation: sh-steam 2.4s ease-in-out infinite; }
+      @keyframes sh-flow { to { stroke-dashoffset: -22; } }
+      @keyframes sh-steam { 0%, 100% { opacity: .2; } 50% { opacity: .9; } }
+      @media (prefers-reduced-motion: reduce) { .scene .fl-dash, .scene .steam path { animation: none; } }
       .picker { padding: 12px 16px; border-bottom: 1px solid var(--sh-line); }
       .picker-head { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; }
       .picker-head ha-icon { --mdc-icon-size: 20px; color: var(--secondary-text-color); }

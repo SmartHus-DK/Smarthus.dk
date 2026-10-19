@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.12.0** – kortet viser sin version nederst. Står der et lavere tal på kortet, så genstart Home Assistant og nulstil app-cachen.
+**Version 1.13.0** – kortet viser sin version nederst. Står der et lavere tal på kortet, så genstart Home Assistant og nulstil app-cachen.
 
 Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk).
 
@@ -310,6 +310,14 @@ Kortet viser elprisen nu, besparelser, en prisgraf for i dag og i morgen med et 
 Valgfrit: `title: Mit hus` ændrer overskriften. Har du flere SmartHus-opsætninger, kan `prefix` pege på en anden (standard `smarthus`).
 
 Ser du ikke kortet efter en opdatering, så genindlæs siden (træk ned i appen eller tryk Ctrl+F5).
+
+### Energiflow i 3D
+Øverst på kortet vises huset i 3D med solceller, elnet, batteri og elbiler, og levende linjer der viser, hvor strømmen løber lige nu (jo hurtigere, jo mere effekt). Visningen kræver **Effekt til/fra nettet** (Konfigurer → Solceller). Tilføj gerne også:
+- **Solcelleproduktion lige nu** (Solceller)
+- **Batteriets effekt lige nu** + fortegn (Batteri / inverter)
+- **Ladeeffekt lige nu** for hver bil (Elbiler)
+
+Husets forbrug beregnes ud fra resten. Data findes også i `sensor.smarthus_energy_flow`.
 
 ## Dashboard
 Et komplet eksempel-dashboard med standardkort findes i `dashboards/smarthus-dashboard.yaml`. Prisgrafen bruger [ApexCharts Card](https://github.com/RomRider/apexcharts-card) fra HACS.

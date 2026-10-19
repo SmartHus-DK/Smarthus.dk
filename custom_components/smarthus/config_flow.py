@@ -25,6 +25,10 @@ from .const import (
     CONF_BATTERY_SCRIPT_NORMAL,
     CONF_HUAWEI_DEVICE,
     CONF_HUAWEI_POWER,
+    CONF_BATTERY_POWER,
+    CONF_BATTERY_POWER_SIGN,
+    SIGN_CHARGE_POSITIVE,
+    SIGN_DISCHARGE_POSITIVE,
     CONF_EXPORT_OPT_NORMAL,
     CONF_EXPORT_OPT_STOP,
     CONF_EXPORT_SCRIPT_START,
@@ -130,6 +134,7 @@ HUAWEI_POWER = selector.NumberSelector(selector.NumberSelectorConfig(min=100, ma
 EASEE_DEVICE = selector.DeviceSelector(selector.DeviceSelectorConfig(integration="easee"))
 CAR_EASEE_DEVICE = "ev_easee_device"
 CAR_PLUG = "ev_plug_sensor"
+CAR_POWER = "ev_power_sensor"
 PLUG = selector.EntitySelector(selector.EntitySelectorConfig(domain=["binary_sensor", "sensor"]))
 CURRENT = selector.EntitySelector(selector.EntitySelectorConfig(domain=["number", "input_number"]))
 
@@ -295,13 +300,19 @@ class SmartHusOptionsFlow(OptionsFlow):
             (CONF_BATTERY_SCRIPT_DISCHARGE, SCRIPT),
             (CONF_BATTERY_SCRIPT_NORMAL, SCRIPT),
             (CONF_BATTERY_SOC, SOC),
+            (CONF_BATTERY_POWER, POWER),
             (CONF_BATTERY_CHARGE_ENERGY, ENERGY),
             (CONF_BATTERY_DISCHARGE_ENERGY, ENERGY),
             (CONF_HOUSE_ENERGY, ENERGY),
         ]
-        return self.async_show_form(
-            step_id="battery", data_schema=_entity_schema(fields, self._current(), DEFAULT_BATTERY_OPTIONS)
-        )
+        cur = self._current()
+        schema = _entity_schema(fields, cur, DEFAULT_BATTERY_OPTIONS).extend({
+            vol.Optional(CONF_BATTERY_POWER_SIGN, default=cur.get(CONF_BATTERY_POWER_SIGN) or SIGN_DISCHARGE_POSITIVE):
+                selector.SelectSelector(selector.SelectSelectorConfig(
+                    options=[SIGN_DISCHARGE_POSITIVE, SIGN_CHARGE_POSITIVE], translation_key="battery_power_sign",
+                    mode=selector.SelectSelectorMode.LIST)),
+        })
+        return self.async_show_form(step_id="battery", data_schema=schema)
 
     async def async_step_solar(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
@@ -374,6 +385,7 @@ class SmartHusOptionsFlow(OptionsFlow):
                 "current_script": user_input.get(CAR_CURRENT_SCRIPT) or None,
                 "easee_device": user_input.get(CAR_EASEE_DEVICE) or None,
                 "plug": user_input.get(CAR_PLUG) or None,
+                "power": user_input.get(CAR_POWER) or None,
             }
             if current:
                 current.update(data)
@@ -387,6 +399,7 @@ class SmartHusOptionsFlow(OptionsFlow):
             vol.Required(CONF_EV_SWITCH, **({"default": cur["charger"]} if cur.get("charger") else {})): ONOFF,
             _opt(CONF_EV_SOC, {CONF_EV_SOC: cur.get("soc")}, SOC)[0]: SOC,
             _opt(CAR_PLUG, {CAR_PLUG: cur.get("plug")}, PLUG)[0]: PLUG,
+            _opt(CAR_POWER, {CAR_POWER: cur.get("power")}, POWER)[0]: POWER,
             _opt(CONF_EV_ENERGY, {CONF_EV_ENERGY: cur.get("energy")}, ENERGY)[0]: ENERGY,
             _opt(CAR_EASEE_DEVICE, {CAR_EASEE_DEVICE: cur.get("easee_device")}, EASEE_DEVICE)[0]: EASEE_DEVICE,
             _opt(CAR_CURRENT_ENTITY, {CAR_CURRENT_ENTITY: cur.get("current_entity")}, CURRENT)[0]: CURRENT,

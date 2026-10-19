@@ -27,6 +27,9 @@ from .const import (
     BATTERY_SCRIPTS,
     CONF_HUAWEI_DEVICE,
     CONF_HUAWEI_POWER,
+    CONF_BATTERY_POWER,
+    CONF_BATTERY_POWER_SIGN,
+    SIGN_CHARGE_POSITIVE,
     DEFAULT_HUAWEI_POWER,
     CONF_EXPORT_OPT_NORMAL,
     CONF_EXPORT_OPT_STOP,
@@ -84,6 +87,7 @@ from .coordinator import SmartHusPriceCoordinator
 from .planner import CarInput, Plan, build_plan, car_settings
 from .profile import LEARN_DAYS, Profile, Reserve, build_profile, calc_reserve
 from .savings import SavingsCalculator
+from .flow import energy_flow, to_kw
 from .plug import pick_connected, plug_state
 from .solar import EvSolarState, regulate_ev
 
@@ -657,6 +661,37 @@ class SmartHusController:
             return None
         unit = (self.hass.states.get(entity_id).attributes.get("unit_of_measurement") or "W").lower()
         return val / 1000 if unit == "w" else val * 1000 if unit == "mw" else val
+
+    def _power_kw(self, entity_id: str | None) -> float | None:
+        val = self._float_state(entity_id)
+        if val is None:
+            return None
+        return to_kw(val, self.hass.states.get(entity_id).attributes.get("unit_of_measurement"))
+
+    @property
+    def battery_kw(self) -> float | None:
+        """Batteriets effekt lige nu i kW (positiv = afladning)."""
+        kw = self._power_kw(self.config.get(CONF_BATTERY_POWER))
+        if kw is None:
+            return None
+        return -kw if self.config.get(CONF_BATTERY_POWER_SIGN) == SIGN_CHARGE_POSITIVE else kw
+
+    @property
+    def flow(self) -> dict:
+        """Energiflowet lige nu – bruges af kortets 3D-visning."""
+        ev = {car["id"]: self._power_kw(car.get("power")) for car in self.cars}
+        f = energy_flow(self.solar_kw, self.export_kw, self.battery_kw, ev)
+        f["battery_soc"] = self._float_state(self.config.get(CONF_BATTERY_SOC))
+        f["has_battery"] = self.has_battery_control or bool(self.config.get(CONF_BATTERY_POWER))
+        f["has_solar"] = bool(self.config.get(CONF_SOLAR_POWER) or self.config.get(CONF_SOLAR_ENERGY))
+        f["cars"] = [{"id": c["id"], "name": c.get("name") or "Elbil", "kw": f["ev_kw"].get(c["id"]),
+                      "connected": self.connected.get(c["id"], True),
+                      "soc": self._float_state(c.get("soc"))} for c in self.cars]
+        f["hotwater_on"] = bool(self.config.get(CONF_HOTWATER_ENTITY)) and bool(
+            self.plan.hotwater_on or self.hotwater_surplus) and not self.hotwater_full
+        f["has_hotwater"] = bool(self.config.get(CONF_HOTWATER_ENTITY))
+        f["has_heatpump"] = bool(self.config.get(CONF_HEATING_CLIMATE))
+        return f
 
     def _today(self) -> str:
         return dt_util.now().date().isoformat()
