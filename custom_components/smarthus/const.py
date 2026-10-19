@@ -11,7 +11,7 @@ API_URL: Final = "https://api.energidataservice.dk/dataset/DayAheadPrices"
 
 STATIC_URL: Final = "/smarthus_static"
 CARD_URL: Final = f"{STATIC_URL}/smarthus-card.js"
-CARD_VERSION: Final = "1.8.2"
+CARD_VERSION: Final = "1.9.0"
 
 PLATFORMS: Final = ["sensor", "binary_sensor", "switch", "number"]
 
@@ -74,10 +74,23 @@ CONF_BATTERY_CHARGE_ENERGY: Final = "battery_charge_energy_sensor"
 CONF_BATTERY_DISCHARGE_ENERGY: Final = "battery_discharge_energy_sensor"
 # Husets forbrug (valgfri) – bruges til at lære forbrugsmønsteret og holde en reserve i batteriet
 CONF_HOUSE_ENERGY: Final = "house_energy_sensor"
+# Scripts til batteriet (alternativ til en rullemenu – virker med alle invertere)
+CONF_BATTERY_SCRIPT_CHARGE: Final = "battery_script_charge"
+CONF_BATTERY_SCRIPT_DISCHARGE: Final = "battery_script_discharge"
+CONF_BATTERY_SCRIPT_NORMAL: Final = "battery_script_normal"
+BATTERY_SCRIPTS: Final = [CONF_BATTERY_SCRIPT_CHARGE, CONF_BATTERY_SCRIPT_DISCHARGE, CONF_BATTERY_SCRIPT_NORMAL]
 # Solceller
 CONF_SOLAR_ENERGY: Final = "solar_energy_sensor"
 CONF_EXPORT_ENERGY: Final = "grid_export_energy_sensor"
 CONF_SOLAR_CURTAIL: Final = "solar_curtail_entity"
+# Eksportstyring: kontakt, rullemenu, tal (eksportgrænse) eller scripts
+CONF_EXPORT_OPT_STOP: Final = "export_option_stop"
+CONF_EXPORT_OPT_NORMAL: Final = "export_option_normal"
+CONF_EXPORT_VALUE_STOP: Final = "export_value_stop"
+CONF_EXPORT_VALUE_NORMAL: Final = "export_value_normal"
+CONF_EXPORT_SCRIPT_STOP: Final = "export_script_stop"
+CONF_EXPORT_SCRIPT_START: Final = "export_script_start"
+EXPORT_SCRIPTS: Final = [CONF_EXPORT_SCRIPT_STOP, CONF_EXPORT_SCRIPT_START]
 # Solprognose (valgfri): sensor med forventet resterende produktion i dag (kWh)
 CONF_SOLAR_FORECAST: Final = "solar_forecast_sensor"
 # Elbil
@@ -100,8 +113,13 @@ BATTERY_KEYS: Final = [
     CONF_BATTERY_CHARGE_ENERGY,
     CONF_BATTERY_DISCHARGE_ENERGY,
     CONF_HOUSE_ENERGY,
+    CONF_BATTERY_SCRIPT_CHARGE,
+    CONF_BATTERY_SCRIPT_DISCHARGE,
+    CONF_BATTERY_SCRIPT_NORMAL,
 ]
-SOLAR_KEYS: Final = [CONF_SOLAR_ENERGY, CONF_EXPORT_ENERGY, CONF_SOLAR_CURTAIL, CONF_SOLAR_FORECAST]
+SOLAR_KEYS: Final = [CONF_SOLAR_ENERGY, CONF_EXPORT_ENERGY, CONF_SOLAR_CURTAIL, CONF_SOLAR_FORECAST,
+                     CONF_EXPORT_OPT_STOP, CONF_EXPORT_OPT_NORMAL, CONF_EXPORT_VALUE_STOP,
+                     CONF_EXPORT_VALUE_NORMAL, CONF_EXPORT_SCRIPT_STOP, CONF_EXPORT_SCRIPT_START]
 EV_KEYS: Final = [CONF_EV_SWITCH, CONF_EV_ENERGY, CONF_EV_SOC]
 
 # Flere elbiler: options["evs"] = [{"id", "name", "charger", "soc", "energy"}, ...]

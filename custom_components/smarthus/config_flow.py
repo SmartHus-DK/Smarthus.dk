@@ -20,6 +20,15 @@ from .const import (
     CONF_BATTERY_CHARGE_ENERGY,
     CONF_BATTERY_DISCHARGE_ENERGY,
     CONF_BATTERY_MODE_ENTITY,
+    CONF_BATTERY_SCRIPT_CHARGE,
+    CONF_BATTERY_SCRIPT_DISCHARGE,
+    CONF_BATTERY_SCRIPT_NORMAL,
+    CONF_EXPORT_OPT_NORMAL,
+    CONF_EXPORT_OPT_STOP,
+    CONF_EXPORT_SCRIPT_START,
+    CONF_EXPORT_SCRIPT_STOP,
+    CONF_EXPORT_VALUE_NORMAL,
+    CONF_EXPORT_VALUE_STOP,
     CONF_BATTERY_OPT_CHARGE,
     CONF_BATTERY_OPT_DISCHARGE,
     CONF_BATTERY_OPT_NORMAL,
@@ -84,6 +93,13 @@ ENERGY = selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor", 
 SOC = selector.EntitySelector(selector.EntitySelectorConfig(domain=["sensor", "number", "input_number"]))
 MODE = selector.EntitySelector(selector.EntitySelectorConfig(domain=["select", "input_select"]))
 ONOFF = selector.EntitySelector(selector.EntitySelectorConfig(domain=["switch", "input_boolean"]))
+SCRIPT = selector.EntitySelector(selector.EntitySelectorConfig(domain="script"))
+EXPORT = selector.EntitySelector(
+    selector.EntitySelectorConfig(domain=["switch", "input_boolean", "select", "input_select", "number", "input_number"])
+)
+EXPORT_VALUE = selector.NumberSelector(
+    selector.NumberSelectorConfig(min=-100000, max=100000, step="any", mode=selector.NumberSelectorMode.BOX)
+)
 HOTWATER = selector.EntitySelector(
     selector.EntitySelectorConfig(domain=["switch", "input_boolean", "water_heater", "climate"])
 )
@@ -142,6 +158,22 @@ def _price_schema(values: dict) -> vol.Schema:
     )
 
 
+def _export_errors(user_input: dict) -> dict:
+    """Tjek at en rullemenu har begge tilstande, og at et tal har begge værdier."""
+    entity_id = user_input.get(CONF_SOLAR_CURTAIL) or ""
+    domain = entity_id.split(".")[0]
+    errors: dict[str, str] = {}
+    if domain in ("select", "input_select"):
+        if not user_input.get(CONF_EXPORT_OPT_STOP) or not user_input.get(CONF_EXPORT_OPT_NORMAL):
+            errors[CONF_SOLAR_CURTAIL] = "export_select_options"
+    elif domain in ("number", "input_number"):
+        if user_input.get(CONF_EXPORT_VALUE_STOP) in (None, "") or user_input.get(CONF_EXPORT_VALUE_NORMAL) in (None, ""):
+            errors[CONF_SOLAR_CURTAIL] = "export_number_values"
+    if bool(user_input.get(CONF_EXPORT_SCRIPT_STOP)) != bool(user_input.get(CONF_EXPORT_SCRIPT_START)):
+        errors[CONF_EXPORT_SCRIPT_STOP] = "export_scripts_pair"
+    return errors
+
+
 def _price_errors(hass, user_input: dict) -> dict:
     """Tjek at Strømligning-sensoren findes og har priser, når den er valgt."""
     if user_input.get(CONF_PRICE_SOURCE) != SOURCE_STROMLIGNING:
@@ -157,7 +189,7 @@ def _price_errors(hass, user_input: dict) -> dict:
 
 def _opt(key: str, current: dict, sel: Any, default: str | None = None) -> tuple:
     value = current.get(key, default)
-    return vol.Optional(key, description={"suggested_value": value} if value else None), sel
+    return vol.Optional(key, description={"suggested_value": value} if value not in (None, "") else None), sel
 
 
 def _entity_schema(fields: list[tuple[str, Any]], current: dict, defaults: dict | None = None) -> vol.Schema:
@@ -236,6 +268,9 @@ class SmartHusOptionsFlow(OptionsFlow):
             (CONF_BATTERY_OPT_CHARGE, TEXT),
             (CONF_BATTERY_OPT_DISCHARGE, TEXT),
             (CONF_BATTERY_OPT_NORMAL, TEXT),
+            (CONF_BATTERY_SCRIPT_CHARGE, SCRIPT),
+            (CONF_BATTERY_SCRIPT_DISCHARGE, SCRIPT),
+            (CONF_BATTERY_SCRIPT_NORMAL, SCRIPT),
             (CONF_BATTERY_SOC, SOC),
             (CONF_BATTERY_CHARGE_ENERGY, ENERGY),
             (CONF_BATTERY_DISCHARGE_ENERGY, ENERGY),
@@ -246,11 +281,20 @@ class SmartHusOptionsFlow(OptionsFlow):
         )
 
     async def async_step_solar(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
         if user_input is not None:
-            return self._save(SOLAR_KEYS, user_input)
-        fields = [(CONF_SOLAR_ENERGY, ENERGY), (CONF_EXPORT_ENERGY, ENERGY), (CONF_SOLAR_CURTAIL, ONOFF),
-                  (CONF_SOLAR_FORECAST, FORECAST)]
-        return self.async_show_form(step_id="solar", data_schema=_entity_schema(fields, self._current()))
+            errors = _export_errors(user_input)
+            if not errors:
+                return self._save(SOLAR_KEYS, user_input)
+        fields = [
+            (CONF_SOLAR_ENERGY, ENERGY), (CONF_EXPORT_ENERGY, ENERGY), (CONF_SOLAR_FORECAST, FORECAST),
+            (CONF_SOLAR_CURTAIL, EXPORT),
+            (CONF_EXPORT_OPT_STOP, TEXT), (CONF_EXPORT_OPT_NORMAL, TEXT),
+            (CONF_EXPORT_VALUE_STOP, EXPORT_VALUE), (CONF_EXPORT_VALUE_NORMAL, EXPORT_VALUE),
+            (CONF_EXPORT_SCRIPT_STOP, SCRIPT), (CONF_EXPORT_SCRIPT_START, SCRIPT),
+        ]
+        return self.async_show_form(step_id="solar", errors=errors,
+                                    data_schema=_entity_schema(fields, {**self._current(), **(user_input or {})}))
 
     # --- Elbiler ---------------------------------------------------------
     def _cars(self) -> list[dict]:

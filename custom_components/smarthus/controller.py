@@ -21,6 +21,17 @@ from .const import (
     CONF_BATTERY_CHARGE_ENERGY,
     CONF_BATTERY_DISCHARGE_ENERGY,
     CONF_BATTERY_MODE_ENTITY,
+    CONF_BATTERY_SCRIPT_CHARGE,
+    CONF_BATTERY_SCRIPT_DISCHARGE,
+    CONF_BATTERY_SCRIPT_NORMAL,
+    BATTERY_SCRIPTS,
+    CONF_EXPORT_OPT_NORMAL,
+    CONF_EXPORT_OPT_STOP,
+    CONF_EXPORT_SCRIPT_START,
+    CONF_EXPORT_SCRIPT_STOP,
+    CONF_EXPORT_VALUE_NORMAL,
+    CONF_EXPORT_VALUE_STOP,
+    EXPORT_SCRIPTS,
     CONF_BATTERY_OPT_CHARGE,
     CONF_BATTERY_OPT_DISCHARGE,
     CONF_BATTERY_OPT_NORMAL,
@@ -94,6 +105,8 @@ class SmartHusController:
         self._unsub_learn_first = None
         self._store: Store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}.savings")
         self._last_cmd: dict[str, float] = {}
+        # Sidste tilstand der er sendt via script (scripts køres kun ved skift)
+        self._script_state: dict[str, str] = {}
         self._unsub = None
         self._unsub_prices = None
         self.expected_unique_ids: set[str] = set()
@@ -216,7 +229,20 @@ class SmartHusController:
 
     # --- Hjælpere ----------------------------------------------------------
     def has(self, key: str) -> bool:
+        # Batteri og eksport tæller som opsat, hvis der enten er valgt en entitet eller scripts
+        if key == CONF_BATTERY_MODE_ENTITY:
+            return self.has_battery_control
+        if key == CONF_SOLAR_CURTAIL:
+            return self.has_export_control
         return bool(self.config.get(key))
+
+    @property
+    def has_battery_control(self) -> bool:
+        return bool(self.config.get(CONF_BATTERY_MODE_ENTITY)) or any(self.config.get(k) for k in BATTERY_SCRIPTS)
+
+    @property
+    def has_export_control(self) -> bool:
+        return bool(self.config.get(CONF_SOLAR_CURTAIL)) or any(self.config.get(k) for k in EXPORT_SCRIPTS)
 
     def active(self, module: str) -> bool:
         return self.enabled[MODULE_MASTER] and self.enabled.get(module, False)
@@ -342,6 +368,81 @@ class SmartHusController:
         domain = entity_id.split(".")[0]
         await self._call(domain, "set_temperature", {"entity_id": entity_id, "temperature": round(temp, 1)})
 
+    async def _run_script(self, key: str, group: str, state: str, force: bool, variables: dict) -> bool:
+        """Kør scriptet for en tilstand – kun når tilstanden skifter (eller ved force).
+
+        Returnerer True, hvis der er et script for tilstanden (så skal intet andet styres).
+        """
+        script = self.config.get(key)
+        if not script:
+            return False
+        if not force and self._script_state.get(group) == state:
+            return True
+        if not force and not self._rate_ok(f"{group}:{script}"):
+            return True
+        self._script_state[group] = state
+        self._last_cmd[f"{group}:{script}"] = time.monotonic()
+        try:
+            await self.hass.services.async_call(
+                "script", "turn_on", {"entity_id": script, "variables": variables}, blocking=False
+            )
+            _LOGGER.info("SmartHus kørte %s (%s: %s)", script, group, state)
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("SmartHus kunne ikke køre %s: %s", script, err)
+        return True
+
+    async def _ensure_number(self, entity_id: str, value: float, force: bool = False) -> None:
+        st = self.hass.states.get(entity_id)
+        if st is None or st.state == STATE_UNAVAILABLE:
+            return
+        try:
+            if abs(float(st.state) - value) < 1e-6:
+                return
+        except ValueError:
+            pass
+        if not force and not self._rate_ok(entity_id):
+            return
+        domain = "input_number" if entity_id.startswith("input_number.") else "number"
+        await self._call(domain, "set_value", {"entity_id": entity_id, "value": value})
+
+    def _script_vars(self, state: str) -> dict:
+        cur = self.plan.current
+        return {
+            "smarthus_state": state,
+            "price": cur.price if cur else None,
+            "sale_price": cur.sale if cur else None,
+            "min_soc": self.settings.get("battery_min_soc"),
+            "max_soc": self.settings.get("battery_max_soc"),
+        }
+
+    async def _apply_battery(self, action: str, force: bool) -> None:
+        key = {ACTION_CHARGE: CONF_BATTERY_SCRIPT_CHARGE, ACTION_DISCHARGE: CONF_BATTERY_SCRIPT_DISCHARGE}.get(
+            action, CONF_BATTERY_SCRIPT_NORMAL)
+        if await self._run_script(key, "battery", action, force, self._script_vars(action)):
+            return
+        if self.config.get(CONF_BATTERY_MODE_ENTITY):
+            await self._ensure_option(self.config[CONF_BATTERY_MODE_ENTITY], self._battery_option(action), force)
+
+    async def _apply_export(self, stop: bool, force: bool) -> None:
+        state = "stop" if stop else "normal"
+        key = CONF_EXPORT_SCRIPT_STOP if stop else CONF_EXPORT_SCRIPT_START
+        if await self._run_script(key, "export", state, force, self._script_vars(state)):
+            return
+        entity_id = self.config.get(CONF_SOLAR_CURTAIL)
+        if not entity_id:
+            return
+        domain = entity_id.split(".")[0]
+        if domain in ("select", "input_select"):
+            option = self.config.get(CONF_EXPORT_OPT_STOP if stop else CONF_EXPORT_OPT_NORMAL)
+            if option:
+                await self._ensure_option(entity_id, option, force)
+        elif domain in ("number", "input_number"):
+            value = self.config.get(CONF_EXPORT_VALUE_STOP if stop else CONF_EXPORT_VALUE_NORMAL)
+            if value is not None:
+                await self._ensure_number(entity_id, float(value), force)
+        else:
+            await self._ensure_switch(entity_id, stop, force)
+
     def _battery_option(self, action: str) -> str:
         key = {
             ACTION_CHARGE: CONF_BATTERY_OPT_CHARGE,
@@ -354,11 +455,10 @@ class SmartHusController:
         p = self.plan
         if p.current is None:
             return
-        if self.active(MODULE_BATTERY) and self.has(CONF_BATTERY_MODE_ENTITY):
-            await self._ensure_option(self.config[CONF_BATTERY_MODE_ENTITY],
-                                      self._battery_option(p.battery_action), force)
-        if self.active(MODULE_SOLAR) and self.has(CONF_SOLAR_CURTAIL):
-            await self._ensure_switch(self.config[CONF_SOLAR_CURTAIL], p.solar_curtail, force)
+        if self.active(MODULE_BATTERY) and self.has_battery_control:
+            await self._apply_battery(p.battery_action, force)
+        if self.active(MODULE_SOLAR) and self.has_export_control:
+            await self._apply_export(p.solar_curtail, force)
         for car in self.cars:
             ep = p.evs.get(car["id"])
             if ep and self.active(car["id"]):
@@ -384,11 +484,10 @@ class SmartHusController:
 
     async def async_restore_normal(self, module: str) -> None:
         """Sæt et modul tilbage til normal drift, når styringen slås fra."""
-        if module == MODULE_BATTERY and self.has(CONF_BATTERY_MODE_ENTITY):
-            await self._ensure_option(self.config[CONF_BATTERY_MODE_ENTITY],
-                                      self._battery_option(ACTION_NORMAL), True)
-        elif module == MODULE_SOLAR and self.has(CONF_SOLAR_CURTAIL):
-            await self._ensure_switch(self.config[CONF_SOLAR_CURTAIL], False, True)
+        if module == MODULE_BATTERY and self.has_battery_control:
+            await self._apply_battery(ACTION_NORMAL, True)
+        elif module == MODULE_SOLAR and self.has_export_control:
+            await self._apply_export(False, True)
         elif module in self.car_ids:
             await self._ensure_switch(self.car(module)["charger"], True, True)
         elif module == MODULE_HOTWATER and self.has(CONF_HOTWATER_ENTITY):

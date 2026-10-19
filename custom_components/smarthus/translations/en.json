@@ -28,6 +28,19 @@
           "tariff_summer_low": "Grid tariff summer, low (00–06)",
           "tariff_summer_high": "Grid tariff summer, high (06–17 and 21–24)",
           "tariff_summer_peak": "Grid tariff summer, peak (17–21)"
+        },
+        "data_description": {
+          "price_source": "Strømligning gives the actual price from the customer's plan. Otherwise SmartHus calculates it from the spot price and the tariffs below.",
+          "price_area": "DK1 = Jutland and Funen. DK2 = Zealand and islands.",
+          "include_vat": "Turn on for private customers (25% VAT).",
+          "energinet_tariff": "Energinet grid + system tariff per kWh excl. VAT.",
+          "elafgift": "Electricity tax per kWh excl. VAT.",
+          "tariff_winter_low": "Your grid company's tariff excl. VAT, Oct–Mar 00–06.",
+          "tariff_winter_high": "Oct–Mar 06–17 and 21–24.",
+          "tariff_winter_peak": "Oct–Mar 17–21 (peak).",
+          "tariff_summer_low": "Apr–Sep 00–06.",
+          "tariff_summer_high": "Apr–Sep 06–17 and 21–24.",
+          "tariff_summer_peak": "Apr–Sep 17–21 (peak)."
         }
       }
     },
@@ -54,34 +67,58 @@
       },
       "battery": {
         "title": "Battery / inverter",
-        "description": "Works with any inverter/battery that can be controlled through a select or input_select entity. Pick the entity that switches the operating mode and type the exact option names.\n\n**Charge from grid**: mode that charges from the grid.\n**Discharge**: mode that sells/discharges to the grid in the most expensive hours.\n**Normal**: regular self-consumption.\n\nIf your inverter only has switches, create an input_select with three options and an automation that applies the choice.\n\nThe fields are prefilled with SigEnergy names as an example – change them to match your inverter.",
+        "description": "SmartHus controls the battery in three states: charge from grid, discharge and normal operation. Use A) a drop-down (select) with modes (SigEnergy, FoxESS, SolaX) or B) scripts, which work with any inverter (Huawei, Deye, Growatt, Solplanet). If a script is set for a state, it is used instead of the drop-down. See examples per brand in the guide on GitHub.",
         "data": {
-          "battery_mode_entity": "Operating mode entity",
-          "battery_option_charge": "Mode: charge from grid",
-          "battery_option_discharge": "Mode: discharge battery",
-          "battery_option_normal": "Mode: normal operation",
+          "battery_mode_entity": "A) Drop-down: inverter operating mode",
+          "battery_option_charge": "A) Mode name: charge from grid",
+          "battery_option_discharge": "A) Mode name: discharge battery",
+          "battery_option_normal": "A) Mode name: normal operation",
           "battery_soc_sensor": "Battery level (SoC %)",
           "battery_charge_energy_sensor": "Energy meter: battery charged (kWh)",
           "battery_discharge_energy_sensor": "Energy meter: battery discharged (kWh)",
-          "house_energy_sensor": "Energy meter: house consumption (kWh) – optional"
+          "house_energy_sensor": "Energy meter: house consumption (kWh) – optional",
+          "battery_script_charge": "B) Script: charge battery from grid",
+          "battery_script_discharge": "B) Script: discharge battery",
+          "battery_script_normal": "B) Script: normal operation"
         },
         "data_description": {
-          "house_energy_sensor": "Pick an increasing energy meter (kWh) measuring the house consumption – e.g. from the inverter, a P1 meter or an electricity meter. 'Grid import' works too, but then battery charging from the grid is included and the reserve gets a little too large. SmartHus learns the hourly consumption from the last 7 days (weekdays and weekends separately) and keeps enough energy in the battery to cover the house until power is cheap again. Only the surplus is sold. EV consumption is subtracted if the car has an energy meter. Requires long-term statistics (if the sensor is in the Energy dashboard it has them). The reserve is used after 2 days of history.",
-          "battery_mode_entity": "E.g. select.inverter_work_mode or an input_select you created.",
-          "battery_soc_sensor": "Battery level in %. Used for min/max levels and the reserve."
+          "house_energy_sensor": "Increasing meter (kWh) of the house consumption. Used to keep a reserve in the battery.",
+          "battery_mode_entity": "A select entity that switches the inverter's mode. Leave empty if you use scripts.",
+          "battery_soc_sensor": "Battery state of charge in %.",
+          "battery_option_charge": "Exactly as shown in the drop-down, e.g. SigEnergy: Command Charging (Grid First).",
+          "battery_script_charge": "Runs when the battery should charge from the grid. Variables: smarthus_state, price, sale_price, min_soc, max_soc.",
+          "battery_script_discharge": "Runs when the battery should discharge in expensive hours.",
+          "battery_script_normal": "Runs when returning to normal operation, also when control is turned off. Always set it when using scripts.",
+          "battery_charge_energy_sensor": "Increasing meter (kWh) of all energy charged into the battery. Only used for savings.",
+          "battery_discharge_energy_sensor": "Increasing meter (kWh) of all energy delivered by the battery. Only used for savings."
         }
       },
       "solar": {
         "title": "Solar",
-        "description": "Used for savings and to limit export when the sale price is negative.",
+        "description": "Used for the solar overview and to stop export when the sale price is below your limit ('Stop export below' on the card). Stopping export can be done with a switch (on = stop), a drop-down (two option names), a number such as an export limit (two values) or two scripts.",
         "data": {
           "solar_energy_sensor": "Energy meter: solar production (kWh)",
           "grid_export_energy_sensor": "Energy meter: grid export (kWh)",
-          "solar_curtail_entity": "Switch: limit export",
-          "solar_forecast_sensor": "Solar forecast: remaining production today (kWh) – optional"
+          "solar_curtail_entity": "Stop export: switch, drop-down or number",
+          "solar_forecast_sensor": "Solar forecast: remaining production today (kWh) – optional",
+          "export_option_stop": "Drop-down: option name for 'stop export'",
+          "export_option_normal": "Drop-down: option name for 'normal export'",
+          "export_value_stop": "Number: value when export is stopped",
+          "export_value_normal": "Number: value for normal export",
+          "export_script_stop": "Script: stop export",
+          "export_script_start": "Script: start export again"
         },
         "data_description": {
-          "solar_forecast_sensor": "Makes the battery reserve more accurate by subtracting expected solar. Solcast: sensor.solcast_pv_forecast_forecast_remaining_today. Forecast.Solar: sensor.energy_production_today_remaining. Without a forecast, solar is assumed not to cover any house consumption – the cautious choice."
+          "solar_forecast_sensor": "Makes the battery reserve more accurate by subtracting expected solar. Solcast: sensor.solcast_pv_forecast_forecast_remaining_today. Forecast.Solar: sensor.energy_production_today_remaining. Without a forecast, solar is assumed not to cover any house consumption – the cautious choice.",
+          "solar_curtail_entity": "The entity that stops grid export. Leave empty if you use scripts.",
+          "export_option_stop": "Only for a drop-down, e.g. 'Zero Export'.",
+          "export_option_normal": "Only for a drop-down, e.g. 'Selling First'.",
+          "export_value_stop": "Only for a number. Usually 0.",
+          "export_value_normal": "Only for a number, e.g. the inverter's max power in W.",
+          "export_script_stop": "Runs when the sale price drops below the limit. Use together with 'start export again'.",
+          "export_script_start": "Runs when the sale price is above the limit again, and when control is turned off.",
+          "solar_energy_sensor": "Increasing meter (kWh) of all solar production.",
+          "grid_export_energy_sensor": "Increasing meter (kWh) of all energy exported to the grid."
         }
       },
       "ev": {
@@ -98,6 +135,10 @@
         "data": {
           "hotwater_entity": "Water heater / heat pump",
           "hotwater_energy_sensor": "Energy meter: hot water (kWh) – optional"
+        },
+        "data_description": {
+          "hotwater_entity": "A switch for the heater, or a water_heater/climate entity whose temperature is raised.",
+          "hotwater_energy_sensor": "Increasing meter (kWh) for hot water. Only used for savings."
         }
       },
       "heating": {
@@ -106,6 +147,10 @@
         "data": {
           "heating_climate_entity": "Thermostat / heat pump",
           "heatpump_energy_sensor": "Energy meter: heat pump (kWh)"
+        },
+        "data_description": {
+          "heating_climate_entity": "The thermostat or heat pump (climate entity) raised in cheap hours and lowered in expensive hours.",
+          "heatpump_energy_sensor": "Increasing meter (kWh) of the heat pump. Only used for savings."
         }
       },
       "prices": {
@@ -128,6 +173,19 @@
           "tariff_summer_low": "Grid tariff summer, low (00–06)",
           "tariff_summer_high": "Grid tariff summer, high (06–17 and 21–24)",
           "tariff_summer_peak": "Grid tariff summer, peak (17–21)"
+        },
+        "data_description": {
+          "price_source": "Strømligning gives the actual price from the customer's plan. Otherwise SmartHus calculates it from the spot price and the tariffs below.",
+          "price_area": "DK1 = Jutland and Funen. DK2 = Zealand and islands.",
+          "include_vat": "Turn on for private customers (25% VAT).",
+          "energinet_tariff": "Energinet grid + system tariff per kWh excl. VAT.",
+          "elafgift": "Electricity tax per kWh excl. VAT.",
+          "tariff_winter_low": "Your grid company's tariff excl. VAT, Oct–Mar 00–06.",
+          "tariff_winter_high": "Oct–Mar 06–17 and 21–24.",
+          "tariff_winter_peak": "Oct–Mar 17–21 (peak).",
+          "tariff_summer_low": "Apr–Sep 00–06.",
+          "tariff_summer_high": "Apr–Sep 06–17 and 21–24.",
+          "tariff_summer_peak": "Apr–Sep 17–21 (peak)."
         }
       },
       "ev_car": {
@@ -138,12 +196,21 @@
           "ev_charger_entity": "Switch: allow charging",
           "ev_soc_sensor": "Car battery level (SoC %)",
           "ev_energy_sensor": "Charger energy meter (kWh)"
+        },
+        "data_description": {
+          "car_name": "Shown on the card and in entity names.",
+          "ev_charger_entity": "The switch that allows or stops charging, e.g. Easee switch.easee_is_enabled.",
+          "ev_soc_sensor": "The car's battery level in % from the car's own integration. With SoC it only charges to the target SoC.",
+          "ev_energy_sensor": "Increasing meter (kWh) of all energy the charger has delivered, e.g. Easee 'Lifetime energy'. ONLY used to calculate savings; control works without it."
         }
       }
     },
     "error": {
       "stromligning_missing": "The sensor does not exist. Install the Strømligning integration (HACS) and choose your supplier and product there first.",
-      "stromligning_no_prices": "The sensor has no prices (the 'prices' attribute is missing). Choose the Strømligning current price incl. VAT sensor."
+      "stromligning_no_prices": "The sensor has no prices (the 'prices' attribute is missing). Choose the Strømligning current price incl. VAT sensor.",
+      "export_select_options": "You chose a drop-down – fill in both option names.",
+      "export_number_values": "You chose a number – fill in both values.",
+      "export_scripts_pair": "Choose both a stop script and a start script."
     }
   },
   "selector": {

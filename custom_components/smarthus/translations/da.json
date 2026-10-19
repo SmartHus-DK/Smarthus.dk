@@ -28,6 +28,24 @@
           "tariff_summer_low": "Nettarif sommer, lav (00–06)",
           "tariff_summer_high": "Nettarif sommer, høj (06–17 og 21–24)",
           "tariff_summer_peak": "Nettarif sommer, spids (17–21)"
+        },
+        "data_description": {
+          "price_source": "Strømligning giver kundens rigtige pris fra elabonnementet. Ellers beregner SmartHus prisen ud fra spotprisen og tarifferne nedenfor.",
+          "stromligning_price_entity": "Normalt sensor.stromligning_current_price_vat (købspris inkl. alt).",
+          "stromligning_tomorrow_entity": "Normalt binary_sensor.stromligning_tomorrow_available_vat (morgendagens priser).",
+          "stromligning_spot_entity": "Normalt sensor.stromligning_spotprice_vat. Bruges til salgsprisen for solcellestrøm.",
+          "price_area": "DK1 = Jylland og Fyn. DK2 = Sjælland og øerne.",
+          "supplier_markup": "Elleverandørens tillæg pr. kWh ekskl. moms – står på elregningen.",
+          "sale_fee": "Det elselskabet trækker fra, når du sælger strøm (kr/kWh).",
+          "include_vat": "Slå til for private kunder (25 % moms på købsprisen).",
+          "energinet_tariff": "Energinets nettarif + systemtarif pr. kWh ekskl. moms.",
+          "elafgift": "Elafgift pr. kWh ekskl. moms (aktuel sats fra Skattestyrelsen).",
+          "tariff_winter_low": "Dit netselskabs tarif ekskl. moms, oktober–marts kl. 00–06.",
+          "tariff_winter_high": "Oktober–marts kl. 06–17 og 21–24.",
+          "tariff_winter_peak": "Oktober–marts kl. 17–21 (spidslast).",
+          "tariff_summer_low": "April–september kl. 00–06.",
+          "tariff_summer_high": "April–september kl. 06–17 og 21–24.",
+          "tariff_summer_peak": "April–september kl. 17–21 (spidslast)."
         }
       }
     },
@@ -54,34 +72,60 @@
       },
       "battery": {
         "title": "Batteri / inverter",
-        "description": "Integrationen virker med alle invertere og batterier, der kan styres med en select- eller input_select-entitet. Vælg den entitet, der skifter driftstilstand, og skriv de præcise navne på tilstandene, som de står i listen.\n\n**Lad fra nettet**: tilstanden der lader batteriet fra nettet.\n**Aflad batteri**: tilstanden der sælger/aflader til nettet i de dyreste timer.\n**Normal drift**: almindeligt egetforbrug (solceller og batteri dækker huset).\n\nHar inverteren kun kontakter, kan du lave en input_select med tre valg og en automatisering, der omsætter valget.\n\nFelterne er udfyldt med navnene fra SigEnergy som eksempel – ret dem til din egen inverter.",
+        "description": "SmartHus styrer batteriet i tre tilstande: **lad fra nettet** (i de billigste timer), **aflad** (i de dyreste timer) og **normal drift** (solceller og batteri dækker huset).\n\nDer er to måder at styre inverteren på – brug den, der passer til dit mærke:\n\n**A) Rullemenu** – hvis inverteren har én select-entitet med tilstande (fx SigEnergy, FoxESS, SolaX). Vælg entiteten og skriv de præcise navne på de tre tilstande.\n\n**B) Scripts** – virker med alle invertere (fx Huawei, Deye, Growatt, Solplanet). Lav tre scripts i Home Assistant (Indstillinger → Automatiseringer → Scripts), der gør det, inverteren kræver, og vælg dem her. Er der valgt et script for en tilstand, bruges scriptet i stedet for rullemenuen. Se eksempler pr. mærke i vejledningen på GitHub.\n\nFelterne under A er udfyldt med navnene fra SigEnergy som eksempel.",
         "data": {
-          "battery_mode_entity": "Entitet for driftstilstand",
-          "battery_option_charge": "Tilstand: lad fra nettet",
-          "battery_option_discharge": "Tilstand: aflad batteri",
-          "battery_option_normal": "Tilstand: normal drift",
+          "battery_mode_entity": "A) Rullemenu: inverterens driftstilstand",
+          "battery_option_charge": "A) Navn på tilstanden: lad fra nettet",
+          "battery_option_discharge": "A) Navn på tilstanden: aflad batteri",
+          "battery_option_normal": "A) Navn på tilstanden: normal drift",
           "battery_soc_sensor": "Batteriniveau (SoC %)",
-          "battery_charge_energy_sensor": "Energimåler: batteri opladet (kWh)",
-          "battery_discharge_energy_sensor": "Energimåler: batteri afladet (kWh)",
-          "house_energy_sensor": "Energimåler: husets forbrug (kWh) – valgfri"
+          "battery_charge_energy_sensor": "Energimåler: batteri opladet i alt (kWh) – valgfri",
+          "battery_discharge_energy_sensor": "Energimåler: batteri afladet i alt (kWh) – valgfri",
+          "house_energy_sensor": "Energimåler: husets forbrug i alt (kWh) – valgfri",
+          "battery_script_charge": "B) Script: lad batteriet fra nettet",
+          "battery_script_discharge": "B) Script: aflad batteriet",
+          "battery_script_normal": "B) Script: normal drift"
         },
         "data_description": {
-          "house_energy_sensor": "Vælg en stigende energimåler (kWh), der måler husets forbrug – fx fra inverteren, en P1-måler (HAN-port) eller en elmåler. Har du kun 'import fra nettet', kan den bruges, men så tæller opladning af batteriet fra nettet med, og reserven bliver lidt for stor. SmartHus lærer ud fra de seneste 7 dage, hvor meget huset bruger time for time (hverdage og weekend for sig), og holder så meget i batteriet, at huset klarer sig til strømmen bliver billig igen. Kun det overskydende sælges. Elbilens forbrug trækkes fra, hvis bilen har en energimåler. Kræver at måleren har langtidsstatistik (står den i Energi-dashboardet, har den det). Efter 2 dage med historik bruges reserven.",
-          "battery_mode_entity": "Fx select.inverter_work_mode eller en input_select du selv har lavet.",
-          "battery_soc_sensor": "Batteriets niveau i %. Bruges til at undgå at lade over højeste/aflade under laveste niveau og til reserven."
+          "house_energy_sensor": "En stigende energimåler (kWh) for husets forbrug – fx fra inverteren ('Load consumption total'), en P1-måler (HAN-port) eller en elmåler. SmartHus lærer ud fra de seneste 7 dage, hvor meget huset bruger time for time, og holder så meget i batteriet, at huset klarer sig til strømmen bliver billig igen. Kun det overskydende sælges. Kræver langtidsstatistik (står den i Energi-dashboardet, har den det). Reserven bruges efter 2 dages historik.",
+          "battery_mode_entity": "En select-entitet fra inverterens integration, der skifter driftstilstand – fx SigEnergy select.sigen_plant_remote_ems_control_mode. Find den under Udviklerværktøjer → Tilstande. Lad feltet stå tomt, hvis du bruger scripts.",
+          "battery_soc_sensor": "Batteriets opladningsniveau i procent, fx sensor.battery_state_of_capacity (Huawei) eller sensor.sigen_plant_battery_state_of_charge (SigEnergy). Bruges til ikke at lade over højeste eller aflade under laveste niveau og til reserven.",
+          "battery_option_charge": "Skriv navnet præcis som det står i rullemenuen (store/små bogstaver tæller). SigEnergy: Command Charging (Grid First).",
+          "battery_option_discharge": "SigEnergy: Command Discharging (ESS First).",
+          "battery_option_normal": "Tilstanden for almindeligt egetforbrug. SigEnergy: Maximum Self Consumption.",
+          "battery_script_charge": "Køres når batteriet skal lades fra nettet. Huawei: kald huawei_solar.forcible_charge_soc. Deye: slå netopladning til i tidsprogrammet og sæt mål-SoC. Scriptet får variablerne smarthus_state, price, sale_price, min_soc og max_soc.",
+          "battery_script_discharge": "Køres når batteriet skal aflades i dyre timer. Huawei: huawei_solar.forcible_discharge_soc. Deye: arbejdstilstand 'Selling First'.",
+          "battery_script_normal": "Køres når batteriet skal tilbage til normal drift – også når styringen slås fra. Huawei: huawei_solar.stop_forcible_charge. Skal altid sættes, hvis du bruger scripts.",
+          "battery_charge_energy_sensor": "En stigende måler (kWh) for al energi, der er ladet ind i batteriet, fx 'Battery charge total'. Bruges kun til at beregne batteriets besparelse.",
+          "battery_discharge_energy_sensor": "En stigende måler (kWh) for al energi, batteriet har leveret, fx 'Battery discharge total'. Bruges kun til at beregne batteriets besparelse."
         }
       },
       "solar": {
         "title": "Solceller",
-        "description": "Bruges til solcelleoverblikket (produceret, sparet og tjent ved salg) og til at begrænse eksport når salgsprisen er negativ. Uden eksportmåler regnes al produktion som egetforbrug.",
+        "description": "Bruges til solcelleoverblikket (produceret, sparet og tjent ved salg) og til at stoppe eksport, når salgsprisen er under din grænse ('Stop eksport under' på kortet). Uden eksportmåler regnes al produktion som egetforbrug.\n\n**Stop af eksport** kan styres på fire måder – vælg den, der passer til din inverter:\n• **Kontakt**: tændes når eksporten skal stoppes (fx Deye 'Export surplus' – vend logikken med et script, hvis den betyder det modsatte).\n• **Rullemenu**: skriv navnet på tilstanden for 'stop' og for 'normal'.\n• **Tal (eksportgrænse)**: skriv værdien for 'stop' (fx 0 W) og for 'normal' (fx inverterens maks.).\n• **Scripts**: et script til at stoppe og et til at starte eksporten igen.",
         "data": {
-          "solar_energy_sensor": "Energimåler: solcelleproduktion (kWh)",
-          "grid_export_energy_sensor": "Energimåler: eksport til nettet (kWh)",
-          "solar_curtail_entity": "Kontakt: begræns eksport",
-          "solar_forecast_sensor": "Solprognose: resterende produktion i dag (kWh) – valgfri"
+          "solar_energy_sensor": "Energimåler: solcelleproduktion i alt (kWh)",
+          "grid_export_energy_sensor": "Energimåler: eksport til nettet i alt (kWh)",
+          "solar_curtail_entity": "Stop eksport: kontakt, rullemenu eller tal",
+          "solar_forecast_sensor": "Solprognose: resterende produktion i dag (kWh) – valgfri",
+          "export_option_stop": "Rullemenu: navn på tilstanden 'stop eksport'",
+          "export_option_normal": "Rullemenu: navn på tilstanden 'normal eksport'",
+          "export_value_stop": "Tal: værdi når eksporten er stoppet",
+          "export_value_normal": "Tal: værdi ved normal eksport",
+          "export_script_stop": "Script: stop eksport",
+          "export_script_start": "Script: start eksport igen"
         },
         "data_description": {
-          "solar_forecast_sensor": "Gør batteriets reserve mere præcis, fordi forventet sol trækkes fra. Solcast: sensor.solcast_pv_forecast_forecast_remaining_today. Forecast.Solar: sensor.energy_production_today_remaining. Uden prognose regnes der med, at solen ikke dækker noget af husets forbrug – det er det forsigtige valg."
+          "solar_forecast_sensor": "Gør batteriets reserve mere præcis, fordi forventet sol trækkes fra. Solcast: sensor.solcast_pv_forecast_forecast_remaining_today. Forecast.Solar: sensor.energy_production_today_remaining.",
+          "solar_energy_sensor": "En stigende måler (kWh) for al strøm, solcellerne har produceret, fx 'PV yield total' / 'Total PV generation'. Bruges til solcelleoverblikket.",
+          "grid_export_energy_sensor": "En stigende måler (kWh) for al strøm, der er sendt ud på nettet, fx 'Grid exported total' eller fra en P1-måler. Bruges til at skelne mellem sparet (brugt selv) og tjent ved salg.",
+          "solar_curtail_entity": "Den entitet der stopper eksport til nettet. Kontakt (switch/input_boolean): tændes ved stop. Rullemenu (select): udfyld de to navne nedenfor. Tal (number), fx Huawei number.inverter_grid_export_limit eller en eksportgrænse i watt: udfyld de to værdier nedenfor. Lad stå tomt, hvis du bruger scripts.",
+          "export_option_stop": "Kun ved rullemenu. Fx 'Zero Export' eller 'Zero power grid connection'.",
+          "export_option_normal": "Kun ved rullemenu. Fx 'Selling First' eller 'Unlimited'.",
+          "export_value_stop": "Kun ved tal. Typisk 0 (ingen eksport).",
+          "export_value_normal": "Kun ved tal. Fx inverterens maksimale effekt i W, så eksporten ikke begrænses.",
+          "export_script_stop": "Køres når salgsprisen falder under grænsen. Skal bruges sammen med 'start eksport igen'.",
+          "export_script_start": "Køres når salgsprisen kommer over grænsen igen, og når styringen slås fra."
         }
       },
       "ev": {
@@ -98,6 +142,10 @@
         "data": {
           "hotwater_entity": "Varmtvandsbeholder / varmepumpe",
           "hotwater_energy_sensor": "Energimåler: varmt vand (kWh) – valgfri"
+        },
+        "data_description": {
+          "hotwater_entity": "Kontakt (switch) til varmelegeme eller varmepumpe – tændes i dagens billigste periode. Eller en water_heater/climate-entitet – så hæves temperaturen i stedet ('Opvarm til' på kortet).",
+          "hotwater_energy_sensor": "En stigende måler (kWh) for strøm brugt til varmt vand. Bruges kun til at beregne besparelsen."
         }
       },
       "heating": {
@@ -106,6 +154,10 @@
         "data": {
           "heating_climate_entity": "Termostat / varmepumpe",
           "heatpump_energy_sensor": "Energimåler: varmepumpe (kWh)"
+        },
+        "data_description": {
+          "heating_climate_entity": "Termostaten eller varmepumpen (climate-entitet), som SmartHus skruer op i billige timer og ned i dyre timer – fx climate.varmepumpe eller climate.stue.",
+          "heatpump_energy_sensor": "En stigende måler (kWh) for varmepumpens strømforbrug. Bruges kun til at beregne besparelsen."
         }
       },
       "prices": {
@@ -128,6 +180,24 @@
           "tariff_summer_low": "Nettarif sommer, lav (00–06)",
           "tariff_summer_high": "Nettarif sommer, høj (06–17 og 21–24)",
           "tariff_summer_peak": "Nettarif sommer, spids (17–21)"
+        },
+        "data_description": {
+          "price_source": "Strømligning giver kundens rigtige pris fra elabonnementet. Ellers beregner SmartHus prisen ud fra spotprisen og tarifferne nedenfor.",
+          "stromligning_price_entity": "Normalt sensor.stromligning_current_price_vat (købspris inkl. alt).",
+          "stromligning_tomorrow_entity": "Normalt binary_sensor.stromligning_tomorrow_available_vat (morgendagens priser).",
+          "stromligning_spot_entity": "Normalt sensor.stromligning_spotprice_vat. Bruges til salgsprisen for solcellestrøm.",
+          "price_area": "DK1 = Jylland og Fyn. DK2 = Sjælland og øerne.",
+          "supplier_markup": "Elleverandørens tillæg pr. kWh ekskl. moms – står på elregningen.",
+          "sale_fee": "Det elselskabet trækker fra, når du sælger strøm (kr/kWh).",
+          "include_vat": "Slå til for private kunder (25 % moms på købsprisen).",
+          "energinet_tariff": "Energinets nettarif + systemtarif pr. kWh ekskl. moms.",
+          "elafgift": "Elafgift pr. kWh ekskl. moms (aktuel sats fra Skattestyrelsen).",
+          "tariff_winter_low": "Dit netselskabs tarif ekskl. moms, oktober–marts kl. 00–06.",
+          "tariff_winter_high": "Oktober–marts kl. 06–17 og 21–24.",
+          "tariff_winter_peak": "Oktober–marts kl. 17–21 (spidslast).",
+          "tariff_summer_low": "April–september kl. 00–06.",
+          "tariff_summer_high": "April–september kl. 06–17 og 21–24.",
+          "tariff_summer_peak": "April–september kl. 17–21 (spidslast)."
         }
       },
       "ev_car": {
@@ -138,12 +208,21 @@
           "ev_charger_entity": "Kontakt: tillad opladning",
           "ev_soc_sensor": "Bilens batteriniveau (SoC %)",
           "ev_energy_sensor": "Energimåler for laderen (kWh)"
+        },
+        "data_description": {
+          "car_name": "Vises på kortet og i entiteternes navne, fx 'Tesla' eller 'Firmabil'.",
+          "ev_charger_entity": "Den kontakt der tillader eller stopper opladning – fx Easee switch.easee_is_enabled, Zaptec switch.zaptec_charging, Wallbox switch.wallbox_pause_resume eller en smart-stikkontakt. SmartHus tænder den i de billigste timer og slukker den ellers.",
+          "ev_soc_sensor": "Bilens batteriniveau i procent fra bilens egen integration (fx Tesla, Kia/Hyundai, VW, Polestar). Med SoC lades der kun til mål-SoC, og ladetiden beregnes automatisk. Uden SoC lades et fast antal timer.",
+          "ev_energy_sensor": "En stigende måler (kWh) for al strøm laderen har leveret – fx Easee 'Lifetime energy', Zaptec 'Total charge energy'. Bruges KUN til at beregne besparelsen ved at lade i billige timer. Styringen virker uden."
         }
       }
     },
     "error": {
       "stromligning_missing": "Sensoren findes ikke. Installér Strømligning-integrationen (HACS) og vælg dit elselskab og produkt der først.",
-      "stromligning_no_prices": "Sensoren har ingen priser (attributten 'prices' mangler). Vælg Strømligning-sensoren for den aktuelle pris inkl. moms."
+      "stromligning_no_prices": "Sensoren har ingen priser (attributten 'prices' mangler). Vælg Strømligning-sensoren for den aktuelle pris inkl. moms.",
+      "export_select_options": "Du har valgt en rullemenu – udfyld begge navne ('stop eksport' og 'normal eksport').",
+      "export_number_values": "Du har valgt et tal – udfyld begge værdier (ved stop og ved normal eksport).",
+      "export_scripts_pair": "Vælg både et script til at stoppe og et til at starte eksporten igen."
     }
   },
   "selector": {

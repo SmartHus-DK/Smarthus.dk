@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.8.2** – kortet viser sin version nederst. Står der et lavere tal på kortet, så genstart Home Assistant og nulstil app-cachen.
+**Version 1.9.0** – kortet viser sin version nederst. Står der et lavere tal på kortet, så genstart Home Assistant og nulstil app-cachen.
 
 Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk).
 
@@ -64,8 +64,140 @@ Med en SigEnergy-integration (Modbus) vælger du under **Batteri / inverter**:
 
 Navnene skal stå **præcis** som i inverterens rullemenu (se entitetens mulige værdier under Udviklerværktøjer → Tilstande). Husk at aktivere "Remote EMS" på anlægget, hvis din integration kræver det.
 
-### Andre invertere og batterier
-SmartHus virker med alle batterier, der kan styres via en `select`- eller `input_select`-entitet med tre tilstande: **lad fra nettet**, **aflad/sælg** og **normal drift (egetforbrug)**. SigEnergy-eksemplet ovenfor er kun et eksempel – skriv navnene præcis som de står hos din inverter. Har inverteren i stedet kontakter eller tal-entiteter, så lav en `input_select` med tre valg og en automatisering, der omsætter valget til inverterens kommandoer.
+### Andre invertere og batterier – rullemenu eller scripts
+SmartHus kan styre batteriet på to måder (under **Konfigurer → Batteri / inverter**):
+
+- **A) Rullemenu** – når inverteren har én `select` med tilstande (SigEnergy, ofte FoxESS og SolaX). Skriv navnene præcis som i rullemenuen.
+- **B) Scripts** – virker med **alle** invertere, der har en Home Assistant-integration. Lav tre scripts (lad fra nettet, aflad, normal drift) under **Indstillinger → Automatiseringer → Scripts**, og vælg dem i opsætningen. Er der valgt et script for en tilstand, bruges det i stedet for rullemenuen.
+
+SmartHus kører kun et script, når tilstanden **skifter**, og "normal drift" køres også, når styringen slås fra. Scriptet får disse variabler: `smarthus_state` (`charge`, `discharge` eller `normal`), `price`, `sale_price`, `min_soc` og `max_soc`.
+
+**Eksport** kan stoppes med en kontakt, en rullemenu (to navne), et tal som fx en eksportgrænse i W (to værdier) eller to scripts (stop/start) – under **Konfigurer → Solceller**.
+
+| Mærke (integration) | Batteri | Stop af eksport |
+|---|---|---|
+| SigEnergy (Modbus) | A) rullemenu – se eksemplet ovenfor | kontakt eller tal |
+| Huawei ([huawei_solar](https://github.com/wlcrs/huawei_solar)) | B) scripts med `forcible_charge_soc` / `forcible_discharge_soc` / `stop_forcible_charge` | tal (eksportgrænse) eller rullemenu |
+| Deye / Sunsynk ([Solarman](https://github.com/davidrapan/ha-solarman)) | B) scripts der sætter tidsprogram, netopladning og SoC | rullemenu ("Work Mode") eller kontakt |
+| Growatt (Modbus) | B) scripts der skriver Battery First / AC charge | script |
+| Solplanet ([solplanet](https://github.com/calvinbui/home-assistant-solplanet)) | B) scripts med arbejdstilstand og tidsplan | script |
+| FoxESS / SolaX (Modbus) | A) rullemenu, hvis integrationen har tilstande for tvungen opladning – ellers B) | tal eller rullemenu |
+
+> Entiteternes navne varierer med integration, version og model. Brug eksemplerne som skabelon og find dine egne navne under **Udviklerværktøjer → Tilstande** og **Udviklerværktøjer → Handlinger**. Afprøv hvert script manuelt, før du slår SmartHus-styringen til.
+
+<details><summary><b>Huawei – scripts</b></summary>
+
+`device_id` er inverterens/batteriets enhed – vælg den i script-editoren. Feltnavnene kan ses under Udviklerværktøjer → Handlinger.
+
+```yaml
+smarthus_lad:
+  alias: SmartHus – lad batteri fra nettet
+  sequence:
+    - action: huawei_solar.forcible_charge_soc
+      data:
+        device_id: DIN_BATTERI_ENHED
+        target_soc: "{{ max_soc | int(95) }}"
+        power: 5000
+smarthus_aflad:
+  alias: SmartHus – aflad batteri
+  sequence:
+    - action: huawei_solar.forcible_discharge_soc
+      data:
+        device_id: DIN_BATTERI_ENHED
+        target_soc: "{{ min_soc | int(15) }}"
+        power: 5000
+smarthus_normal:
+  alias: SmartHus – normal drift
+  sequence:
+    - action: huawei_solar.stop_forcible_charge
+      data:
+        device_id: DIN_BATTERI_ENHED
+```
+</details>
+
+<details><summary><b>Deye / Sunsynk (Solarman) – scripts</b></summary>
+
+Deye styres med tidsprogrammer. Eksemplet bruger program 1 for hele døgnet; tilpas entitetsnavnene til din installation.
+
+```yaml
+smarthus_lad:
+  alias: SmartHus – lad batteri fra nettet
+  sequence:
+    - action: switch.turn_on
+      target: { entity_id: switch.inverter_program_1_charging }
+    - action: number.set_value
+      target: { entity_id: number.inverter_program_1_soc }
+      data: { value: "{{ max_soc | int(95) }}" }
+smarthus_aflad:
+  alias: SmartHus – aflad batteri
+  sequence:
+    - action: switch.turn_off
+      target: { entity_id: switch.inverter_program_1_charging }
+    - action: select.select_option
+      target: { entity_id: select.inverter_work_mode }
+      data: { option: Selling First }
+    - action: number.set_value
+      target: { entity_id: number.inverter_program_1_soc }
+      data: { value: "{{ min_soc | int(15) }}" }
+smarthus_normal:
+  alias: SmartHus – normal drift
+  sequence:
+    - action: switch.turn_off
+      target: { entity_id: switch.inverter_program_1_charging }
+    - action: select.select_option
+      target: { entity_id: select.inverter_work_mode }
+      data: { option: Zero Export To CT }
+    - action: number.set_value
+      target: { entity_id: number.inverter_program_1_soc }
+      data: { value: "{{ min_soc | int(15) }}" }
+```
+Stop af eksport på Deye: vælg `select.inverter_work_mode` som rullemenu med "Zero Export To CT" (stop) og "Selling First" (normal), eller kontakten "Export surplus".
+</details>
+
+<details><summary><b>Growatt (Modbus) – scripts</b></summary>
+
+Eksempel med Home Assistants Modbus-integration (hub `growatt`, slave 1) på en SPH-model: Battery First-vindue (register 1100–1102) og AC-opladning (1090–1092). Tid skrives som time × 256 + minut, så 23:59 = 5947. Tjek registrene for din model.
+
+```yaml
+smarthus_lad:
+  alias: SmartHus – lad batteri fra nettet
+  sequence:
+    - action: modbus.write_register
+      data: { hub: growatt, slave: 1, address: 1100, value: [0, 5947, 1] }
+    - action: modbus.write_register
+      data: { hub: growatt, slave: 1, address: 1090, value: [0, 5947, 1] }
+smarthus_aflad:
+  alias: SmartHus – aflad batteri (Grid First)
+  sequence:
+    - action: modbus.write_register
+      data: { hub: growatt, slave: 1, address: 1100, value: [0, 0, 0] }
+    - action: modbus.write_register
+      data: { hub: growatt, slave: 1, address: 1080, value: [0, 5947, 1] }
+smarthus_normal:
+  alias: SmartHus – normal drift (Load First)
+  sequence:
+    - action: modbus.write_register
+      data: { hub: growatt, slave: 1, address: 1100, value: [0, 0, 0] }
+    - action: modbus.write_register
+      data: { hub: growatt, slave: 1, address: 1090, value: [0, 0, 0] }
+    - action: modbus.write_register
+      data: { hub: growatt, slave: 1, address: 1080, value: [0, 0, 0] }
+```
+</details>
+
+<details><summary><b>Solplanet – scripts</b></summary>
+
+Solplanet-integrationen styrer batteriet med en arbejdstilstand og tidsplaner. Brug **Self-consumption** til normal drift, og lad lad/aflad-scriptet skifte til **Custom** og lægge et tidsrum ind med handlingen *Solplanet: Set Schedule Slots* (opladning eller afladning). Felterne til handlingen ses under Udviklerværktøjer → Handlinger.
+
+```yaml
+smarthus_normal:
+  alias: SmartHus – normal drift
+  sequence:
+    - action: select.select_option
+      target: { entity_id: select.solplanet_battery_work_mode }
+      data: { option: Self-consumption }
+```
+</details>
 
 ### Batteriets reserve (lærer husets forbrug)
 Vælg **Energimåler: husets forbrug** under *Batteri / inverter* (valgfri) og indstil **Batteriets størrelse** i kortet. Så gør SmartHus følgende:
