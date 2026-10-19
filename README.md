@@ -298,4 +298,4 @@ Besparelser kræver, at du vælger energimålere (kWh, stigende) i opsætningen.
 - Når et modul er slået til, holder SmartHus enheden i den ønskede tilstand. Ændrer du manuelt termostaten, sætter SmartHus den tilbage inden for et par minutter. Slå modulet fra, hvis du vil styre manuelt.
 - Beregnede besparelser er estimater.
 
-Udviklet af SmartHus.dk · MIT-licens
+Udviklet af SmartHus.dk · © SmartHus.dk – alle rettigheder forbeholdes. Må kun bruges af SmartHus-kunder, se [LICENSE](LICENSE).

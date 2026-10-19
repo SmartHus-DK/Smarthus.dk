@@ -1,21 +1,41 @@
-MIT License
+SmartHus – licens og brugsvilkår
+Copyright (c) 2026 Thomas Nørgård Antonsen / SmartHus.dk. Alle rettigheder forbeholdes.
 
-Copyright (c) 2026 Thomas Nørgård Antonsen / SmartHus.dk
+1. Ejerskab
+   Denne software (SmartHus-integrationen til Home Assistant, herunder kildekode,
+   SmartHus-kortet, grafik, logo og dokumentation) er ophavsretligt beskyttet og
+   tilhører SmartHus.dk.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+2. Brugsret
+   Softwaren må kun bruges af kunder hos SmartHus.dk og kun på installationer,
+   som SmartHus.dk har leveret, installeret eller skriftligt godkendt. Brugsretten
+   er personlig, ikke-eksklusiv og kan ikke overdrages. Den gælder, så længe
+   kundeforholdet består, medmindre andet er aftalt skriftligt.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+3. Det er ikke tilladt uden skriftlig tilladelse fra SmartHus.dk at
+   a) kopiere, distribuere, sælge, udleje eller på anden måde stille softwaren
+      til rådighed for andre,
+   b) ændre, videreudvikle eller lave afledte værker af softwaren,
+   c) bruge softwaren, eller dele af den, i andre produkter eller tjenester,
+   d) fjerne eller ændre denne licens, copyright-meddelelser eller SmartHus-logoet.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+4. Ingen garanti
+   Softwaren leveres "som den er". Beregnede priser og besparelser er estimater.
+   SmartHus.dk garanterer ikke, at softwaren er fejlfri, eller at den passer til
+   et bestemt formål, og er ikke ansvarlig for indirekte tab, driftstab eller
+   tab som følge af styring af tilsluttet udstyr, i det omfang dansk ret tillader det.
+
+5. Ophør
+   Brugsretten ophører automatisk, hvis vilkårene overtrædes. Ved ophør skal
+   softwaren fjernes fra de installationer, den er brugt på.
+
+6. Lovvalg
+   Vilkårene er underlagt dansk ret.
+
+Kontakt: SmartHus.dk – https://smarthus.dk
+
+
+English summary: Proprietary software. All rights reserved. Use is permitted only
+for customers of SmartHus.dk on installations delivered or approved by SmartHus.dk.
+Copying, distribution, modification or reuse without written permission is not
+permitted. Provided "as is" without warranty. Governed by Danish law.
