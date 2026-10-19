@@ -93,6 +93,23 @@ async def main():
     # 7) Intet sat op
     c, h = make({}, {})
     assert not c.has_battery_control and not c.has_export_control
+    # 8) Varmt vand med temperaturføler: sluk ved grænsen, tænd igen efter 3 °C afkøling
+    temp = {"v": "50"}
+    states = {"sensor.vand": types.SimpleNamespace(state=None, attributes={})}
+    c, h = make({"hotwater_entity": "switch.vand", "hotwater_temp_sensor": "sensor.vand"}, {})
+    c.hass.states = types.SimpleNamespace(get=lambda e: State(temp["v"]) if e == "sensor.vand" else None)
+    c.settings["hotwater_boost_temp"] = 55.0
+    assert c._hotwater_switch_on(True) is True       # 50 °C: varm op
+    temp["v"] = "55.5"
+    assert c._hotwater_switch_on(True) is False      # grænsen nået
+    temp["v"] = "53"
+    assert c._hotwater_switch_on(True) is False      # stadig varmt nok (hysterese)
+    temp["v"] = "51.5"
+    assert c._hotwater_switch_on(True) is True       # kølet > 3 °C af: varm igen
+    assert c._hotwater_switch_on(False) is False     # uden for billig periode: slukket
+    # Uden føler: følg planen
+    c, h = make({"hotwater_entity": "switch.vand"}, {})
+    assert c._hotwater_switch_on(True) is True
     print("controller OK")
 
 def test_controller_control():

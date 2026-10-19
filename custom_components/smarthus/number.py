@@ -14,6 +14,7 @@ from .const import (
     CONF_BATTERY_MODE_ENTITY,
     CONF_HEATING_CLIMATE,
     CONF_HOTWATER_ENTITY,
+    CONF_HOTWATER_TEMP,
     DEFAULT_SETTINGS,
     S_BATTERY_CHARGE_HOURS,
     S_BATTERY_DISCHARGE_HOURS,
@@ -170,6 +171,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
                 entities.append(SmartHusNumber(entry, controller, desc, car.get("name") or "Elbil", d.key))
         elif d.multi_car:
             if len(controller.cars) >= 2:
+                entities.append(SmartHusNumber(entry, controller, d))
+        elif d.key in (S_HOTWATER_BOOST_TEMP, S_HOTWATER_NORMAL_TEMP):
+            hw = controller.config.get(CONF_HOTWATER_ENTITY) or ""
+            thermostat = hw.split(".")[0] in ("water_heater", "climate")
+            if thermostat or (d.key == S_HOTWATER_BOOST_TEMP and hw and controller.has(CONF_HOTWATER_TEMP)):
                 entities.append(SmartHusNumber(entry, controller, d))
         elif d.requires is None or controller.has(d.requires):
             entities.append(SmartHusNumber(entry, controller, d))

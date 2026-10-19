@@ -41,6 +41,8 @@ from .const import (
     CONF_HEATPUMP_ENERGY,
     CONF_HOTWATER_ENERGY,
     CONF_HOTWATER_ENTITY,
+    CONF_HOTWATER_TEMP,
+    HOTWATER_HYSTERESIS,
     CONF_HOUSE_ENERGY,
     CONF_SOLAR_FORECAST,
     CONF_SOLAR_CURTAIL,
@@ -107,6 +109,8 @@ class SmartHusController:
         self._last_cmd: dict[str, float] = {}
         # Sidste tilstand der er sendt via script (scripts køres kun ved skift)
         self._script_state: dict[str, str] = {}
+        # Varmt vand med temperaturføler: True når øvre grænse er nået
+        self.hotwater_full = False
         self._unsub = None
         self._unsub_prices = None
         self.expected_unique_ids: set[str] = set()
@@ -481,7 +485,26 @@ class SmartHusController:
             temp = self.settings[S_HOTWATER_BOOST_TEMP if on else S_HOTWATER_NORMAL_TEMP]
             await self._ensure_temperature(entity_id, temp, force)
         else:
-            await self._ensure_switch(entity_id, on, force)
+            await self._ensure_switch(entity_id, self._hotwater_switch_on(on), force)
+
+    @property
+    def hotwater_temp(self) -> float | None:
+        return self._float_state(self.config.get(CONF_HOTWATER_TEMP))
+
+    def _hotwater_switch_on(self, planned_on: bool) -> bool:
+        """Med temperaturføler: sluk ved øvre grænse, start igen når vandet er kølet af."""
+        if not planned_on:
+            self.hotwater_full = False
+            return False
+        temp = self.hotwater_temp
+        if temp is None:
+            return True
+        limit = self.settings[S_HOTWATER_BOOST_TEMP]
+        if temp >= limit:
+            self.hotwater_full = True
+        elif temp < limit - HOTWATER_HYSTERESIS:
+            self.hotwater_full = False
+        return not self.hotwater_full
 
     async def async_restore_normal(self, module: str) -> None:
         """Sæt et modul tilbage til normal drift, når styringen slås fra."""

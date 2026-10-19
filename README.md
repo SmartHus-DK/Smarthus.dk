@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.9.1** – kortet viser sin version nederst. Står der et lavere tal på kortet, så genstart Home Assistant og nulstil app-cachen.
+**Version 1.10.0** – kortet viser sin version nederst. Står der et lavere tal på kortet, så genstart Home Assistant og nulstil app-cachen.
 
 Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk).
 
@@ -227,6 +227,9 @@ Under **Konfigurer → Elbiler** kan du tilføje så mange biler, du vil. Hver b
 **Maks. samlet ladeeffekt** (fx 11 kW) sørger for, at bilerne ikke lader samtidig ud over hvad hovedsikringen kan klare. Bilen med det tidligste klar-tidspunkt får de billigste timer først. 0 betyder ingen grænse (standard). Indstillingen vises, når der er mindst to biler.
 
 Den første bil beholder de oprindelige entity-id'er (fx `switch.smarthus_control_ev`), så eksisterende automatiseringer virker uændret.
+
+### Varmt vand med kontakt og temperaturføler
+Styres varmt vand med en **kontakt**, tændes den i dagens billigste periode. Vælger du også en **temperaturføler i vandet**, slukker SmartHus kontakten, når vandet når **Maks. temperatur** (på kortet), og tænder igen i den billige periode, hvis vandet er kølet 3 °C af. Uden føler bestemmer varmelegemets egen termostat temperaturen, og der vises ingen temperaturindstillinger på kortet. "Normal temperatur" bruges kun ved en water_heater/climate-entitet.
 
 ### Stop eksport under en bestemt pris
 Under **Solceller** på kortet kan du sætte **Stop eksport under** (kr/kWh). Når salgsprisen er under grænsen, tændes kontakten "begræns eksport", og batteriet lader af solstrømmen i stedet. Når prisen kommer over grænsen igen, starter eksporten automatisk. Standard er 0 kr, dvs. der stoppes kun ved negativ pris.

@@ -134,11 +134,13 @@
         "description": "A switch is turned on in the cheapest continuous period of the day. For a water_heater or climate entity the temperature is raised instead.",
         "data": {
           "hotwater_entity": "Water heater / heat pump",
+          "hotwater_temp_sensor": "Water temperature sensor (°C) – optional",
           "hotwater_energy_sensor": "Energy meter: hot water (kWh) – optional"
         },
         "data_description": {
-          "hotwater_entity": "A switch for the heater, or a water_heater/climate entity whose temperature is raised.",
-          "hotwater_energy_sensor": "Increasing meter (kWh) for hot water. Only used for savings."
+          "hotwater_entity": "A switch for the heater – turned on in the cheapest period. Or a water_heater/climate entity whose temperature is set instead.",
+          "hotwater_energy_sensor": "Increasing meter (kWh) for hot water. Only used for savings.",
+          "hotwater_temp_sensor": "Measures the water temperature. With a sensor, SmartHus turns the switch off when the water reaches the max. temperature and on again in the cheap period if it has cooled 3 °C."
         }
       },
       "heating": {

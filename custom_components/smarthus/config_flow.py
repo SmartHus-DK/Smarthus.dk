@@ -42,6 +42,7 @@ from .const import (
     CONF_HEATING_CLIMATE,
     CONF_HEATPUMP_ENERGY,
     CONF_HOTWATER_ENERGY,
+    CONF_HOTWATER_TEMP,
     CONF_HOUSE_ENERGY,
     CONF_SOLAR_FORECAST,
     CONF_HOTWATER_ENTITY,
@@ -103,6 +104,7 @@ EXPORT_VALUE = selector.NumberSelector(
 HOTWATER = selector.EntitySelector(
     selector.EntitySelectorConfig(domain=["switch", "input_boolean", "water_heater", "climate"])
 )
+TEMP = selector.EntitySelector(selector.EntitySelectorConfig(domain=["sensor", "input_number"]))
 CLIMATE = selector.EntitySelector(selector.EntitySelectorConfig(domain="climate"))
 FORECAST = selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor"))
 
@@ -360,7 +362,7 @@ class SmartHusOptionsFlow(OptionsFlow):
     async def async_step_hotwater(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
             return self._save(HOTWATER_KEYS, user_input)
-        fields = [(CONF_HOTWATER_ENTITY, HOTWATER), (CONF_HOTWATER_ENERGY, ENERGY)]
+        fields = [(CONF_HOTWATER_ENTITY, HOTWATER), (CONF_HOTWATER_TEMP, TEMP), (CONF_HOTWATER_ENERGY, ENERGY)]
         return self.async_show_form(step_id="hotwater", data_schema=_entity_schema(fields, self._current()))
 
     async def async_step_heating(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:

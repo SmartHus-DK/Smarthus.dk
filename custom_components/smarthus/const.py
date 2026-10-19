@@ -11,7 +11,7 @@ API_URL: Final = "https://api.energidataservice.dk/dataset/DayAheadPrices"
 
 STATIC_URL: Final = "/smarthus_static"
 CARD_URL: Final = f"{STATIC_URL}/smarthus-card.js"
-CARD_VERSION: Final = "1.9.1"
+CARD_VERSION: Final = "1.10.0"
 
 PLATFORMS: Final = ["sensor", "binary_sensor", "switch", "number"]
 
@@ -100,6 +100,8 @@ CONF_EV_SOC: Final = "ev_soc_sensor"
 # Varmt vand
 CONF_HOTWATER_ENTITY: Final = "hotwater_entity"
 CONF_HOTWATER_ENERGY: Final = "hotwater_energy_sensor"
+CONF_HOTWATER_TEMP: Final = "hotwater_temp_sensor"
+HOTWATER_HYSTERESIS: Final = 3.0  # °C – start igen når vandet er kølet så meget af
 # Varme / varmepumpe
 CONF_HEATING_CLIMATE: Final = "heating_climate_entity"
 CONF_HEATPUMP_ENERGY: Final = "heatpump_energy_sensor"
@@ -141,7 +143,7 @@ def get_cars(config: dict) -> list[dict]:
             "energy": config.get(CONF_EV_ENERGY),
         }]
     return []
-HOTWATER_KEYS: Final = [CONF_HOTWATER_ENTITY, CONF_HOTWATER_ENERGY]
+HOTWATER_KEYS: Final = [CONF_HOTWATER_ENTITY, CONF_HOTWATER_TEMP, CONF_HOTWATER_ENERGY]
 HEATING_KEYS: Final = [CONF_HEATING_CLIMATE, CONF_HEATPUMP_ENERGY]
 
 # Standardnavne på SigEnergy-tilstande (kan ændres i opsætningen)

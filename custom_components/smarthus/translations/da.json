@@ -141,11 +141,13 @@
         "description": "En kontakt tændes i dagens billigste sammenhængende periode. Vælger du en water_heater- eller climate-entitet, hæves temperaturen i stedet. Vælg en energimåler for varmtvandsbeholderen, hvis besparelsen skal med i SmartHus-besparelsen. Varmes vandet af varmepumpen, er besparelsen allerede med under varmepumpen – så lad feltet stå tomt.",
         "data": {
           "hotwater_entity": "Varmtvandsbeholder / varmepumpe",
+          "hotwater_temp_sensor": "Temperaturføler i vandet (°C) – valgfri",
           "hotwater_energy_sensor": "Energimåler: varmt vand (kWh) – valgfri"
         },
         "data_description": {
-          "hotwater_entity": "Kontakt (switch) til varmelegeme eller varmepumpe – tændes i dagens billigste periode. Eller en water_heater/climate-entitet – så hæves temperaturen i stedet ('Opvarm til' på kortet).",
-          "hotwater_energy_sensor": "En stigende måler (kWh) for strøm brugt til varmt vand. Bruges kun til at beregne besparelsen."
+          "hotwater_entity": "Kontakt (switch) til varmelegeme eller varmepumpe – tændes i dagens billigste periode. Eller en water_heater/climate-entitet – så sættes temperaturen i stedet ('Opvarm til' og 'Normal temperatur' på kortet).",
+          "hotwater_energy_sensor": "En stigende måler (kWh) for strøm brugt til varmt vand. Bruges kun til at beregne besparelsen.",
+          "hotwater_temp_sensor": "Måler vandets temperatur, fx sensor.varmtvand_temperatur. Med en føler slukker SmartHus kontakten, når vandet når 'Maks. temperatur' (indstilles på kortet), og tænder igen i den billige periode, hvis vandet er kølet 3 °C af. Uden føler kører kontakten hele den billige periode, og varmelegemets egen termostat bestemmer temperaturen."
         }
       },
       "heating": {

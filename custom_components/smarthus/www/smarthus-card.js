@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.9.1";
+const SMARTHUS_CARD_VERSION = "1.10.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -223,6 +223,7 @@ class SmartHusCard extends HTMLElement {
     return [...cars, ...MODULES].filter((m) => this._st("switch", m.sw));
   }
   _label(key) {
+    if (key === "hotwater_boost_temp" && !this._st("number", "hotwater_normal_temp")) return "Maks. temperatur";
     if (NUMBER_LABELS[key]) return NUMBER_LABELS[key];
     const suffix = Object.keys(EV_LABELS).find((k) => key.endsWith(`_${k}`));
     return suffix ? EV_LABELS[suffix] : this._st("number", key)?.attributes.friendly_name || key;
