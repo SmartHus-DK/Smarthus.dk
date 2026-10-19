@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.15.1";
+const SMARTHUS_CARD_VERSION = "1.15.2";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -229,7 +229,13 @@ class SmartHusCard extends HTMLElement {
         cid,
         name: this._st("sensor", `${cid}_smart_saving`)?.attributes?.car_name || "Elbil",
         color: CAR_COLORS[i % CAR_COLORS.length],
+        connected: this._st("binary_sensor", `${cid}_charge_now`)?.attributes?.connected,
       }));
+  }
+  /** Biler i overblikket: en bil, der ikke sidder i laderen, skjules – medmindre ingen er tilsluttet. */
+  _visibleCars(list) {
+    const shown = list.filter((c) => c.connected !== false);
+    return shown.length ? shown : list;
   }
   _forceKey(cid) {
     return cid === "ev" ? "ev_force" : `${cid}_force`;
@@ -540,7 +546,7 @@ class SmartHusCard extends HTMLElement {
     const midX = midnight ? xOf(midnight.start.getTime()) : null;
 
     // Spor for planlagte handlinger
-    const carLanes = this._cars().map((c) => ({ key: `${c.cid}_charge_now`, label: `${c.name} lader`, color: c.color, module: `control_${c.cid}` }));
+    const carLanes = this._visibleCars(this._cars()).map((c) => ({ key: `${c.cid}_charge_now`, label: `${c.name} lader`, color: c.color, module: `control_${c.cid}` }));
     const lanes = [...carLanes, ...LANES].filter((l) => this._st("switch", l.module) && this._st("binary_sensor", l.key));
     const laneH = 7, gap = 4;
     const lanesSvg = lanes
@@ -788,7 +794,7 @@ class SmartHusCard extends HTMLElement {
       const bk = f.battery_kw;
       svg += bk >= 0 ? flow([8.0, 3.3, 0.1], [6.6, 4.6, 0.5], bk, C.blue, 8) : flow([6.6, 4.6, 0.5], [8.0, 3.3, 0.1], bk, C.blue, 8);
     }
-    const cars = (f.cars || []).slice(0, 2);
+    const cars = this._visibleCars(f.cars || []).slice(0, 2);
     cars.forEach((c, i) => {
       const at = i === 0 ? [8.1, 6.4, 0.1] : [8.4, 8.1, 0.1];
       if (c.connected !== false) svg += flow([6.6, 5.8, 0.4], at, c.kw || 0, C.ev, 4);
