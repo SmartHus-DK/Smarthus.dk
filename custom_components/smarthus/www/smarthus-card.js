@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.16.2";
+const SMARTHUS_CARD_VERSION = "1.16.3";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -949,18 +949,37 @@ class SmartHusCard extends HTMLElement {
     });
 
     // Etiketter
+    // Lille batteri-ikon med ladeniveau (SoC) og procent
+    const socPill = (x, y, soc, w = 22) => {
+      const v = Math.max(0, Math.min(100, soc));
+      const col = v < 20 ? "#C2416B" : v < 50 ? C.amber : C.green;
+      return `<g class="soc" transform="translate(${x},${y})">
+        <rect x="0" y="-5" width="${w}" height="10" rx="2.6" class="soc-shell"/>
+        <rect x="${w + 0.8}" y="-2.2" width="2" height="4.4" rx="0.8" class="soc-nub"/>
+        <rect x="1.6" y="-3.4" width="${((w - 3.2) * v / 100).toFixed(1)}" height="6.8" rx="1.6" fill="${col}"/>
+        <text x="${w + 6}" y="3.6" class="soc-t">${nf(v, 0)} %</text></g>`;
+    };
+    const textW = (t) => String(t).length * 6.1;   // ca. bredde af lbl-v-tekst
     let labels = label(1.7, 7.7, 3.9, "Net", `${kwTxt(g)} ${g >= 0.05 ? "køb" : g <= -0.05 ? "salg" : ""}`, C.grid);
     if (f.has_solar) labels += label(2.6, 4.2, 3.9, "Sol", kwTxt(f.solar_kw), "#D99A0B", -6, "end");
     labels += label(5.0, 7.8, -0.9, "Huset", kwTxt(f.house_kw), C.green);
     if (f.has_battery) {
       const bk = f.battery_kw;
       const dir = bk == null ? "" : bk >= 0.05 ? "afgiver" : bk <= -0.05 ? "lader" : "";
-      labels += label(8.1, 3.0, 3.0, `Batteri${f.battery_soc != null ? ` ${nf(f.battery_soc, 0)} %` : ""}`,
-        bk == null ? "" : `${kwTxt(bk)} ${dir}`, C.blue);
+      labels += label(8.1, 3.0, 3.0, "Batteri", bk == null ? "" : `${kwTxt(bk)} ${dir}`, C.blue);
+      if (f.battery_soc != null) {
+        const [sx, sy] = P(8.75, 3.1, 1.0);
+        labels += socPill(sx + 10, sy, f.battery_soc, 24);
+      }
     }
     cars.forEach((c, i) => {
       const at = i === 0 ? [8.75, 6.5, 0.2] : [9.15, 8.3, 0.2];
-      labels += label(...at, c.name, c.connected === false ? "ikke tilsluttet" : c.kw == null ? "" : kwTxt(c.kw), C.ev, 14, "start");
+      const val = c.connected === false ? "ikke tilsluttet" : c.kw == null ? "" : kwTxt(c.kw);
+      labels += label(...at, c.name, val, C.ev, 14, "start");
+      if (c.soc != null && c.connected !== false) {
+        const [sx, sy] = P(...at);
+        labels += socPill(sx + 14 + (val ? textW(val) + 6 : 0), sy + 5, c.soc);
+      }
     });
 
     // Vejret lige nu øverst til venstre
@@ -1453,6 +1472,10 @@ class SmartHusCard extends HTMLElement {
       .scene .fl-dash { fill: none; stroke-width: 2.6; stroke-dasharray: 2 9; stroke-linecap: round; animation: sh-flow linear infinite; }
       .scene .lbl text { paint-order: stroke; stroke: var(--card-background-color, #fff); stroke-width: 3px; }
       .scene .lbl-t { font-size: 8.5px; fill: var(--secondary-text-color); }
+      .scene .soc-shell { fill: var(--card-background-color, #fff); stroke: #8C9AA8; stroke-width: 1.2; }
+      .scene .soc-nub { fill: #8C9AA8; }
+      .scene .soc-t { font-size: 10px; font-weight: 700; fill: var(--primary-text-color); font-variant-numeric: tabular-nums;
+                      paint-order: stroke; stroke: var(--card-background-color, #fff); stroke-width: 3px; }
       .scene .lbl-v { font-size: 10.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
       .scene .panel.on { filter: drop-shadow(0 0 2.5px rgba(247,178,27,.7)); }
       .scene .bolt.on { filter: drop-shadow(0 0 3px rgba(247,178,27,.9)); }
