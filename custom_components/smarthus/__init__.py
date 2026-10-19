@@ -48,6 +48,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry) -> 
 
     controller = SmartHusController(hass, entry, coordinator, config)
     entry.runtime_data = SmartHusData(coordinator, controller)
+    await controller.async_load_savings()
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     _remove_stale_entities(hass, entry, controller.expected_unique_ids)

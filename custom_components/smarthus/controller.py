@@ -131,6 +131,7 @@ class SmartHusController:
         self.connected_source: dict[str, str] = {}
         self.plan = Plan()
         self.savings = SavingsCalculator()
+        self._savings_loaded = False
         self.profile = Profile()
         self.profile_updated: datetime | None = None
         self.reserve: Reserve | None = None
@@ -165,9 +166,14 @@ class SmartHusController:
         self.expected_unique_ids: set[str] = set()
 
     # --- Livscyklus --------------------------------------------------------
+    async def async_load_savings(self) -> None:
+        """Hent gemte besparelser – før sensorerne oprettes, så de ikke kortvarigt viser 0."""
+        self.savings = SavingsCalculator(await self._store.async_load())
+        self._savings_loaded = True
+
     async def async_start(self) -> None:
-        stored = await self._store.async_load()
-        self.savings = SavingsCalculator(stored)
+        if not self._savings_loaded:
+            await self.async_load_savings()
         self._unsub = async_track_time_change(self.hass, self._async_tick, second=[5, 35])
         self._unsub_prices = self.coordinator.async_add_listener(self._on_prices)
         self._unsub_sl = None
