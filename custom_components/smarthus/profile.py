@@ -14,7 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-LEARN_DAYS = 7
+LEARN_DAYS = 14
 MIN_DAYS = 2  # så få dage med data før profilen bruges
 MAX_HOUR_KWH = 50.0  # spring urealistiske timer over (fx nulstillet måler)
 SUN_START, SUN_END = 6, 21  # timer hvor solceller regnes at producere (lokal tid)

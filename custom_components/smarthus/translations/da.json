@@ -92,7 +92,7 @@
           "battery_power_sign": "Hvad betyder et positivt tal for batteriet?"
         },
         "data_description": {
-          "house_energy_sensor": "En stigende energimåler (kWh) for husets forbrug – fx fra inverteren ('Load consumption total'), en P1-måler (HAN-port) eller en elmåler. SmartHus lærer ud fra de seneste 7 dage, hvor meget huset bruger time for time, og holder så meget i batteriet, at huset klarer sig til strømmen bliver billig igen. Kun det overskydende sælges. Kræver langtidsstatistik (står den i Energi-dashboardet, har den det). Reserven bruges efter 2 dages historik.",
+          "house_energy_sensor": "En stigende energimåler (kWh) for husets forbrug – fx fra inverteren ('Load consumption total'), en P1-måler (HAN-port) eller en elmåler. SmartHus lærer ud fra de seneste 14 dage, hvor meget huset bruger time for time, og holder så meget i batteriet, at huset klarer sig til strømmen bliver billig igen. Kun det overskydende sælges. Kræver langtidsstatistik (står den i Energi-dashboardet, har den det). Reserven bruges efter 2 dages historik.",
           "battery_mode_entity": "En select-entitet fra inverterens integration, der skifter driftstilstand – fx SigEnergy select.sigen_plant_remote_ems_control_mode. Find den under Udviklerværktøjer → Tilstande. Lad feltet stå tomt, hvis du bruger scripts.",
           "battery_soc_sensor": "Batteriets opladningsniveau i procent, fx sensor.battery_state_of_capacity (Huawei) eller sensor.sigen_plant_battery_state_of_charge (SigEnergy). Bruges til ikke at lade over højeste eller aflade under laveste niveau og til reserven.",
           "battery_option_charge": "Skriv navnet præcis som det står i rullemenuen (store/små bogstaver tæller). SigEnergy: Command Charging (Grid First).",

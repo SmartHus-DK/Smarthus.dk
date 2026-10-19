@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.15.0** – kortet viser sin version nederst. Står der et lavere tal på kortet, så genstart Home Assistant og nulstil app-cachen.
+**Version 1.15.1** – kortet viser sin version nederst. Står der et lavere tal på kortet, så genstart Home Assistant og nulstil app-cachen.
 
 Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk).
 
@@ -203,7 +203,7 @@ smarthus_normal:
 ### Batteriets reserve (lærer husets forbrug)
 Vælg **Energimåler: husets forbrug** under *Batteri / inverter* (valgfri) og indstil **Batteriets størrelse** i kortet. Så gør SmartHus følgende:
 
-1. Hver nat lærer den husets forbrug time for time ud fra de seneste **7 dage** (hverdage og weekend for sig). Historikken hentes fra Home Assistants langtidsstatistik, så den virker med det samme, hvis måleren allerede har data. Elbilens forbrug trækkes fra, hvis bilen har en energimåler.
+1. Hver nat lærer den husets forbrug time for time ud fra de seneste **14 dage** (hverdage og weekend for sig). Historikken hentes fra Home Assistants langtidsstatistik, så den virker med det samme, hvis måleren allerede har data. Elbilens forbrug trækkes fra, hvis bilen har en energimåler.
 2. Den beregner, hvor meget huset forventes at bruge fra nu og til strømmen bliver billig igen (næste planlagte opladning) – minus forventet sol, hvis du har valgt en solprognose under *Solceller*.
 3. I de dyreste timer sælges kun det, batteriet har **ud over reserven og laveste niveau**. Når reserven er nået, skifter batteriet til normal drift, så resten bruges i huset.
 
