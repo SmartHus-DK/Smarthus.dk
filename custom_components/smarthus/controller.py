@@ -315,8 +315,9 @@ class SmartHusController:
 
     # --- Styring -----------------------------------------------------------
     def _rate_ok(self, entity_id: str) -> bool:
-        last = self._last_cmd.get(entity_id, 0)
-        return time.monotonic() - last >= MIN_COMMAND_INTERVAL
+        last = self._last_cmd.get(entity_id)
+        # Første kommando til en enhed sendes altid (også lige efter genstart)
+        return last is None or time.monotonic() - last >= MIN_COMMAND_INTERVAL
 
     async def _call(self, domain: str, service: str, data: dict) -> None:
         entity_id = data["entity_id"]

@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.9.0** – kortet viser sin version nederst. Står der et lavere tal på kortet, så genstart Home Assistant og nulstil app-cachen.
+**Version 1.9.1** – kortet viser sin version nederst. Står der et lavere tal på kortet, så genstart Home Assistant og nulstil app-cachen.
 
 Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk).
 
