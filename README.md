@@ -2,57 +2,148 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.16.0** – kortet viser sin version nederst. Står der et lavere tal på kortet, så genstart Home Assistant og nulstil app-cachen.
+**Version 1.16.1** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
 
-Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk).
+SmartHus bruger strømmen, når den er billigst, og sparer, når den er dyrest. Den lader elbilen og batteriet i de billige timer, varmer vandet med billig strøm eller solcelleoverskud, skruer lidt op og ned for varmen og stopper salg af solstrøm, når prisen er for lav. Du ser det hele – og hvad du har sparet – på ét kort.
 
-SmartHus henter dagens og morgendagens spotpriser fra Energi Data Service, lægger tariffer, afgifter og moms oveni, og styrer dine enheder, så strømmen bruges når den er billigst og sælges eller bruges fra batteriet når den er dyrest.
-
-| Modul | Hvad det gør |
+| | Hvad SmartHus gør |
 |---|---|
-| 🔋 **Batteri / inverter** | Lader fra nettet i de billigste timer og aflader i de dyreste – kun hvis prisforskellen er stor nok. Respekterer min./maks. batteriniveau. Lader også når salgsprisen er negativ. |
-| ☀️ **Solceller** | Begrænser eksport når salgsprisen er negativ og giver et overblik over produktion, hvad solcellerne har sparet dig, og hvad du har tjent ved salg – i dag, pr. måned, pr. år og i alt. |
-| 🚗 **Elbillader** | Lader bilen op til din mål-SoC (fx 80 %) i de billigste timer inden dit "klar kl."-tidspunkt og stopper, når målet er nået. Knap til "Lad elbil nu". |
-| 🚿 **Varmt vand** | Opvarmer i dagens billigste sammenhængende periode (kontakt eller temperatur). |
-| 🔥 **Varme / varmepumpe** | Hæver temperaturen X grader i de N billigste timer og sænker den i de dyreste. Kun aktiv, når det er koldere ude end en grænse (standard 10 °C) – fra egen udeføler eller vejret fra skyen. |
-| 💰 **Besparelser** | Viser hvad SmartHus-styringen har sparet i dag, denne måned og i alt – fordelt på elbil, batteri, varme og varmt vand. Solcellerne vises for sig. |
-
-SmartHus styrer via **dine eksisterende entiteter**, så det virker med SigEnergy og de fleste andre invertere, ladebokse og varmepumper der allerede er i Home Assistant.
+| 🚗 **Elbil** | Lader til fx 80 % i de billigste timer, inden du skal køre. Kan også lade med solcelleoverskud. |
+| 🔋 **Batteri** | Lader billigt og bruger eller sælger strømmen, når den er dyr – men gemmer nok til huset. |
+| 🚿 **Varmt vand** | Varmer vandet i dagens billigste time eller med solcelleoverskud. |
+| 🔥 **Varme** | Lidt varmere i billige timer, lidt koldere i dyre – kun når det er koldt udenfor. |
+| ☀️ **Solceller** | Stopper eksport, når salgsprisen er for lav, og viser hvad solcellerne er værd. |
+| 💰 **Besparelse** | Viser hvad SmartHus har sparet dig i dag, denne måned og i alt. |
 
 ---
 
-Kræver Home Assistant 2025.1 eller nyere. SmartHus-logoet vises på integrationssiden fra Home Assistant 2026.3.
+## Kom i gang
 
-## Installation via HACS
+> Kræver Home Assistant 2025.1 eller nyere og [HACS](https://hacs.xyz).
 
-1. Åbn **HACS** i Home Assistant.
-2. Klik **⋮ → Brugerdefinerede repositories** (Custom repositories).
-3. Indsæt `https://github.com/SmartHus-DK/Smarthus.dk`, vælg type **Integration**, og klik **Tilføj**.
-4. Søg efter **SmartHus**, klik **Download**, og genstart Home Assistant.
-5. Gå til **Indstillinger → Enheder & tjenester → Tilføj integration → SmartHus**.
-
-### Manuel installation
-Kopiér mappen `custom_components/smarthus` til `config/custom_components/` og genstart.
+1. **Installér SmartHus:** Åbn **HACS → ⋮ → Brugerdefinerede repositories**, indsæt `https://github.com/SmartHus-DK/Smarthus.dk`, vælg **Integration** og klik **Tilføj**. Søg efter **SmartHus**, klik **Download**, og genstart Home Assistant.
+2. **Installér de anbefalede integrationer** – se [listen herunder](#anbefalede-integrationer). Mindst én til elpris og én til dit udstyr (inverter, ladeboks eller varmepumpe).
+3. **Tilføj SmartHus:** **Indstillinger → Enheder og tjenester → Tilføj integration → SmartHus**. Vælg prisområde (DK1 = Jylland/Fyn, DK2 = Sjælland).
+4. **Vælg dit udstyr:** Klik **Konfigurer** på SmartHus og gå menuerne igennem. Du vælger bare de entiteter, du allerede har – alle felter er valgfrie, så spring over det, du ikke har. Se [Opsætning](#opsætning-menu-for-menu).
+5. **Sæt kortet på dit dashboard:** **Rediger dashboard → Tilføj kort → SmartHus**.
+6. **Slå styringen til:** På kortet trykker du på fx **Elbil** og slår **styringen** til. Alt er slået fra fra start, så der sker intet, før du selv tænder.
 
 ---
 
-## Opsætning
+## Anbefalede integrationer
 
-**Trin 1 – Elpris:** Vælg prisområde (DK1 vest / DK2 øst) og indtast tillæg og nettarif i kr/kWh ekskl. moms. Værdierne står på din elregning eller på dit netselskabs hjemmeside. Standardværdierne er kun et udgangspunkt.
+Installér dem, der passer til dit hus. *Indbygget* findes under **Indstillinger → Enheder og tjenester → Tilføj integration**. *HACS* installeres via HACS ligesom SmartHus.
 
-**Trin 2 – Enheder:** Klik **Konfigurer** på SmartHus-integrationen og vælg de moduler du vil bruge. Alle felter er valgfrie.
+### Til alle
 
-### Elpris fra Strømligning (anbefalet)
-Har kunden [Strømligning-integrationen](https://github.com/MTrab/stromligning) installeret (HACS), kan SmartHus bruge kundens **rigtige pris fra elabonnementet** – inkl. leverandørens tillæg, nettarif, afgifter og moms. Så skal der ikke tastes tariffer ind.
+| Integration | Hvor | Hvad SmartHus bruger den til |
+|---|---|---|
+| [Strømligning](https://github.com/MTrab/stromligning) | HACS | **Anbefalet.** Din rigtige elpris fra dit elselskab – inkl. tillæg, nettarif, afgifter og moms. Så skal du ikke taste tariffer ind. |
+| [Forecast.Solar](https://www.home-assistant.io/integrations/forecast_solar/) | Indbygget | Solprognose på kortet (i dag, resten af dagen, i morgen) – og batteriets reserve bliver mere præcis. Gratis. |
+| [Solcast](https://github.com/BJReplay/ha-solcast-solar) | HACS | Alternativ til Forecast.Solar – ofte mere præcis. Kræver gratis konto hos Solcast. |
+| [Met.no](https://www.home-assistant.io/integrations/met/) | Indbygget (følger med) | Vejret og udetemperaturen på kortet og varmestyringens grænse. Er normalt installeret i forvejen. |
+| [HomeWizard](https://www.home-assistant.io/integrations/homewizard/) eller [DSMR / P1](https://www.home-assistant.io/integrations/dsmr/) | Indbygget | Måler strøm til og fra nettet lige nu (P1-porten på elmåleren). Giver energiflowet og solcelleoverskud – hvis inverteren ikke selv måler det. |
 
-1. Installér Strømligning via HACS, og vælg kundens elselskab og produkt i den.
-2. Gå til SmartHus → **Konfigurer → Elpris og tariffer**, og vælg **Strømligning**.
-3. Prissensoren er som standard `sensor.stromligning_current_price_vat`, og morgendagens priser hentes fra `binary_sensor.stromligning_tomorrow_available_vat`.
+> Prisgrafen, energiflowet og vejret er bygget ind i SmartHus-kortet, så du behøver **ikke** ApexCharts eller andre kort. ApexCharts bruges kun i det gamle eksempel-dashboard i `dashboards/`.
 
-Salgsprisen for solceller beregnes ud fra spotprisen fra `sensor.stromligning_spotprice_vat` (uden moms, minus fradraget ved salg). Energi Data Service bruges som reserve. Mangler Strømligning priser for et tidsrum, bruger SmartHus sin egen beregning som reserve.
+### Inverter og batteri
 
-### SigEnergy-eksempel
-Med en SigEnergy-integration (Modbus) vælger du under **Batteri / inverter**:
+| Mærke | Integration | Hvor | Opsætning i SmartHus |
+|---|---|---|---|
+| SigEnergy | [Sigenergy Local Modbus](https://github.com/TypQxQ/Sigenergy-Local-Modbus) | HACS | Rullemenu – se eksempel under [For installatøren](#for-installatøren-avanceret) |
+| Huawei | [Huawei Solar](https://github.com/wlcrs/huawei_solar) | HACS | **Indbygget** – vælg bare batteriet |
+| Deye / Sunsynk | [Solarman](https://github.com/davidrapan/ha-solarman) | HACS | Scripts (skabelon nedenfor) |
+| FoxESS | [FoxESS Modbus](https://github.com/nathanmarlor/foxess_modbus) | HACS | Rullemenu eller scripts |
+| SolaX | [SolaX Modbus](https://github.com/wills106/homeassistant-solax-modbus) | HACS | Rullemenu eller scripts |
+| Growatt | [Modbus](https://www.home-assistant.io/integrations/modbus/) | Indbygget | Scripts (skabelon nedenfor) |
+| Solplanet | [Solplanet](https://github.com/calvinbui/home-assistant-solplanet) | HACS | Scripts (skabelon nedenfor) |
+
+### Ladeboks
+
+| Mærke | Integration | Hvor | Opsætning i SmartHus |
+|---|---|---|---|
+| Easee | [Easee](https://github.com/nordicopen/easee_hass) | HACS | **Indbygget** – vælg bare laderen. Også solcelleladning. |
+| Zaptec | [Zaptec](https://github.com/custom-components/zaptec) | HACS | Kontakt + tal for ladestrøm ("Available current") |
+| Wallbox | [Wallbox](https://www.home-assistant.io/integrations/wallbox/) | Indbygget | Kontakt + tal for ladestrøm |
+| Andre | Ladeboksens egen integration | – | En kontakt til at starte/stoppe – evt. et script til ladestrøm |
+
+### Elbil (valgfrit – giver batteriniveau og "kabel tilsluttet")
+
+Med bilens egen integration kan SmartHus lade præcis til fx 80 % og selv se, hvilken bil der sidder i laderen. Uden den lader SmartHus et fast antal timer.
+
+| Mærke | Integration | Hvor |
+|---|---|---|
+| Tesla | [Tesla Fleet](https://www.home-assistant.io/integrations/tesla_fleet/) eller [Teslemetry](https://www.home-assistant.io/integrations/teslemetry/) | Indbygget |
+| Kia / Hyundai | [Kia Uvo / Hyundai Bluelink](https://github.com/Hyundai-Kia-Connect/kia_uvo) | HACS |
+| Volkswagen ID | [Volkswagen We Connect ID](https://github.com/mitch-dc/volkswagen_we_connect_id) | HACS |
+| Renault | [Renault](https://www.home-assistant.io/integrations/renault/) | Indbygget |
+| Andre | Søg efter bilmærket i HACS eller under Tilføj integration | – |
+
+### Varmepumpe og varmt vand
+
+| Udstyr | Integration | Hvor |
+|---|---|---|
+| Nibe | [myUplink](https://www.home-assistant.io/integrations/myuplink/) | Indbygget |
+| Mitsubishi | [MELCloud](https://www.home-assistant.io/integrations/melcloud/) | Indbygget |
+| Daikin | [Daikin Onecta](https://github.com/jwillemsen/daikin_onecta) | HACS |
+| Varmtvandsbeholder | En kontakt/relæ, fx [Shelly](https://www.home-assistant.io/integrations/shelly/) – gerne med temperaturføler | Indbygget |
+| Andre | Alt med en termostat (climate) i Home Assistant virker | – |
+
+> Navnene på entiteterne varierer med mærke og version. Find dine egne under **Indstillinger → Enheder og tjenester → Entiteter**.
+
+---
+
+## Opsætning menu for menu
+
+Klik **Konfigurer** på SmartHus. Under hvert felt står en kort forklaring. Du behøver kun udfylde det, du har.
+
+| Menu | Det vigtigste at vælge |
+|---|---|
+| **Elpris og tariffer** | Vælg **Strømligning**, hvis du har den – så er du færdig. Ellers: tillæg og nettarif fra din elregning. |
+| **Batteri / inverter** | Huawei: vælg batteriet. Andre: inverterens rullemenu for driftstilstand og batteriniveau (%). |
+| **Solceller** | **Effekt til/fra nettet lige nu** (giver energiflow og overskud), solcelleproduktion lige nu og "stop eksport"-entiteten. |
+| **Elbiler** | Pr. bil: navn, laderens kontakt, bilens batteriniveau. Easee: vælg bare laderen. Flere biler på samme lader: vælg samme lader til begge. |
+| **Varmt vand** | Kontakten til varmelegemet – og gerne en temperaturføler i vandet. |
+| **Varme / varmepumpe** | Termostaten (climate) for huset eller varmepumpen. |
+| **Vejr og udetemperatur** | Valgfrit: din egen udeføler. Ellers bruges vejret fra skyen automatisk. |
+
+Energimålere (kWh) er valgfrie, men skal vælges, hvis du vil se, hvad du har sparet.
+
+---
+
+## Brug af kortet
+
+- **Øverst:** elprisen lige nu, hvad SmartHus har sparet, huset med energiflow og vejr, og solcellerne med prognose.
+- **Prisgrafen:** dagens og morgendagens priser (grøn = billig, rød = dyr) og hvornår elbil, batteri, varmt vand og varme kører.
+- **Knapperne** (Elbil, Varmt vand, Varme, Batteri, Solceller): tryk for at se og ændre indstillingerne. **Luk** fører tilbage til overblikket. Den grønne prik betyder, at SmartHus styrer området.
+- **Elbil:** Har flere biler samme lader, vælger du den tilsluttede bil i Elbil-menuen. Kun den valgte bil vises og styres. Med **Lad nu** lader bilen med det samme.
+
+Slår du styringen fra for et område, sættes udstyret tilbage til normal drift.
+
+---
+
+## Spørgsmål og fejl
+
+**Kortet ser gammelt ud efter en opdatering.** Genstart Home Assistant, og ryd app-cachen (i appen: Indstillinger → Companion app → Fejlfinding / Debugging → Nulstil frontend-cache). I en browser: tryk Ctrl+F5. Kortet viser sin version nederst.
+
+**Kortet skal fylde hele skærmen.** Rediger dashboard → blyanten ved fanen → Visningstype: **Panel (1 kort)**.
+
+**Der er ingen solprognose.** Installér Forecast.Solar eller Solcast. Prognosen kan være op til 15 minutter om at dukke op.
+
+**Termostaten skifter tilbage, når jeg ændrer den.** Når styringen er slået til, holder SmartHus temperaturen. Slå styringen fra for området, hvis du vil styre selv.
+
+**Logoet er hvidt i HACS.** HACS henter logoer fra Home Assistants fælles logo-side, hvor SmartHus ikke er med endnu. Det påvirker ikke integrationen.
+
+---
+
+## For installatøren (avanceret)
+
+<details><summary><b>Elpris uden Strømligning</b></summary>
+
+Vælg prisområde og indtast leverandørens tillæg og nettarif i kr/kWh ekskl. moms (står på elregningen eller netselskabets hjemmeside). Spotpriserne hentes fra Energi Data Service. Med Strømligning bruges `sensor.stromligning_current_price_vat`, `binary_sensor.stromligning_tomorrow_available_vat` og `sensor.stromligning_spotprice_vat` (salgspris). Energi Data Service bruges som reserve.
+</details>
+
+<details><summary><b>SigEnergy – eksempel</b></summary>
 
 | Felt | Eksempel |
 |---|---|
@@ -62,29 +153,19 @@ Med en SigEnergy-integration (Modbus) vælger du under **Batteri / inverter**:
 | Tilstand: normal drift | `Maximum Self Consumption` |
 | Batteriniveau | `sensor.sigen_plant_battery_state_of_charge` |
 
-Navnene skal stå **præcis** som i inverterens rullemenu (se entitetens mulige værdier under Udviklerværktøjer → Tilstande). Husk at aktivere "Remote EMS" på anlægget, hvis din integration kræver det.
+Navnene skal stå **præcis** som i rullemenuen. Husk at slå "Remote EMS" til på anlægget.
+</details>
 
-### Andre invertere og batterier – rullemenu eller scripts
-SmartHus kan styre batteriet på to måder (under **Konfigurer → Batteri / inverter**):
+<details><summary><b>Batteri: rullemenu, Huawei eller scripts</b></summary>
 
-- **A) Rullemenu** – når inverteren har én `select` med tilstande (SigEnergy, ofte FoxESS og SolaX). Skriv navnene præcis som i rullemenuen.
-- **B) Huawei (indbygget)** – vælg bare batteriet (integrationen Huawei Solar). SmartHus kalder selv `forcible_charge_soc`, `forcible_discharge_soc` og `stop_forcible_charge`. Ingen scripts.
-- **C) Scripts** – virker med **alle** invertere, der har en Home Assistant-integration. Lav tre scripts (lad fra nettet, aflad, normal drift) under **Indstillinger → Automatiseringer → Scripts**, og vælg dem i opsætningen. Er der valgt et script for en tilstand, bruges det i stedet for rullemenuen.
+- **A) Rullemenu** – inverteren har én `select` med tilstande (SigEnergy, ofte FoxESS og SolaX). Skriv navnene præcis som i rullemenuen.
+- **B) Huawei (indbygget)** – vælg batteriet. SmartHus kalder selv `forcible_charge_soc`, `forcible_discharge_soc` og `stop_forcible_charge`.
+- **C) Scripts** – virker med alle invertere. Lav tre scripts (lad, aflad, normal). Et script bruges i stedet for rullemenuen for den tilstand.
 
-SmartHus kører kun et script, når tilstanden **skifter**, og "normal drift" køres også, når styringen slås fra. Scriptet får disse variabler: `smarthus_state` (`charge`, `discharge` eller `normal`), `price`, `sale_price`, `min_soc` og `max_soc`.
+Scripts køres kun, når tilstanden skifter, og "normal" køres også, når styringen slås fra. Variabler: `smarthus_state` (`charge`/`discharge`/`normal`), `price`, `sale_price`, `min_soc`, `max_soc`.
 
-**Eksport** kan stoppes med en kontakt, en rullemenu (to navne), et tal som fx en eksportgrænse i W (to værdier) eller to scripts (stop/start) – under **Konfigurer → Solceller**.
-
-| Mærke (integration) | Batteri | Stop af eksport |
-|---|---|---|
-| SigEnergy (Modbus) | A) rullemenu – se eksemplet ovenfor | kontakt eller tal |
-| Huawei ([huawei_solar](https://github.com/wlcrs/huawei_solar)) | **B) indbygget – vælg batteriet** | tal (eksportgrænse) eller rullemenu |
-| Deye / Sunsynk ([Solarman](https://github.com/davidrapan/ha-solarman)) | C) scripts der sætter tidsprogram, netopladning og SoC | rullemenu ("Work Mode") eller kontakt |
-| Growatt (Modbus) | C) scripts der skriver Battery First / AC charge | script |
-| Solplanet ([solplanet](https://github.com/calvinbui/home-assistant-solplanet)) | C) scripts med arbejdstilstand og tidsplan | script |
-| FoxESS / SolaX (Modbus) | A) rullemenu, hvis integrationen har tilstande for tvungen opladning – ellers C) | tal eller rullemenu |
-
-> Entiteternes navne varierer med integration, version og model. Brug eksemplerne som skabelon og find dine egne navne under **Udviklerværktøjer → Tilstande** og **Udviklerværktøjer → Handlinger**. Afprøv hvert script manuelt, før du slår SmartHus-styringen til.
+**Stop af eksport** kan være en kontakt, en rullemenu (to navne), et tal fx en eksportgrænse i W (to værdier) eller to scripts. Afprøv altid scripts manuelt, før styringen slås til.
+</details>
 
 <details><summary><b>Huawei – scripts (kun hvis du ikke bruger den indbyggede Huawei-styring)</b></summary>
 
@@ -200,44 +281,20 @@ smarthus_normal:
 ```
 </details>
 
-### Batteriets reserve (lærer husets forbrug)
-Vælg **Energimåler: husets forbrug** under *Batteri / inverter* (valgfri) og indstil **Batteriets størrelse** i kortet. Så gør SmartHus følgende:
 
-1. Hver nat lærer den husets forbrug time for time ud fra de seneste **14 dage** (hverdage og weekend for sig). Historikken hentes fra Home Assistants langtidsstatistik, så den virker med det samme, hvis måleren allerede har data. Elbilens forbrug trækkes fra, hvis bilen har en energimåler.
-2. Den beregner, hvor meget huset forventes at bruge fra nu og til strømmen bliver billig igen (næste planlagte opladning) – minus forventet sol, hvis du har valgt en solprognose under *Solceller*.
-3. I de dyreste timer sælges kun det, batteriet har **ud over reserven og laveste niveau**. Når reserven er nået, skifter batteriet til normal drift, så resten bruges i huset.
+<details><summary><b>Batteriets reserve (lærer husets forbrug)</b></summary>
 
-| Hvad | Forslag |
-|---|---|
-| Husets forbrug | En stigende kWh-måler for husets forbrug fra inverteren, en P1-måler eller en elmåler. "Import fra nettet" kan bruges, men så tæller opladning fra nettet med, og reserven bliver lidt for stor. |
-| Solprognose | Solcast: `sensor.solcast_pv_forecast_forecast_remaining_today` · Forecast.Solar: `sensor.energy_production_today_remaining`. Uden prognose regnes der forsigtigt uden sol. |
-| Batteriniveau | Kræves for at regne ud, hvor meget der må sælges. |
+Vælg **Energimåler: husets forbrug** under Batteri / inverter og indstil batteriets størrelse på kortet. Hver nat lærer SmartHus husets forbrug time for time ud fra de seneste **14 dage** (hverdage og weekend for sig) fra langtidsstatistikken. Den beregner, hvad huset bruger, til strømmen bliver billig igen, minus forventet sol, og sælger kun det, batteriet har ud over reserven og laveste niveau. Bruges efter 2 døgns historik. Se `sensor.smarthus_battery_reserve` og `sensor.smarthus_battery_sellable`.
+</details>
 
-Reserven bruges, når der er mindst 2 hele døgn med historik. Se `sensor.smarthus_battery_reserve` (med det lærte forbrug som attributter) og `sensor.smarthus_battery_sellable`.
+<details><summary><b>Solcelleoverskud – varmt vand og elbil</b></summary>
 
-### Styring slås til
-Når opsætningen er gemt, får du kontakter som `Styr batteri`, `Styr elbillader` osv. De er **slået fra som standard** – så sker der intet, før du selv tænder dem. Planen kan ses i de binære sensorer, før du slår styringen til.
+Kræver **Effekt til/fra nettet lige nu** under Solceller (og gerne solcelleproduktion lige nu).
 
-Slår du et modul fra, sættes enheden tilbage til normal drift (batteri i normal tilstand, laderen tændt, grundtemperatur).
+**Varmt vand:** Sæt **Overskud over** (fx 2 kW, 0 = fra). Starter efter 2 min med eksport over grænsen og stopper efter 2 min med køb over 0,3 kW. **Kun når det betaler sig** bruger kun overskuddet, hvis salgsprisen nu er lavere end prisen i den billige time senere. Der varmes højst én gang om dagen.
 
----
-
-### Flere elbiler
-Under **Konfigurer → Elbiler** kan du tilføje så mange biler, du vil. Hver bil får sit eget navn, sin egen lader, SoC-sensor og energimåler. Den får også sine egne indstillinger (lad til, klar kl., batteristørrelse og ladeeffekt), sin egen plan, sin egen "Lad nu"-knap og sin egen sammenligning af "lad nu" og "billigste timer". Her kan du også rette eller fjerne en bil.
-
-**Maks. samlet ladeeffekt** (fx 11 kW) sørger for, at bilerne ikke lader samtidig ud over hvad hovedsikringen kan klare. Bilen med det tidligste klar-tidspunkt får de billigste timer først. 0 betyder ingen grænse (standard). Indstillingen vises, når der er mindst to biler.
-
-Den første bil beholder de oprindelige entity-id'er (fx `switch.smarthus_control_ev`), så eksisterende automatiseringer virker uændret.
-
-### Varmt vand med kontakt og temperaturføler
-Styres varmt vand med en **kontakt**, tændes den i dagens billigste periode. Vælger du også en **temperaturføler i vandet**, slukker SmartHus kontakten, når vandet når **Maks. temperatur** (på kortet), og tænder igen i den billige periode, hvis vandet er kølet 3 °C af. Uden føler bestemmer varmelegemets egen termostat temperaturen, og der vises ingen temperaturindstillinger på kortet. "Normal temperatur" bruges kun ved en water_heater/climate-entitet.
-
-### Solcelleoverskud (varmt vand og elbil)
-Vælg under **Konfigurer → Solceller** en sensor for **effekt til/fra nettet lige nu** (W eller kW), og angiv om positiv betyder eksport eller køb. Vælg gerne også **solcelleproduktion lige nu**.
-
-**Varmt vand:** Sæt **Overskud over** på kortet (fx 2 kW, 0 = fra). Når huset har sendt så meget ud på nettet i 2 minutter, tændes varmt vand. Der stoppes først, når huset har købt mere end 0,3 kW i 2 minutter. Med **Kun når det betaler sig** (standard) bruges overskuddet kun, hvis salgsprisen lige nu er lavere end prisen i den billige time senere – ellers sælges strømmen, og vandet varmes i den billige time. Der varmes **højst én gang om dagen**: når vandet er varmet med overskud (maks. temperatur nået eller timerne brugt), springes dagens billige time over, og er den billige time allerede kørt, bruges overskuddet ikke den dag.
-
-**Elbil:** Vælg under **Konfigurer → Elbiler** hvordan ladestrømmen styres: **Easee** – vælg bare laderen (indbygget, ingen script); **Zaptec og andre** – vælg ladeboksens tal-entitet for ladestrøm (A), fx "Available current"; **andre** – et script, der får variablen `current`. Slå **Lad med solcelleoverskud** til på kortet. Hver 30. sekund justeres strømmen 1 A ad gangen: ned ved køb fra nettet (> 0,3 kW), op ved eksport (> 0,5 kW) når solen giver mindst **Start ved sol over** (fx 4 kW), ellers holdes den. Der startes på **Mindste ladestrøm** og lades aldrig over **Største ladestrøm**. Uden sol i 3 minutter stopper solcelleladningen. I billige timer, ved "Lad nu" og når eksporten er stoppet pga. lav salgspris, lades med største strøm. Kun én bil ad gangen lader med sol. Mål-SoC gælder stadig.
+**Elbil:** Ladestrømmen styres via Easee (indbygget), en tal-entitet for ladestrøm (fx Zaptec "Available current") eller et script med variablen `current`. Hver 30. sekund justeres 1 A ad gangen: ned ved køb > 0,3 kW, op ved eksport > 0,5 kW, når solen giver mindst **Start ved sol over**. Mellem **Mindste** og **Største ladestrøm**. Stopper efter 3 min uden sol. Kun én bil ad gangen.
+</details>
 
 <details><summary><b>Easee – script (kun hvis du ikke bruger den indbyggede Easee-styring)</b></summary>
 
@@ -259,30 +316,27 @@ smarthus_easee_strom:
 Har ladeboksens integration en **number**-entitet for ladestrøm (fx Zaptec "Available current"), så vælg den direkte som "Ladestrøm: tal-entitet". Ellers lav et script som for Easee med den handling, din integration har (se Udviklerværktøjer → Handlinger). Afprøv scriptet manuelt med fx `current: 6`.
 </details>
 
-### Stop eksport under en bestemt pris
-Under **Solceller** på kortet kan du sætte **Stop eksport under** (kr/kWh). Når salgsprisen er under grænsen, tændes kontakten "begræns eksport", og batteriet lader af solstrømmen i stedet. Når prisen kommer over grænsen igen, starter eksporten automatisk. Standard er 0 kr, dvs. der stoppes kun ved negativ pris.
 
-### Kortet i fuld skærm
-Kortets bredde bestemmes af dashboard-visningen. Vil du have det til at fylde hele skærmen: **Rediger dashboard → tryk på blyanten ved fanen → Visningstype: Panel (1 kort)**.
+<details><summary><b>Flere biler, tidsrum og eksportgrænse</b></summary>
 
-### Flere biler på samme lader
-Sæt hver bil op under **Konfigurer → Elbiler** med **samme lader**. SmartHus styrer så kun den bil, der sidder i laderen:
+- **Flere biler:** hver bil har sit eget navn, lader, SoC, plan og "Lad nu". **Maks. samlet ladeeffekt** forhindrer, at bilerne tilsammen overbelaster hovedsikringen (0 = ingen grænse).
+- **Samme lader:** vælg samme lader til begge biler. Med bilens sensor "ladekabel tilsluttet" finder SmartHus selv bilen – ellers vælges den på kortet. Bilen, der ikke er valgt, hverken planlægges, styres eller vises.
+- **Tidsrum:** batteri, varmt vand og varme har hvert sit fra–til (0–24 = hele døgnet, 22–06 går over midnat).
+- **Stop eksport under:** når salgsprisen er under grænsen, stoppes eksporten (standard 0 kr = kun ved negativ pris).
+- **Varmestyring:** kun aktiv under **Aktiv under udetemperatur** (standard 10 °C, start igen 1 °C under). Sæt 30 °C for altid aktiv.
+- **Varmt vand med føler:** slukker ved maks. temperatur og tænder igen i den billige periode, når vandet er kølet 3 °C af.
+</details>
 
-- **Automatisk (valgfrit):** vælg bilens sensor for **"Ladekabel tilsluttet"** fra bilens egen integration (fx Tesla, Kia/Hyundai, VW). Så ved SmartHus selv, hvilken bil der er tilsluttet, og bruger dens SoC, mål og klar-tidspunkt.
-- **Manuelt:** uden sensor vælger du på kortet under **Tilsluttet bil**, hvilken bil der sidder i laderen.
+<details><summary><b>Kortets indstillinger</b></summary>
 
-Siger en bils sensor "ikke tilsluttet", bruges den anden bil. Siger alle sensorer "ikke tilsluttet", styres laderen ikke. Bilen, der ikke er tilsluttet, vises som "Ikke tilsluttet laderen" og planlægges ikke.
+```yaml
+type: custom:smarthus-card
+title: Mit hus      # valgfri overskrift
+prefix: smarthus    # kun ved flere SmartHus-opsætninger
+```
+</details>
 
-### Tidsrum
-Batteri, varmt vand og varme har hvert sit **tidsrum** (fra–til kl.), så kunden kan bestemme, hvornår SmartHus må handle:
-
-- **Batteri:** fx kun lade fra nettet kl. 22–06 og kun aflade kl. 17–21.
-- **Varmt vand:** fx kun opvarme kl. 00–07, så vandet er varmt om morgenen.
-- **Varme:** fx kun hæve kl. 06–16 og kun sænke kl. 17–21.
-
-Fra 0 til 24 betyder hele døgnet (standard). Et tidsrum som 22–06 går hen over midnat. SmartHus vælger stadig de billigste (eller dyreste) timer – men kun inden for tidsrummet.
-
-## Entiteter
+<details><summary><b>Entiteter</b></summary>
 
 Alle entiteter har faste id'er, uanset sprog:
 
@@ -294,42 +348,10 @@ Alle entiteter har faste id'er, uanset sprog:
 - `binary_sensor.smarthus_ev_charge_now` m.fl. – hvad planen ønsker nu, med attributten `periods`
 - `switch.smarthus_control_*` – slå styring til/fra pr. modul
 - `number.smarthus_*` – antal timer, grader og temperaturer, kan ændres direkte fra dashboardet
+- `sensor.smarthus_energy_flow`, `sensor.smarthus_outdoor_temperature`, `sensor.smarthus_solar_forecast`
+</details>
 
-## SmartHus-kortet
-Integrationen har sit eget kort, som installeres automatisk – der skal ikke installeres noget ekstra.
-
-1. Åbn et dashboard → **Rediger** → **Tilføj kort**.
-2. Søg efter **SmartHus** og vælg kortet. Eller indsæt i YAML:
-
-```yaml
-type: custom:smarthus-card
-```
-
-Kortet viser elprisen nu, besparelser, en prisgraf for i dag og i morgen med et spor for hver enhed (hvornår elbil, batteri, varmt vand og varme kører), og en række knapper (Elbil, Varmt vand, Varme, Batteri, Solceller). Et tryk på en knap åbner indstillingerne for området, og **Luk** fører tilbage til overblikket. Den lille prik på knappen viser, om SmartHus styrer området. Deler flere biler én lader, vises kun den valgte bil – den anden bil hverken planlægges eller styres. For elbilen ser kunden, hvad det koster at lade **nu** sammenlignet med i de **billigste timer**, og hvor meget der spares.
-
-Valgfrit: `title: Mit hus` ændrer overskriften. Har du flere SmartHus-opsætninger, kan `prefix` pege på en anden (standard `smarthus`).
-
-Ser du ikke kortet efter en opdatering, så genindlæs siden (træk ned i appen eller tryk Ctrl+F5).
-
-### Energiflow i 3D
-Øverst på kortet vises huset i 3D med solceller, elnet, batteri og elbiler, og levende linjer der viser, hvor strømmen løber lige nu (jo hurtigere, jo mere effekt). Visningen kræver **Effekt til/fra nettet** (Konfigurer → Solceller). Tilføj gerne også:
-- **Solcelleproduktion lige nu** (Solceller)
-- **Batteriets effekt lige nu** + fortegn (Batteri / inverter)
-- **Ladeeffekt lige nu** for hver bil (Elbiler)
-
-Husets forbrug beregnes ud fra resten. Data findes også i `sensor.smarthus_energy_flow`.
-
-### Vejr, udetemperatur og solprognose
-- **Vejret** (sol, skyer, regn, sne, torden, tåge, blæst) og **udetemperaturen** vises øverst i energiflowet. Som standard bruges Home Assistants eget vejr fra skyen (Met.no, `weather.forecast_home`). Under Konfigurer → **Vejr og udetemperatur** kan du vælge din egen udeføler – den bruges, når den svarer, ellers bruges temperaturen fra vejret. Se også `sensor.smarthus_outdoor_temperature`.
-- **Varmestyringen** er kun aktiv, når det er koldere ude end **Aktiv under udetemperatur** (standard 10 °C). Over grænsen sættes grundtemperaturen én gang, og termostaten lades være. Sæt grænsen til 30 °C, hvis styringen altid skal være aktiv.
-- **Solprognosen** (i dag, resten af dagen, i morgen og en kurve time for time) vises under Solceller på kortet. Den hentes automatisk fra **Forecast.Solar** eller **Solcast**, hvis en af dem er installeret – samme prognose som i energi-dashboardet. Data findes i `sensor.smarthus_solar_forecast`, og batteriets reserve bruger den også.
-
-## Dashboard
-Et komplet eksempel-dashboard med standardkort findes i `dashboards/smarthus-dashboard.yaml`. Prisgrafen bruger [ApexCharts Card](https://github.com/RomRider/apexcharts-card) fra HACS.
-
----
-
-## Sådan beregnes det
+<details><summary><b>Sådan beregnes det</b></summary>
 
 - **Købspris** = (spot + leverandørtillæg + nettarif + Energinet-tarif + elafgift) × 1,25 moms
 - **Salgspris** = spot − fradrag ved salg
@@ -343,11 +365,13 @@ Et komplet eksempel-dashboard med standardkort findes i `dashboards/smarthus-das
 - **Solceller – sparet** = egetforbrug × købspris. **Solceller – tjent ved salg** = eksport × salgspris. Solcellerne tæller ikke med i SmartHus-besparelsen, fordi de også producerer uden styring.
 
 Besparelser kræver, at du vælger energimålere (kWh, stigende) i opsætningen.
+</details>
+
+<details><summary><b>Manuel installation</b></summary>
+
+Kopiér mappen `custom_components/smarthus` til `config/custom_components/` og genstart.
+</details>
 
 ---
 
-## Bemærk
-- Når et modul er slået til, holder SmartHus enheden i den ønskede tilstand. Ændrer du manuelt termostaten, sætter SmartHus den tilbage inden for et par minutter. Slå modulet fra, hvis du vil styre manuelt.
-- Beregnede besparelser er estimater.
-
-Udviklet af SmartHus.dk · © SmartHus.dk – alle rettigheder forbeholdes. Må kun bruges af SmartHus-kunder, se [LICENSE](LICENSE).
+Beregnede priser og besparelser er estimater. Udviklet af SmartHus.dk · © SmartHus.dk – alle rettigheder forbeholdes. Må kun bruges af SmartHus-kunder, se [LICENSE](LICENSE).
