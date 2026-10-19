@@ -386,7 +386,9 @@ def test_plug_and_connected_car():
     ids = ["ev", "ev_tesla"]
     assert plug.pick_connected(ids, {"ev": False, "ev_tesla": True}, None) == "ev_tesla"    # sensor vinder
     assert plug.pick_connected(ids, {"ev": None, "ev_tesla": None}, "ev_tesla") == "ev_tesla"  # manuelt valg
-    assert plug.pick_connected(ids, {"ev": None, "ev_tesla": None}, None) == "ev"            # standard: første
+    assert plug.pick_connected(ids, {"ev": None, "ev_tesla": None}, None) is None            # ikke valgt: ingen
+    assert plug.pick_connected(ids, {"ev": None, "ev_tesla": None}, "none") is None          # "Ingen bil"
+    assert plug.pick_connected(ids, {"ev": None, "ev_tesla": False}, None) == "ev"           # kun én mulig
     assert plug.pick_connected(ids, {"ev": False, "ev_tesla": None}, "ev") == "ev_tesla"     # ev er ikke tilsluttet
     assert plug.pick_connected(ids, {"ev": False, "ev_tesla": False}, "ev") is None          # ingen bil
     # Ikke-tilsluttet bil planlægges ikke

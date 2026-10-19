@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.16.4** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
+**Version 1.16.5** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
 
 SmartHus bruger strømmen, når den er billigst, og sparer, når den er dyrest. Den lader elbilen og batteriet i de billige timer, varmer vandet med billig strøm eller solcelleoverskud, skruer lidt op og ned for varmen og stopper salg af solstrøm, når prisen er for lav. Du ser det hele – og hvad du har sparet – på ét kort.
 
@@ -321,7 +321,7 @@ Har ladeboksens integration en **number**-entitet for ladestrøm (fx Zaptec "Ava
 <details><summary><b>Flere biler, tidsrum og eksportgrænse</b></summary>
 
 - **Flere biler:** hver bil har sit eget navn, lader, SoC, plan og "Lad nu". **Maks. samlet ladeeffekt** forhindrer, at bilerne tilsammen overbelaster hovedsikringen (0 = ingen grænse).
-- **Samme lader:** vælg samme lader til begge biler. Med bilens sensor "ladekabel tilsluttet" finder SmartHus selv bilen – ellers vælges den på kortet. Bilen, der ikke er valgt, hverken planlægges, styres eller vises.
+- **Samme lader:** vælg samme lader til begge biler. Med bilens sensor "ladekabel tilsluttet" finder SmartHus selv bilen. Ellers vælger du bilen på kortet (Elbil → Tilsluttet bil) – indtil da, eller hvis du vælger **Ingen bil**, styres laderen ikke, og begge biler vises gennemsigtige. Bilen, der ikke er valgt, hverken planlægges, styres eller vises.
 - **Tidsrum:** batteri, varmt vand og varme har hvert sit fra–til (0–24 = hele døgnet, 22–06 går over midnat).
 - **Stop eksport under:** når salgsprisen er under grænsen, stoppes eksporten (standard 0 kr = kun ved negativ pris).
 - **Varmestyring:** kun aktiv under **Aktiv under udetemperatur** (standard 10 °C, start igen 1 °C under). Sæt 30 °C for altid aktiv.

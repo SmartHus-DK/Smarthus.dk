@@ -10,6 +10,9 @@ from homeassistant.helpers.restore_state import RestoreEntity
 from . import SmartHusConfigEntry
 from .controller import SmartHusController
 from .entity import SmartHusEntity
+from .plug import NONE
+
+NONE_OPTION = "Ingen bil"
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
@@ -37,20 +40,21 @@ class ConnectedCarSelect(SmartHusEntity, SelectEntity, RestoreEntity):
             name = (controller.car(cid) or {}).get("name") or "Elbil"
             names.append(name if name not in names else f"{name} ({cid})")
         self._by_name = dict(zip(names, ids))
-        self._attr_options = names
+        self._attr_options = [*names, NONE_OPTION]
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         last = await self.async_get_last_state()
         if last is not None and last.state in self._by_name:
             self.controller.connected_choice[self.charger] = self._by_name[last.state]
+        elif last is not None and last.state == NONE_OPTION:
+            self.controller.connected_choice[self.charger] = NONE
 
     @property
     def current_option(self) -> str | None:
         """Den bil SmartHus behandler som tilsluttet lige nu."""
         active = next((cid for cid in self.ids if self.controller.connected.get(cid)), None)
-        cid = active or self.controller.connected_choice.get(self.charger) or self.ids[0]
-        return next((n for n, c in self._by_name.items() if c == cid), None)
+        return next((n for n, c in self._by_name.items() if c == active), NONE_OPTION)
 
     @property
     def extra_state_attributes(self) -> dict:
@@ -64,7 +68,7 @@ class ConnectedCarSelect(SmartHusEntity, SelectEntity, RestoreEntity):
         }
 
     async def async_select_option(self, option: str) -> None:
-        self.controller.connected_choice[self.charger] = self._by_name[option]
+        self.controller.connected_choice[self.charger] = self._by_name.get(option, NONE)
         self.controller.recalculate()
         await self.controller.async_apply(force=True)
         self.async_write_ha_state()

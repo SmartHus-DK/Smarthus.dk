@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.16.4";
+const SMARTHUS_CARD_VERSION = "1.16.5";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -1073,9 +1073,9 @@ class SmartHusCard extends HTMLElement {
       .map((id) => {
         const st = this._hass.states[id];
         const a = st.attributes;
-        const chips = (a.options || []).map((o) => `<button class="chip ${o === st.state && !a.none_connected ? "on" : ""}" data-action="select"
+        const chips = (a.options || []).map((o) => `<button class="chip ${o === st.state ? "on" : ""}${o === "Ingen bil" ? " none" : ""}" data-action="select"
             data-entity="${id}" data-option="${esc(o)}" aria-pressed="${o === st.state}">${esc(o)}</button>`).join("");
-        const note = a.none_connected ? "Ingen bil er tilsluttet" : a.detected_automatically ? "Registreret automatisk fra bilen" : "Vælg den bil, der sidder i laderen";
+        const note = a.none_connected ? (a.detected_automatically ? "Ingen bil er tilsluttet" : "Vælg den bil, der sidder i laderen") : a.detected_automatically ? "Registreret automatisk fra bilen" : "Vælg den bil, der sidder i laderen";
         return `<div class="picker"><div class="picker-head"><ha-icon icon="mdi:ev-plug-type2"></ha-icon><span>Tilsluttet bil</span>
           <span class="picker-note">${note}</span></div><div class="chips">${chips}</div></div>`;
       }).join("");

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+NONE = "none"   # manuelt valg: ingen bil i laderen
 _UNKNOWN = {"unknown", "unavailable", "none", ""}
 _NO = {"off", "false", "no", "0", "disconnected", "unplugged", "not_connected", "notconnected",
        "not connected", "not_plugged", "available", "idle_disconnected"}
@@ -26,13 +27,16 @@ def pick_connected(car_ids: list[str], plug: dict[str, bool | None], manual: str
     """Vælg den tilsluttede bil blandt biler, der deler én lader.
 
     1) Biler hvis sensor siger tilsluttet (det manuelle valg foretrækkes, hvis flere).
-    2) Ellers biler uden sensor/ukendt status – det manuelle valg, ellers den første.
-    3) Siger alle sensorer 'ikke tilsluttet', er ingen bil tilsluttet.
+    2) Ellers biler uden sensor/ukendt status – det manuelle valg. Er der kun én bil tilbage,
+       fordi de andre melder 'ikke tilsluttet', er det den.
+    3) Ellers er ingen bil tilsluttet – brugeren skal vælge bilen (manual = None eller "none").
     """
     yes = [c for c in car_ids if plug.get(c) is True]
     if yes:
         return manual if manual in yes else yes[0]
     unknown = [c for c in car_ids if plug.get(c) is None]
-    if unknown:
-        return manual if manual in unknown else unknown[0]
+    if manual in unknown:
+        return manual
+    if len(unknown) == 1 and len(unknown) < len(car_ids) and manual != NONE:
+        return unknown[0]
     return None
