@@ -66,6 +66,72 @@ def cheapest(slots: list[Slot], hours: float, *, contiguous: bool = False,
     return ordered[best_i:best_i + n]
 
 
+HEAT_MIN_BLOCK_H = 2   # en periode med ekstra eller mindre varme varer mindst 2 timer
+HEAT_MAX_BLOCKS = 2    # højst to perioder pr. døgn – så setpunktet ikke svinger op og ned
+
+
+def heating_blocks(slots: list[Slot], hours: float, tz: tzinfo, *, most_expensive: bool = False,
+                   exclude: list[Slot] | None = None) -> list[Slot]:
+    """Vælg hele, sammenhængende timer til varmen – højst to perioder pr. døgn, hver mindst 2 timer.
+
+    En varmepumpe skal ikke skifte setpunkt hvert kvarter. Derfor regnes der i hele klokketimer
+    (gennemsnittet af timens kvarterer), og der vælges én eller to blokke med den billigste
+    (eller dyreste) samlede pris.
+    """
+    n = int(round(hours))
+    if n <= 0 or not slots:
+        return []
+    skip = {s.start for s in (exclude or [])}
+    by_hour: dict[datetime, list[Slot]] = {}
+    for s in sorted(slots, key=lambda x: x.start):
+        h = s.start.astimezone(tz).replace(minute=0, second=0, microsecond=0)
+        by_hour.setdefault(h, []).append(s)
+    # Kun hele timer, der ikke allerede er brugt (fx til ekstra varme)
+    hrs = [(h, q) for h, q in sorted(by_hour.items()) if not any(x.start in skip for x in q)]
+    if not hrs:
+        return []
+    n = min(n, len(hrs))
+    sign = -1 if most_expensive else 1
+    price = [sign * sum(x.price for x in q) / len(q) for _, q in hrs]
+
+    def runs_ok(i: int, length: int) -> bool:
+        """Timerne i..i+length-1 ligger lige efter hinanden (ingen huller)."""
+        return all(hrs[k + 1][0] - hrs[k][0] <= timedelta(hours=1, minutes=1) for k in range(i, i + length - 1))
+
+    def block(i: int, length: int) -> float:
+        return sum(price[i:i + length])
+
+    min_len = min(HEAT_MIN_BLOCK_H, n)
+    best: tuple[float, list[tuple[int, int]]] | None = None
+    # Én blok
+    for i in range(len(hrs) - n + 1):
+        if runs_ok(i, n):
+            v = block(i, n)
+            if best is None or v < best[0] - 1e-9:
+                best = (v, [(i, n)])
+    # To blokke med mindst én times mellemrum
+    if HEAT_MAX_BLOCKS >= 2 and n >= 2 * min_len:
+        for a in range(min_len, n - min_len + 1):
+            b = n - a
+            for i in range(len(hrs) - a + 1):
+                if not runs_ok(i, a):
+                    continue
+                va = block(i, a)
+                for j in range(i + a + 1, len(hrs) - b + 1):
+                    if runs_ok(j, b):
+                        v = va + block(j, b)
+                        # En opdeling skal være tydeligt bedre end én samlet blok
+                        if best is None or v < best[0] - 0.05 * n:
+                            best = (v, [(i, a), (j, b)])
+    if best is None:
+        return []
+    out: list[Slot] = []
+    for i, length in best[1]:
+        for _, q in hrs[i:i + length]:
+            out += q
+    return sorted(out, key=lambda s: s.start)
+
+
 def local_days(slots: list[Slot], tz: tzinfo) -> dict[str, list[Slot]]:
     """Grupper tidsrum pr. lokal dato."""
     days: dict[str, list[Slot]] = {}
@@ -269,11 +335,12 @@ def build_plan(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
         # Varmt vand: sammenhængende billigste blok
         plan.hotwater_slots += cheapest(win("hotwater"), settings["hotwater_hours"], contiguous=True)
         # Varme: hæv i billigste timer, sænk i dyreste timer
-        boost = cheapest(win("heating_boost"), settings["heating_boost_hours"])
+        # i hele, sammenhængende timer, så varmepumpens setpunkt ikke svinger
+        boost = heating_blocks(win("heating_boost"), settings["heating_boost_hours"], tz)
         plan.heating_boost += boost
         if settings["heating_reduce_degrees"] > 0:
-            pool = [s for s in win("heating_reduce") if s not in boost]
-            plan.heating_reduce += cheapest(pool, settings["heating_reduce_hours"], most_expensive=True)
+            plan.heating_reduce += heating_blocks(win("heating_reduce"), settings["heating_reduce_hours"], tz,
+                                                  most_expensive=True, exclude=boost)
 
     plan.evs = plan_cars(slots, now, tz, settings, cars)
 

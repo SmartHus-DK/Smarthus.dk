@@ -505,3 +505,34 @@ def test_battery_trade():
     assert abs(t["profit"] - round(3 * evening.sale - cost_sold, 2)) < 0.02
     assert t["cost_grid"] > 0 and t["cost_solar"] >= 0
     assert calc.trade("total")["sold_kwh"] == 3
+
+
+def _blocks(slots):
+    """Sammenhængende blokke af kvarterer: [(start, timer)]."""
+    out = []
+    for s in sorted(slots, key=lambda x: x.start):
+        if out and s.start == out[-1][1]:
+            out[-1][1] = s.end
+        else:
+            out.append([s.start, s.end])
+    return [(a, (b - a).total_seconds() / 3600) for a, b in out]
+
+
+def test_heating_whole_hours():
+    # Pris der hopper op og ned hvert kvarter – varmen må ikke følge med
+    zig = [0.3, 0.9, 0.2, 1.0, 0.25, 0.95, 0.4, 0.8, 0.35, 1.1, 0.5, 0.6,
+           0.7, 0.4, 0.9, 0.3, 1.5, 1.8, 2.0, 1.7, 1.2, 0.9, 0.6, 0.5]
+    slots = model().build_slots(records("2026-10-21", zig))
+    s = dict(const.DEFAULT_SETTINGS)
+    s.update({"heating_boost_hours": 4, "heating_reduce_hours": 3, "heating_reduce_degrees": 1})
+    now = slots[0].start
+    p = planner.build_plan(slots, now, TZ, s)
+    for name, chosen, hours in (("boost", p.heating_boost, 4), ("reduce", p.heating_reduce, 3)):
+        blocks = _blocks(chosen)
+        assert len(blocks) <= 2, (name, blocks)
+        assert sum(h for _, h in blocks) == hours, (name, blocks)
+        assert all(h >= 2 or len(blocks) == 1 for _, h in blocks), (name, blocks)
+        assert all(a.astimezone(TZ).minute == 0 for a, _ in blocks), (name, blocks)   # hele klokketimer
+    assert not set(x.start for x in p.heating_boost) & set(x.start for x in p.heating_reduce)
+    # De dyreste timer (kl. 16-20) bliver sparetimerne
+    assert {a.astimezone(TZ).hour for a, _ in _blocks(p.heating_reduce)} <= {16, 17, 18}

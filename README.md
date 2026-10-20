@@ -11,7 +11,7 @@ SmartHus bruger strømmen, når den er billigst, og sparer, når den er dyrest. 
 | 🚗 **Elbil** | Lader til fx 80 % i de billigste timer, inden du skal køre. Kan også lade med solcelleoverskud. |
 | 🔋 **Batteri** | Lader billigt og bruger eller sælger strømmen, når den er dyr – men gemmer nok til huset. |
 | 🚿 **Varmt vand** | Varmer vandet i dagens billigste time eller med solcelleoverskud. |
-| 🔥 **Varme** | Lidt varmere i billige timer, lidt koldere i dyre – kun når det er koldt udenfor. |
+| 🔥 **Varme** | Lidt varmere i billige timer, lidt koldere i dyre – i hele, sammenhængende timer og kun når det er koldt udenfor. |
 | ☀️ **Solceller** | Stopper eksport, når salgsprisen er for lav, og viser hvad solcellerne er værd. |
 | 💰 **Besparelse** | Viser hvad SmartHus har sparet dig i dag, denne måned og i alt. |
 
@@ -348,6 +348,7 @@ Har ladeboksens integration en **number**-entitet for ladestrøm (fx Zaptec "Ava
 - **Samme lader:** vælg samme lader til begge biler. Med bilens sensor "ladekabel tilsluttet" finder SmartHus selv bilen. Ellers vælger du bilen på kortet (Elbil → Tilsluttet bil) – indtil da, eller hvis du vælger **Ingen bil**, styres laderen ikke, og begge biler vises gennemsigtige. Bilen, der ikke er valgt, hverken planlægges, styres eller vises.
 - **Tidsrum:** batteri, varmt vand og varme har hvert sit fra–til (0–24 = hele døgnet, 22–06 går over midnat).
 - **Stop eksport under:** når salgsprisen er under grænsen, stoppes eksporten (standard 0 kr = kun ved negativ pris).
+- **Varme i hele timer:** ekstra varme og sparetimer vælges som hele klokketimer i højst to sammenhængende perioder pr. døgn, hver mindst 2 timer – så varmepumpens setpunkt ikke skifter hvert kvarter.
 - **Varmestyring:** kun aktiv under **Aktiv under udetemperatur** (standard 10 °C, start igen 1 °C under). Sæt 30 °C for altid aktiv.
 - **Varmt vand via knap** (fx varmepumpens "Charge"): SmartHus trykker én gang, når den billige periode (eller solcelleoverskuddet) starter, og varmepumpen stopper selv, når vandet er varmt.
 - **Varmt vand med føler:** slukker ved maks. temperatur og tænder igen i den billige periode, når vandet er kølet 3 °C af.
