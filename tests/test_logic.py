@@ -478,3 +478,30 @@ def test_grid_import():
     assert abs(savings.import_price(calc.data["solar"]["today"]) - s.price) < 0.001
     assert calc.solar("today", "produced") == 0
     assert savings.import_price({"import_kwh": 0, "import_cost": 0}) is None
+
+
+def test_battery_trade():
+    slots = model().build_slots(records("2026-10-18", CURVE))
+    calc = savings.SavingsCalculator()
+    night, noon, evening = slots[12], slots[48], slots[72]
+    tz = lambda s: s.start.astimezone(TZ)
+    r = {"battery_charge": 100.0, "battery_discharge": 50.0, "export": 10.0}
+    calc.update(tz(night), night, None, r, battery_action="charge")
+    # 5 kWh fra nettet om natten
+    calc.update(tz(night), night, None, {**r, "battery_charge": 105.0}, battery_action="charge")
+    # 5 kWh solstrøm midt på dagen (koster den salgspris, man ikke fik)
+    calc.update(tz(noon), noon, None, {**r, "battery_charge": 110.0}, battery_action="normal")
+    t = calc.trade("today")
+    assert t["charged_grid_kwh"] == 5 and t["charged_solar_kwh"] == 5
+    expect_avg = (5 * night.price + 5 * max(noon.sale, 0)) / 10
+    assert abs(t["avg_cost_in_battery"] - round(expect_avg, 3)) < 0.002
+    # Aften: 4,5 kWh ud, heraf 3 kWh solgt til nettet
+    calc.update(tz(evening), evening, None, {"battery_charge": 110.0, "battery_discharge": 54.5, "export": 13.0},
+                battery_action="discharge")
+    t = calc.trade("today")
+    assert t["sold_kwh"] == 3 and abs(t["house_kwh"] - 1.5) < 1e-9
+    cost_sold = 3 / savings.ROUND_TRIP * expect_avg
+    assert abs(t["income"] - round(3 * evening.sale, 2)) < 0.011
+    assert abs(t["profit"] - round(3 * evening.sale - cost_sold, 2)) < 0.02
+    assert t["cost_grid"] > 0 and t["cost_solar"] >= 0
+    assert calc.trade("total")["sold_kwh"] == 3

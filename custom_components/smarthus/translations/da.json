@@ -439,6 +439,15 @@
       },
       "grid_cost_total": {
         "name": "Betalt for strøm i alt"
+      },
+      "battery_trade_today": {
+        "name": "Batteri: tjent ved salg i dag"
+      },
+      "battery_trade_month": {
+        "name": "Batteri: tjent ved salg denne måned"
+      },
+      "battery_trade_total": {
+        "name": "Batteri: tjent ved salg i alt"
       }
     },
     "binary_sensor": {

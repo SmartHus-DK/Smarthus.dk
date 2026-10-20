@@ -25,6 +25,22 @@ def _zero_solar() -> dict:
     return {f: 0.0 for f in SOLAR_FIELDS}
 
 
+# Batteriets handel: hvad strømmen i batteriet har kostet, og hvad salget gav
+TRADE_FIELDS = ("sold_kwh", "income", "cost_grid", "cost_solar", "profit",
+                "house_kwh", "house_value", "house_cost", "charged_grid_kwh", "charged_solar_kwh")
+TRADE_BUCKETS = ("today", "month", "total")
+ROUND_TRIP = 0.90  # ca. 10 % tab fra opladning til afladning
+
+
+def _zero_trade() -> dict:
+    return {f: 0.0 for f in TRADE_FIELDS}
+
+
+def _empty_trade() -> dict:
+    return {"stock_kwh": 0.0, "stock_grid": 0.0, "stock_solar": 0.0,
+            **{b: _zero_trade() for b in TRADE_BUCKETS}}
+
+
 def empty() -> dict:
     return {
         "version": 2,
@@ -32,6 +48,7 @@ def empty() -> dict:
         "today": _zero_cat(), "month_values": _zero_cat(), "total": _zero_cat(),
         "solar": {b: _zero_solar() for b in SOLAR_BUCKETS},
         "solar_days": {}, "solar_months": {},
+        "battery_trade": _empty_trade(),
         "last": {},
     }
 
@@ -78,6 +95,8 @@ class SavingsCalculator:
             self.data["solar"].setdefault(b, _zero_solar())
             for f in SOLAR_FIELDS:
                 self.data["solar"][b].setdefault(f, 0.0)
+        for key, val in _empty_trade().items():
+            self.data["battery_trade"].setdefault(key, val)
 
     def _delta(self, key: str, value: float | None) -> float:
         if value is None:
@@ -99,10 +118,12 @@ class SavingsCalculator:
             self.data["day"] = day
             self.data["today"] = _zero_cat()
             self.data["solar"]["today"] = _zero_solar()
+            self.data["battery_trade"]["today"] = _zero_trade()
         if self.data["month"] != month:
             self.data["month"] = month
             self.data["month_values"] = _zero_cat()
             self.data["solar"]["month"] = _zero_solar()
+            self.data["battery_trade"]["month"] = _zero_trade()
         if self.data.get("year") != year:
             # Første gang (ældre data uden år) beholdes måneden som start på året
             if self.data.get("year") is not None:
@@ -110,11 +131,14 @@ class SavingsCalculator:
             self.data["year"] = year
 
     def update(self, now_local: datetime, slot: Slot | None, day_avg: float | None,
-               readings: dict[str, float | None]) -> None:
+               readings: dict[str, float | None], battery_action: str | None = None,
+               battery_kwh: float | None = None) -> None:
         self._roll(now_local)
         deltas = {k: self._delta(k, v) for k, v in readings.items()}
         if slot is None:
             return
+        if "battery_charge" in readings or "battery_discharge" in readings:
+            self._trade(slot, deltas, battery_action, battery_kwh, export_known=readings.get("export") is not None)
         price, sale = slot.price, slot.sale
         ref = day_avg if day_avg is not None else price
 
@@ -159,6 +183,71 @@ class SavingsCalculator:
             for f, v in add.items():
                 t[f] = round(t.get(f, 0.0) + v, 4)
         self._trim()
+
+    def _trade(self, slot: Slot, deltas: dict, action: str | None, battery_kwh: float | None,
+               export_known: bool) -> None:
+        """Følg hvad strømmen i batteriet har kostet, og hvad den giver, når den bruges eller sælges.
+
+        * Opladning i en planlagt netopladning koster købsprisen.
+        * Anden opladning er solstrøm – den koster den salgspris, man gav afkald på.
+        * Afladning i en salgsperiode sælges (højst det, der eksporteres) til salgsprisen.
+          Resten bruges i huset og sparer købsprisen.
+        * Omkostningen er gennemsnittet af strømmen i batteriet, inkl. ca. 10 % tab.
+        """
+        t = self.data["battery_trade"]
+        price, sale = slot.price, slot.sale
+        charge = deltas.get("battery_charge", 0.0)
+        out = deltas.get("battery_discharge", 0.0)
+        add = _zero_trade()
+        if charge > 0:
+            if action == "charge":
+                t["stock_grid"] += charge * price
+                add["charged_grid_kwh"] = charge
+            else:
+                t["stock_solar"] += charge * max(sale, 0.0)
+                add["charged_solar_kwh"] = charge
+            t["stock_kwh"] += charge
+        if out > 0:
+            used = min(out / ROUND_TRIP, t["stock_kwh"]) if t["stock_kwh"] > 0 else 0.0
+            share = used / t["stock_kwh"] if t["stock_kwh"] > 0 else 0.0
+            cost_g, cost_s = t["stock_grid"] * share, t["stock_solar"] * share
+            if not used:  # ukendt oprindelse (fx lige efter start): regn med købsprisen nu
+                cost_g = out / ROUND_TRIP * price
+            t["stock_grid"] -= t["stock_grid"] * share
+            t["stock_solar"] -= t["stock_solar"] * share
+            t["stock_kwh"] -= used
+            if action == "discharge":
+                sold = min(out, deltas.get("export", 0.0)) if export_known else out
+            else:
+                sold = 0.0
+            house = out - sold
+            frac_sold = sold / out
+            add["sold_kwh"], add["house_kwh"] = sold, house
+            add["income"] = sold * sale
+            add["house_value"] = house * price
+            add["cost_grid"] = cost_g * frac_sold
+            add["cost_solar"] = cost_s * frac_sold
+            add["house_cost"] = (cost_g + cost_s) * (1 - frac_sold)
+            add["profit"] = add["income"] - add["cost_grid"] - add["cost_solar"]
+        # Hold lageret i takt med batteriets niveau (behold kr/kWh)
+        if battery_kwh is not None and battery_kwh >= 0:
+            if t["stock_kwh"] > 0.01:
+                f = battery_kwh / t["stock_kwh"]
+                t["stock_grid"] *= f
+                t["stock_solar"] *= f
+            t["stock_kwh"] = battery_kwh
+        if any(add.values()):
+            for b in TRADE_BUCKETS:
+                for k, v in add.items():
+                    t[b][k] = round(t[b].get(k, 0.0) + v, 4)
+
+    def trade(self, bucket: str) -> dict:
+        t = self.data["battery_trade"]
+        out = {k: round(v, 2) for k, v in t[bucket].items()}
+        out["avg_cost_in_battery"] = round((t["stock_grid"] + t["stock_solar"]) / t["stock_kwh"], 3) \
+            if t["stock_kwh"] > 0.05 else None
+        out["stock_kwh"] = round(t["stock_kwh"], 2)
+        return out
 
     def _trim(self) -> None:
         for key, keep in (("solar_days", KEEP_DAYS), ("solar_months", KEEP_MONTHS)):

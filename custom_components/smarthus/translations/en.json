@@ -427,6 +427,15 @@
       },
       "grid_cost_total": {
         "name": "Grid cost total"
+      },
+      "battery_trade_today": {
+        "name": "Battery: trading profit today"
+      },
+      "battery_trade_month": {
+        "name": "Battery: trading profit this month"
+      },
+      "battery_trade_total": {
+        "name": "Battery: trading profit total"
       }
     },
     "binary_sensor": {

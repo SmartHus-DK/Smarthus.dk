@@ -839,7 +839,7 @@ class SmartHusCard extends HTMLElement {
   _moduleBody(m) {
     let extra = "";
     if (m.car) extra = this._evCompare(m.id);
-    if (m.id === "battery") extra = this._reserveBox();
+    if (m.id === "battery") extra = this._tradeBox() + this._reserveBox();
     if (m.id === "hotwater") {
       const a = this._st("binary_sensor", "hotwater_now")?.attributes || {};
       if (a.water_temp != null) {
@@ -1254,6 +1254,33 @@ class SmartHusCard extends HTMLElement {
       </div>`;
   }
 
+  /** Batteriets handel: hvad salget i de dyre timer gav, efter hvad strømmen kostede. */
+  _tradeBox() {
+    const tab = ["today", "month", "total"].includes(this._tradeTab) ? this._tradeTab : "today";
+    const st = this._st("sensor", `battery_trade_${tab}`);
+    if (!st) return "";
+    const a = st.attributes || {};
+    const tabs = [["today", "I dag"], ["month", "Måned"], ["total", "I alt"]]
+      .map(([id, l]) => `<button class="tab ${id === tab ? "on" : ""}" data-action="trade-tab" data-tab="${id}" aria-pressed="${id === tab}">${l}</button>`).join("");
+    const cost = (a.cost_grid || 0) + (a.cost_solar || 0);
+    const profit = a.profit || 0;
+    const sold = a.sold_kwh || 0;
+    const row = (l, v, cls = "") => `<div class="tr-row ${cls}"><span>${l}</span><b>${v}</b></div>`;
+    const body = sold < 0.05
+      ? `<div class="cmp-sub" style="margin-left:0">Batteriet har ikke solgt strøm ${tab === "today" ? "i dag" : tab === "month" ? "denne måned" : "endnu"}.${a.house_kwh > 0.05 ? ` Det har leveret ${nf(a.house_kwh, 1)} kWh til huset (værdi ${nf(a.house_value, 0)} kr).` : ""}</div>`
+      : `${row(`Solgt ${nf(sold, 1)} kWh til nettet`, `+${nf(a.income)} kr`)}
+         ${a.cost_grid > 0.005 ? row("Købt fra nettet til opladning", `−${nf(a.cost_grid)} kr`, "neg") : ""}
+         ${a.cost_solar > 0.005 ? row("Solstrøm der kunne være solgt", `−${nf(a.cost_solar)} kr`, "neg") : ""}
+         ${row("Tjent ved salg", `${profit >= 0 ? "+" : "−"}${nf(Math.abs(profit))} kr`, `sum ${profit >= 0 ? "pos" : "neg"}`)}
+         <div class="cmp-sub" style="margin-left:0">Snit ${nf(a.income / sold)} kr/kWh solgt mod ${nf(cost / sold)} kr/kWh i indkøb (inkl. ca. 10 % tab).${a.house_kwh > 0.05 ? ` Derudover ${nf(a.house_kwh, 1)} kWh brugt i huset.` : ""}</div>`;
+    return `
+      <div class="cmp trade">
+        <div class="tr-head"><span class="cmp-title" style="margin:0">Batteriets salg</span><span class="tabs" role="group" aria-label="Periode">${tabs}</span></div>
+        ${body}
+        ${a.avg_cost_in_battery != null ? `<div class="cmp-sub" style="margin-left:0">Strømmen i batteriet nu har kostet ca. ${nf(a.avg_cost_in_battery)} kr/kWh.</div>` : ""}
+      </div>`;
+  }
+
   /** Kommende perioder for en plan (fx afladning) med gennemsnitlig salgs- og købspris. */
   _salePeriod(key) {
     const all = (this._st("binary_sensor", key)?.attributes?.slots || []).map((t) => new Date(t).getTime())
@@ -1351,6 +1378,9 @@ class SmartHusCard extends HTMLElement {
     } else if (action === "expand") {
       const id = el.dataset.mod;
       this._closed.has(id) ? this._closed.delete(id) : this._closed.add(id);
+      this._render();
+    } else if (action === "trade-tab") {
+      this._tradeTab = el.dataset.tab;
       this._render();
     } else if (action === "solar-tab") {
       this._solarTab = el.dataset.tab;
@@ -1603,6 +1633,14 @@ class SmartHusCard extends HTMLElement {
                  background: color-mix(in srgb, var(--primary-text-color) 6%, transparent); }
       .res-bar i { display: block; height: 100%; }
       .res-bar i.miss, .res-leg i.miss { background: repeating-linear-gradient(135deg, var(--c) 0 3px, transparent 3px 6px) !important; opacity: .7; }
+      .tr-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+      .tr-head .tabs { margin-top: 0; }
+      .tr-row { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; font-size: 13px; }
+      .tr-row b { font-variant-numeric: tabular-nums; }
+      .tr-row.neg b { color: var(--secondary-text-color); font-weight: 500; }
+      .tr-row.sum { border-top: 1px solid var(--sh-line); margin-top: 4px; padding-top: 6px; font-size: 14px; }
+      .tr-row.sum.pos b { color: ${COLORS.cheap}; }
+      .tr-row.sum.neg b { color: ${COLORS.expensive}; font-weight: 700; }
       .res-sale { margin-top: 4px; font-size: 13px; color: var(--secondary-text-color); }
       .res-sale b { color: var(--primary-text-color); font-variant-numeric: tabular-nums; }
       .res-solar { margin-top: 10px; padding: 8px 10px; border-radius: 8px; font-size: 12.5px; line-height: 1.45; color: var(--secondary-text-color);

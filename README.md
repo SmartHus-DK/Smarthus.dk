@@ -133,6 +133,8 @@ Under **Batteri** på kortet kan du se reserven, hvor meget der må sælges, og 
 
 Det kræver en energimåler for **husets forbrug** (kWh) under Konfigurer → Batteri / inverter, fx fra inverteren eller en P1-måler. Uden den sælger SmartHus efter prisen alene.
 
+**Hvad tjener batteriet ved salg?** Under *Batteri* på kortet ses "Batteriets salg" for i dag, måneden og i alt: hvad der er solgt til nettet, hvad strømmen kostede, og hvad der er tjent. Strøm ladet fra nettet koster købsprisen. Solstrøm koster den salgspris, man gav afkald på ved at gemme den. Der regnes med ca. 10 % tab i batteriet. Det kræver energimålere for batteriets opladning og afladning (kWh) og helst en eksportmåler, så kun det, der faktisk sælges, tæller som salg.
+
 **Lad ikke fra nettet, hvis solen kan fylde batteriet.** Med en solprognose (Forecast.Solar eller Solcast) lader SmartHus kun så meget fra nettet om natten, som huset skal bruge, til solen giver overskud – resten fylder solcellerne gratis. Er der udsigt til gråvejr, lades der som normalt. Kortet viser fx "Lader kun til 62 % fra nettet".
 
 **Sælg solstrøm eller gem den i batteriet?** Er salgsprisen midt på dagen højere end prisen for at lade batteriet billigt fra nettet om natten (inkl. tab), kan det betale sig at sælge solstrømmen og lade senere. SmartHus gør det kun, når:

@@ -21,6 +21,8 @@ from . import SmartHusConfigEntry
 from .const import (
     ACTION_OFF,
     CONF_EXPORT_ENERGY,
+    CONF_BATTERY_CHARGE_ENERGY,
+    CONF_BATTERY_DISCHARGE_ENERGY,
     CONF_IMPORT_ENERGY,
     CONF_HOUSE_ENERGY,
     CONF_SOLAR_ENERGY,
@@ -250,6 +252,19 @@ RESERVE_SENSORS: tuple[SmartHusSensorDescription, ...] = (
 )
 
 
+# Batteriets handel: tjent ved salg i dyre timer, efter hvad strømmen kostede (net eller solstrøm)
+def _trade_attrs(bucket: str):
+    return lambda c: c.savings.trade(bucket)
+
+
+TRADE_SENSORS: tuple[SmartHusSensorDescription, ...] = tuple(
+    SmartHusSensorDescription(
+        key=f"battery_trade_{b}", icon="mdi:battery-sync", value_fn=(lambda bb: lambda c: c.savings.trade(bb)["profit"])(b),
+        attrs_fn=_trade_attrs(b), state_class=SensorStateClass.TOTAL if b == "total" else None, **MONEY)
+    for b in ("today", "month", "total")
+)
+
+
 # Solcelleoverblik: produktion, sparet (egetforbrug) og tjent (salg) pr. periode
 _SOLAR_PERIODS = (("today", "today"), ("month", "month"), ("year", "year"), ("total", "total"))
 
@@ -326,6 +341,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
                             async_add_entities: AddEntitiesCallback) -> None:
     controller = entry.runtime_data.controller
     entities: list[SensorEntity] = [SmartHusSensor(entry, controller, d) for d in SENSORS]
+    if controller.has(CONF_BATTERY_DISCHARGE_ENERGY) and controller.has(CONF_BATTERY_CHARGE_ENERGY):
+        entities += [SmartHusSensor(entry, controller, d) for d in TRADE_SENSORS]
     if controller.has(CONF_HOUSE_ENERGY):
         entities += [SmartHusSensor(entry, controller, d) for d in RESERVE_SENSORS]
     if controller.has(CONF_SOLAR_ENERGY):

@@ -487,7 +487,11 @@ class SmartHusController:
         for name, key in mapping.items():
             if self.has(key):
                 readings[name] = self._energy_kwh(key)
-        self.savings.update(dt_util.now(), self.plan.current, self.plan.day_avg, readings)
+        soc = self._float_state(self.config.get(CONF_BATTERY_SOC))
+        bat_kwh = soc / 100 * self.settings[S_BATTERY_CAPACITY] if soc is not None else None
+        action = self.plan.battery_action if self.active(MODULE_BATTERY) else None
+        self.savings.update(dt_util.now(), self.plan.current, self.plan.day_avg, readings,
+                            battery_action=action, battery_kwh=bat_kwh)
         self._store.async_delay_save(lambda: self.savings.data, 60)
 
     # --- Styring -----------------------------------------------------------
