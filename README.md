@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.18.0** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
+**Version 1.19.0** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
 
 SmartHus bruger strømmen, når den er billigst, og sparer, når den er dyrest. Den lader elbilen og batteriet i de billige timer, varmer vandet med billig strøm eller solcelleoverskud, skruer lidt op og ned for varmen og stopper salg af solstrøm, når prisen er for lav. Du ser det hele – og hvad du har sparet – på ét kort.
 
@@ -132,6 +132,14 @@ SmartHus lader batteriet, når strømmen er billig, og bruger eller sælger str�
 Under **Batteri** på kortet kan du se reserven, hvor meget der må sælges, og en lille graf over husets forbrug time for time. Reserven bruges, når SmartHus har mindst 2 dages historik – indtil da står der "SmartHus lærer husets forbrug".
 
 Det kræver en energimåler for **husets forbrug** (kWh) under Konfigurer → Batteri / inverter, fx fra inverteren eller en P1-måler. Uden den sælger SmartHus efter prisen alene.
+
+**Sælg solstrøm eller gem den i batteriet?** Er salgsprisen midt på dagen højere end prisen for at lade batteriet billigt fra nettet om natten (inkl. tab), kan det betale sig at sælge solstrømmen og lade senere. SmartHus gør det kun, når:
+
+- batteriet allerede har reserven til huset frem til næste billige opladning,
+- gevinsten pr. kWh er mindst den grænse, du vælger under *Batteri → Solstrøm: sælg eller gem* (standard 0,10 kr/kWh),
+- solcellerne producerer.
+
+Det kræver en ekstra tilstand eller et script under Konfigurer → Batteri / inverter: **"sælg solstrøm"** – en tilstand, hvor solstrømmen sælges, og batteriet ikke lades af solcellerne (fx "Feed-in First" eller maks. ladeeffekt 0). Uden den lader batteriet altid med solstrøm som normalt. I Danmark er salgsprisen oftest lavere end købsprisen, så det sker typisk kun på dage med høje middagspriser.
 
 ---
 

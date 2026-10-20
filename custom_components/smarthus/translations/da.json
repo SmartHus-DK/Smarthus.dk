@@ -89,7 +89,9 @@
           "battery_huawei_device": "B) Huawei: batteriet (LUNA2000)",
           "battery_huawei_power": "B) Huawei: effekt ved lad/aflad (W)",
           "battery_power_sensor": "Batteriets effekt lige nu (W eller kW) – valgfri",
-          "battery_power_sign": "Hvad betyder et positivt tal for batteriet?"
+          "battery_power_sign": "Hvad betyder et positivt tal for batteriet?",
+          "battery_option_sell_solar": "A) Navn på tilstanden: sælg solstrøm (valgfri)",
+          "battery_script_sell_solar": "C) Script: sælg solstrøm (valgfri)"
         },
         "data_description": {
           "house_energy_sensor": "En stigende energimåler (kWh) for husets forbrug – fx fra inverteren ('Load consumption total'), en P1-måler (HAN-port) eller en elmåler. SmartHus lærer ud fra de seneste 14 dage, hvor meget huset bruger time for time, og holder så meget i batteriet, at huset klarer sig til strømmen bliver billig igen. Kun det overskydende sælges. Kræver langtidsstatistik (står den i Energi-dashboardet, har den det). Reserven bruges efter 2 dages historik.",
@@ -106,7 +108,9 @@
           "battery_huawei_device": "Har kunden Huawei med integrationen Huawei Solar, skal du kun vælge batteriet her – så styrer SmartHus selv tvungen opladning (til 'Højeste niveau'), afladning (til 'Laveste niveau') og normal drift. Ingen scripts nødvendige.",
           "battery_huawei_power": "Hvor hårdt batteriet lades/aflades ved tvungen drift. Standard 5000 W. Sæt den til batteriets maks. effekt.",
           "battery_power_sensor": "Bruges kun til energiflowet øverst på kortet – fx Huawei sensor.battery_charge_discharge_power eller SigEnergy sensor.sigen_plant_battery_power.",
-          "battery_power_sign": "Huawei og SigEnergy viser typisk opladning som positiv. Tjek ved at se sensoren, mens batteriet lader."
+          "battery_power_sign": "Huawei og SigEnergy viser typisk opladning som positiv. Tjek ved at se sensoren, mens batteriet lader.",
+          "battery_option_sell_solar": "Valgfri. En tilstand hvor solcellernes strøm sælges til nettet, og batteriet ikke lades af solcellerne (huset må gerne bruge batteriet). Så kan SmartHus sælge solstrømmen, når salgsprisen er højere end prisen for at lade batteriet billigt fra nettet senere. Bruges kun, når batteriet allerede har reserven til huset. Lad feltet stå tomt for at slå det fra.",
+          "battery_script_sell_solar": "Valgfri. Køres når solstrømmen skal sælges i stedet for at lade batteriet (fx sæt maks. ladeeffekt til 0). Script til normal drift køres bagefter."
         }
       },
       "solar": {
@@ -315,7 +319,8 @@
           "charge": "Lader",
           "discharge": "Aflader",
           "normal": "Normal",
-          "off": "Slået fra"
+          "off": "Slået fra",
+          "sell_solar": "Sælger solstrøm"
         }
       },
       "status": {
@@ -602,6 +607,9 @@
       },
       "heating_max_outdoor": {
         "name": "Varme: aktiv under udetemperatur"
+      },
+      "battery_solar_sell_margin": {
+        "name": "Batteri: min. gevinst ved at sælge solstrøm"
       }
     },
     "select": {

@@ -84,7 +84,9 @@
           "battery_huawei_device": "B) Huawei: the battery (LUNA2000)",
           "battery_huawei_power": "B) Huawei: charge/discharge power (W)",
           "battery_power_sensor": "Battery power right now (W or kW) – optional",
-          "battery_power_sign": "What does a positive battery value mean?"
+          "battery_power_sign": "What does a positive battery value mean?",
+          "battery_option_sell_solar": "A) Mode name: sell solar (optional)",
+          "battery_script_sell_solar": "C) Script: sell solar (optional)"
         },
         "data_description": {
           "house_energy_sensor": "Increasing energy meter (kWh) of the house consumption – e.g. from the inverter ('Load consumption total'), a P1 meter or an electricity meter. Every night SmartHus learns the hourly consumption from the last 14 days (weekdays and weekends separately) and keeps enough in the battery for the house until power is cheap again. Only the surplus is sold. Requires long-term statistics. The reserve is used after 2 days of history.",
@@ -99,7 +101,9 @@
           "battery_huawei_device": "With the Huawei Solar integration, just pick the battery here – SmartHus handles forced charge/discharge itself. No scripts needed.",
           "battery_huawei_power": "Power used for forced charge/discharge. Default 5000 W.",
           "battery_power_sensor": "Only used for the energy flow at the top of the card.",
-          "battery_power_sign": "Huawei and SigEnergy usually show charging as positive."
+          "battery_power_sign": "Huawei and SigEnergy usually show charging as positive.",
+          "battery_option_sell_solar": "Optional. A mode where solar power is exported and the battery is not charged by the panels. SmartHus then sells solar when the sale price beats charging cheaply from the grid later. Only used when the battery already holds the house reserve. Leave empty to disable.",
+          "battery_script_sell_solar": "Optional. Runs when solar should be sold instead of charging the battery (e.g. set max charge power to 0). The normal script runs afterwards."
         }
       },
       "solar": {
@@ -303,7 +307,8 @@
           "charge": "Charging",
           "discharge": "Discharging",
           "normal": "Normal",
-          "off": "Off"
+          "off": "Off",
+          "sell_solar": "Selling solar"
         }
       },
       "status": {
@@ -590,6 +595,9 @@
       },
       "heating_max_outdoor": {
         "name": "Heating: active below outdoor temperature"
+      },
+      "battery_solar_sell_margin": {
+        "name": "Battery: min. gain from selling solar"
       }
     },
     "select": {

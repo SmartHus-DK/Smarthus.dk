@@ -24,6 +24,10 @@ from .const import (
     CONF_BATTERY_SCRIPT_CHARGE,
     CONF_BATTERY_SCRIPT_DISCHARGE,
     CONF_BATTERY_SCRIPT_NORMAL,
+    CONF_BATTERY_SCRIPT_SELL_SOLAR,
+    CONF_BATTERY_OPT_SELL_SOLAR,
+    ACTION_SELL_SOLAR,
+    S_SOLAR_SELL_MARGIN,
     BATTERY_SCRIPTS,
     CONF_HUAWEI_DEVICE,
     CONF_HUAWEI_POWER,
@@ -90,7 +94,7 @@ from .const import (
 )
 from .coordinator import SmartHusPriceCoordinator
 from .planner import CarInput, Plan, build_plan, car_settings, heating_outdoor_ok
-from .profile import LEARN_DAYS, Profile, Reserve, build_profile, calc_reserve
+from .profile import EFFICIENCY, LEARN_DAYS, Profile, Reserve, build_profile, calc_reserve
 from .savings import SavingsCalculator
 from .flow import energy_flow, to_kw
 from .plug import pick_connected, plug_state
@@ -136,6 +140,7 @@ class SmartHusController:
         self.profile_updated: datetime | None = None
         self.reserve: Reserve | None = None
         self.reserve_holds = False  # True når salg fra batteriet er sat på pause for at gemme reserven
+        self.sell_solar: dict | None = None  # beslutning om at sælge solstrøm i stedet for at lade batteriet
         self._unsub_learn = None
         self._unsub_learn_first = None
         self._store: Store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}.savings")
@@ -249,7 +254,8 @@ class SmartHusController:
 
     def _update_reserve(self) -> None:
         self.reserve, self.reserve_holds = None, False
-        if not self.has(CONF_HOUSE_ENERGY) or not self.has(CONF_BATTERY_MODE_ENTITY) or not self.profile.ready:
+        self.sell_solar = None
+        if not self.has(CONF_HOUSE_ENERGY) or not self.has_battery_control or not self.profile.ready:
             return
         now = dt_util.utcnow()
         until = min(self._reserve_until(now), now + timedelta(hours=24))
@@ -265,6 +271,40 @@ class SmartHusController:
                 and self.reserve.sellable_kwh <= 0.05:
             self.plan.battery_action = ACTION_NORMAL
             self.reserve_holds = True
+        self._decide_sell_solar(now)
+
+    def _decide_sell_solar(self, now: datetime) -> None:
+        """Sælg solstrømmen nu og lad batteriet billigt senere – hvis det betaler sig og huset er dækket.
+
+        Betingelser (alle skal være opfyldt):
+        * en tilstand/et script til "sælg solstrøm" er sat op,
+        * batteriet har allerede reserven til huset frem til næste billige opladning,
+        * salgsprisen nu er højere end prisen for at lade fra nettet senere (inkl. tab) + den valgte margin,
+        * solcellerne producerer (hvis der er en effektsensor).
+        """
+        p, r = self.plan, self.reserve
+        if not self.has_sell_solar or r is None or p.current is None or p.battery_action != ACTION_NORMAL:
+            return
+        later = [s for s in p.battery_charge if s.start > now]
+        if not later:
+            return
+        charge_price = sum(s.price for s in later) / len(later)
+        sale_now = p.current.sale
+        margin = float(self.settings.get(S_SOLAR_SELL_MARGIN, 0.10))
+        gain = sale_now - charge_price / EFFICIENCY
+        solar_kw = self._power_kw(self.config.get(CONF_SOLAR_POWER)) if self.has(CONF_SOLAR_POWER) else None
+        covered = r.sellable_kwh is not None and r.sellable_kwh > 0.05
+        active = gain >= margin and covered and (solar_kw is None or solar_kw > 0.2)
+        self.sell_solar = {
+            "active": active,
+            "sale_now": round(sale_now, 3),
+            "charge_price_later": round(charge_price, 3),
+            "gain_per_kwh": round(gain, 3),
+            "margin": margin,
+            "house_covered": covered,
+        }
+        if active:
+            p.battery_action = ACTION_SELL_SOLAR
 
     async def async_stop(self) -> None:
         for name in ("_unsub_learn", "_unsub_learn_first"):
@@ -294,12 +334,20 @@ class SmartHusController:
             return self.has_battery_control
         if key == CONF_SOLAR_CURTAIL:
             return self.has_export_control
+        if key == "battery_sell_solar":
+            return self.has_sell_solar
         return bool(self.config.get(key))
 
     @property
     def has_battery_control(self) -> bool:
         return (bool(self.config.get(CONF_BATTERY_MODE_ENTITY)) or bool(self.config.get(CONF_HUAWEI_DEVICE))
                 or any(self.config.get(k) for k in BATTERY_SCRIPTS))
+
+    @property
+    def has_sell_solar(self) -> bool:
+        """Kan batteriet sættes til at sælge solstrømmen i stedet for at lade? (valgfri tilstand/script)"""
+        return bool(self.config.get(CONF_BATTERY_SCRIPT_SELL_SOLAR)) or (
+            bool(self.config.get(CONF_BATTERY_MODE_ENTITY)) and bool(self.config.get(CONF_BATTERY_OPT_SELL_SOLAR)))
 
     @property
     def has_export_control(self) -> bool:
@@ -486,8 +534,8 @@ class SmartHusController:
         }
 
     async def _apply_battery(self, action: str, force: bool) -> None:
-        key = {ACTION_CHARGE: CONF_BATTERY_SCRIPT_CHARGE, ACTION_DISCHARGE: CONF_BATTERY_SCRIPT_DISCHARGE}.get(
-            action, CONF_BATTERY_SCRIPT_NORMAL)
+        key = {ACTION_CHARGE: CONF_BATTERY_SCRIPT_CHARGE, ACTION_DISCHARGE: CONF_BATTERY_SCRIPT_DISCHARGE,
+               ACTION_SELL_SOLAR: CONF_BATTERY_SCRIPT_SELL_SOLAR}.get(action, CONF_BATTERY_SCRIPT_NORMAL)
         if await self._run_script(key, "battery", action, force, self._script_vars(action)):
             return
         if self.config.get(CONF_HUAWEI_DEVICE):
@@ -549,7 +597,11 @@ class SmartHusController:
         key = {
             ACTION_CHARGE: CONF_BATTERY_OPT_CHARGE,
             ACTION_DISCHARGE: CONF_BATTERY_OPT_DISCHARGE,
+            ACTION_SELL_SOLAR: CONF_BATTERY_OPT_SELL_SOLAR,
         }.get(action, CONF_BATTERY_OPT_NORMAL)
+        if key == CONF_BATTERY_OPT_SELL_SOLAR:
+            return self.config.get(key) or self.config.get(CONF_BATTERY_OPT_NORMAL) \
+                or DEFAULT_BATTERY_OPTIONS[CONF_BATTERY_OPT_NORMAL]
         return self.config.get(key) or DEFAULT_BATTERY_OPTIONS[key]
 
     async def async_apply(self, force: bool = False) -> None:

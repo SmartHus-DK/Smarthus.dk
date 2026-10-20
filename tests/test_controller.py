@@ -252,6 +252,31 @@ async def main():
     assert h.services.calls == [("button", "press", {"entity_id": "button.vp_charge"})], h.services.calls
     await c._apply_hotwater(False, False); await c._apply_hotwater(True, False)
     assert len(h.services.calls) == 2                 # ny periode: nyt tryk
+    # 18) Sælg solstrøm i stedet for at lade batteriet, når det betaler sig og huset er dækket
+    from datetime import datetime, timedelta
+    prof = sys.modules["smarthus.profile"]
+    now = datetime(2026, 6, 10, 10, 0, tzinfo=timezone.utc)
+    mk = lambda h, price, sale: planner.Slot(now + timedelta(hours=h), now + timedelta(hours=h, minutes=15), 0, price, sale)
+    c, h = make({"battery_mode_entity": "select.mode", "battery_option_normal": "Self Use",
+                 "battery_option_sell_solar": "Feed-in First"},
+                {"select.mode": State("Self Use", options=["Self Use", "Feed-in First"])})
+    assert c.has_sell_solar and c.has("battery_sell_solar")
+    c.plan.current = mk(0, 2.0, 1.40)
+    c.plan.battery_charge = [mk(16, 0.80, 0.2)]
+    c.reserve = prof.Reserve(reserve_kwh=4, sellable_kwh=3, battery_kwh=9)
+    c.sell_solar = None
+    c._decide_sell_solar(now)
+    assert c.plan.battery_action == "sell_solar" and c.sell_solar["active"], c.sell_solar
+    await c._apply_battery(c.plan.battery_action, False)
+    assert h.services.calls[-1][2]["option"] == "Feed-in First"
+    # Huset ikke dækket -> batteriet lades som normalt
+    c.plan.battery_action = "normal"; c.reserve = prof.Reserve(reserve_kwh=6, sellable_kwh=0, battery_kwh=4)
+    c._decide_sell_solar(now)
+    assert c.plan.battery_action == "normal" and not c.sell_solar["active"]
+    # For lav salgspris -> ingen salg
+    c.plan.current = mk(0, 1.0, 0.50); c.reserve = prof.Reserve(reserve_kwh=4, sellable_kwh=3, battery_kwh=9)
+    c._decide_sell_solar(now)
+    assert c.plan.battery_action == "normal"
     print("controller OK")
 
 def test_controller_control():

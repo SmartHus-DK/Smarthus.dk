@@ -11,7 +11,7 @@ API_URL: Final = "https://api.energidataservice.dk/dataset/DayAheadPrices"
 
 STATIC_URL: Final = "/smarthus_static"
 CARD_URL: Final = f"{STATIC_URL}/smarthus-card.js"
-CARD_VERSION: Final = "1.18.0"
+CARD_VERSION: Final = "1.19.0"
 
 PLATFORMS: Final = ["sensor", "binary_sensor", "switch", "number", "select"]
 
@@ -69,6 +69,8 @@ CONF_BATTERY_MODE_ENTITY: Final = "battery_mode_entity"
 CONF_BATTERY_OPT_CHARGE: Final = "battery_option_charge"
 CONF_BATTERY_OPT_DISCHARGE: Final = "battery_option_discharge"
 CONF_BATTERY_OPT_NORMAL: Final = "battery_option_normal"
+# Valgfri: tilstand hvor solstrømmen sælges, og batteriet ikke lades af solcellerne
+CONF_BATTERY_OPT_SELL_SOLAR: Final = "battery_option_sell_solar"
 CONF_BATTERY_SOC: Final = "battery_soc_sensor"
 CONF_BATTERY_CHARGE_ENERGY: Final = "battery_charge_energy_sensor"
 CONF_BATTERY_DISCHARGE_ENERGY: Final = "battery_discharge_energy_sensor"
@@ -78,7 +80,10 @@ CONF_HOUSE_ENERGY: Final = "house_energy_sensor"
 CONF_BATTERY_SCRIPT_CHARGE: Final = "battery_script_charge"
 CONF_BATTERY_SCRIPT_DISCHARGE: Final = "battery_script_discharge"
 CONF_BATTERY_SCRIPT_NORMAL: Final = "battery_script_normal"
+CONF_BATTERY_SCRIPT_SELL_SOLAR: Final = "battery_script_sell_solar"
 BATTERY_SCRIPTS: Final = [CONF_BATTERY_SCRIPT_CHARGE, CONF_BATTERY_SCRIPT_DISCHARGE, CONF_BATTERY_SCRIPT_NORMAL]
+# Valgfrit script (tæller ikke som batteristyring alene)
+BATTERY_OPTIONAL_SCRIPTS: Final = [CONF_BATTERY_SCRIPT_SELL_SOLAR]
 # Indbyggede profiler (ingen scripts nødvendige)
 CONF_HUAWEI_DEVICE: Final = "battery_huawei_device"
 CONF_HUAWEI_POWER: Final = "battery_huawei_power"
@@ -136,6 +141,7 @@ BATTERY_KEYS: Final = [
     CONF_BATTERY_OPT_CHARGE,
     CONF_BATTERY_OPT_DISCHARGE,
     CONF_BATTERY_OPT_NORMAL,
+    CONF_BATTERY_OPT_SELL_SOLAR,
     CONF_BATTERY_SOC,
     CONF_BATTERY_CHARGE_ENERGY,
     CONF_BATTERY_DISCHARGE_ENERGY,
@@ -143,6 +149,7 @@ BATTERY_KEYS: Final = [
     CONF_BATTERY_SCRIPT_CHARGE,
     CONF_BATTERY_SCRIPT_DISCHARGE,
     CONF_BATTERY_SCRIPT_NORMAL,
+    CONF_BATTERY_SCRIPT_SELL_SOLAR,
     CONF_HUAWEI_DEVICE,
     CONF_HUAWEI_POWER,
     CONF_BATTERY_POWER,
@@ -200,6 +207,8 @@ S_BATTERY_MIN_SPREAD: Final = "battery_min_spread"
 S_BATTERY_MIN_SOC: Final = "battery_min_soc"
 S_BATTERY_MAX_SOC: Final = "battery_max_soc"
 S_BATTERY_CAPACITY: Final = "battery_capacity"
+# Sælg solstrøm i stedet for at lade batteriet, når salgsprisen slår prisen for at lade billigt senere med mindst dette
+S_SOLAR_SELL_MARGIN: Final = "battery_solar_sell_margin"
 S_EV_HOURS: Final = "ev_hours"
 S_EV_READY_HOUR: Final = "ev_ready_hour"
 S_EV_TARGET_SOC: Final = "ev_target_soc"
@@ -233,6 +242,7 @@ DEFAULT_SETTINGS: Final = {
     S_BATTERY_MIN_SOC: 15.0,
     S_BATTERY_MAX_SOC: 95.0,
     S_BATTERY_CAPACITY: 10.0,
+    S_SOLAR_SELL_MARGIN: 0.10,
     S_EV_HOURS: 4.0,
     S_EV_READY_HOUR: 7.0,
     S_EV_TARGET_SOC: 80.0,
@@ -269,6 +279,7 @@ DEFAULT_SETTINGS: Final = {
 ACTION_CHARGE: Final = "charge"
 ACTION_DISCHARGE: Final = "discharge"
 ACTION_NORMAL: Final = "normal"
+ACTION_SELL_SOLAR: Final = "sell_solar"
 ACTION_OFF: Final = "off"
 HEATING_BOOST: Final = "boost"
 HEATING_REDUCE: Final = "reduce"

@@ -110,6 +110,8 @@ def _status(c: SmartHusController) -> str:
         parts.append("Bruger batteri")
     if c.active(MODULE_BATTERY) and c.reserve_holds:
         parts.append("Gemmer batteri til huset")
+    if c.active(MODULE_BATTERY) and p.battery_action == "sell_solar":
+        parts.append("Sælger solstrøm – batteriet lades billigt senere")
     if c.active(MODULE_SOLAR) and p.solar_curtail:
         parts.append("Begrænser eksport")
     for cid, ep in p.evs.items():
@@ -199,7 +201,7 @@ SENSORS: tuple[SmartHusSensorDescription, ...] = (
     SmartHusSensorDescription(key="cheapest_hour", icon="mdi:clock-star-four-points",
                               device_class=SensorDeviceClass.TIMESTAMP, value_fn=_cheapest_hour),
     SmartHusSensorDescription(key="battery_status", icon="mdi:home-battery", device_class=SensorDeviceClass.ENUM,
-                              options=["charge", "discharge", "normal", "off"], value_fn=_battery_status),
+                              options=["charge", "discharge", "normal", "sell_solar", "off"], value_fn=_battery_status),
     SmartHusSensorDescription(key="status", icon="mdi:home-lightning-bolt", value_fn=_status),
     SmartHusSensorDescription(key="savings_today", icon="mdi:piggy-bank", value_fn=_savings("today"),
                               attrs_fn=_savings_attrs("today"), **MONEY),
@@ -228,6 +230,7 @@ def _reserve_attrs(c: SmartHusController) -> dict:
         "profile_updated": c.profile_updated.isoformat() if c.profile_updated else None,
         "profile_today": [round(v, 2) for v in p.hours_for(today)],
         "holding_for_reserve": c.reserve_holds,
+        "sell_solar": c.sell_solar,
     })
     return attrs
 

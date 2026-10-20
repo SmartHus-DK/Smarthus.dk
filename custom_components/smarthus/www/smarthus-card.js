@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.18.0";
+const SMARTHUS_CARD_VERSION = "1.19.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -61,6 +61,7 @@ const MODULES = [
       { title: "Opladning fra nettet", items: ["battery_charge_hours", ["battery_charge_from", "battery_charge_to"]] },
       { title: "Brug af batteriet", items: ["battery_discharge_hours", ["battery_discharge_from", "battery_discharge_to"]] },
       { title: "Grænser", items: ["battery_min_spread", "battery_min_soc", "battery_max_soc", "battery_capacity"] },
+      { title: "Solstrøm: sælg eller gem", items: ["battery_solar_sell_margin"] },
     ],
   },
   {
@@ -124,6 +125,7 @@ const NUMBER_LABELS = {
   battery_min_soc: "Laveste niveau",
   battery_max_soc: "Højeste niveau",
   battery_capacity: "Batteriets størrelse",
+  battery_solar_sell_margin: "Sælg når gevinsten er mindst",
   hotwater_hours: "Timer at opvarme",
   hotwater_boost_temp: "Opvarm til",
   hotwater_normal_temp: "Normal temperatur",
@@ -802,6 +804,7 @@ class SmartHusCard extends HTMLElement {
         const ra = r?.attributes || {};
         if (isOn("battery_charge_now")) return `${prefix}Lader fra nettet`;
         if (ra.holding_for_reserve) return `Gemmer ${nf(ra.reserve_kwh, 1)} kWh til huset`;
+        if (ra.sell_solar?.active) return `Sælger solstrøm · lader billigt senere`;
         if (isOn("battery_discharge_now")) return `${prefix}Sælger${ra.sellable_kwh != null ? ` · ${nf(ra.sellable_kwh, 1)} kWh tilbage at sælge` : ""}`;
         if (r && ra.reserve_kwh != null && ra.until) return `Reserve ${nf(ra.reserve_kwh, 1)} kWh til kl. ${hh(new Date(ra.until))}`;
         return `${prefix}${next("battery_charge_now") ? `Lader ${next("battery_charge_now")}` : "Normal drift"}`;
@@ -1198,22 +1201,60 @@ class SmartHusCard extends HTMLElement {
     const bars = prof.map((v, i) => `<i title="kl. ${String(i).padStart(2, "0")}: ${nf(v, 2)} kWh" style="height:${Math.max((v / max) * 100, 3)}%" class="${i === nowH ? "now" : i < nowH ? "past" : ""}"></i>`).join("");
     const until = a.until ? new Date(a.until) : null;
     const untilTxt = until ? `${until.getDate() !== new Date().getDate() ? "i morgen " : ""}kl. ${hh(until)}` : "";
-    const bat = a.battery_kwh, sell = a.sellable_kwh;
-    const total = Math.max((bat ?? 0), a.reserve_kwh + a.min_level_kwh, 0.01);
-    const seg = (v, c) => `<i style="width:${Math.max(Math.min(v / total, 1), 0) * 100}%;background:${c}"></i>`;
+    const bat = a.battery_kwh, sell = a.sellable_kwh ?? 0;
+    const floor = a.min_level_kwh || 0, need = a.reserve_kwh || 0;
+    const have = bat != null ? Math.min(need, Math.max(bat - floor, 0)) : 0;
+    const missing = bat != null ? Math.max(need - have, 0) : 0;
+    const total = Math.max((bat ?? 0) + missing, floor + need, 0.01);
+    const seg = (v, c, cls = "") => (v > 0.005 ? `<i class="${cls}" style="width:${Math.min(v / total, 1) * 100}%;--c:${c};background:${c}"></i>` : "");
+    // Forventet salg: kommende afladningsperioder og salgsprisen i dem
+    const sale = this._salePeriod("battery_discharge_now");
+    const charge = this._salePeriod("battery_charge_now");
+    const leg = (c, t, cls = "") => `<span><i class="${cls}" style="--c:${c};background:${c}"></i>${t}</span>`;
+    let result;
+    if (sell > 0.05) {
+      result = `Batteriet har ${nf(bat, 1)} kWh · må sælge <b>${nf(sell, 1)} kWh</b>${sale ? ` ${esc(sale.when)}` : " i de dyre timer"}`;
+      if (sale) result += `<div class="res-sale">Forventet salgspris ca. <b>${nf(sale.avgSale)} kr/kWh</b> → ca. <b>${nf(sell * sale.avgSale, 0)} kr</b></div>`;
+    } else {
+      result = `Batteriet har ${nf(bat, 1)} kWh · sælger ikke – strømmen skal bruges i huset`;
+      if (missing > 0.05) result += `<div class="res-sale">Mangler <b>${nf(missing, 1)} kWh</b> af reserven${charge ? ` – lades ${esc(charge.when)} til ca. ${nf(charge.avgBuy)} kr/kWh` : ""}</div>`;
+    }
+    const ss = a.sell_solar;
+    const solarLine = ss ? `<div class="res-solar ${ss.active ? "on" : ""}">
+        <b>${ss.active ? "Sælger solstrømmen nu" : "Solstrøm lades i batteriet"}</b> · salg nu ${nf(ss.sale_now)} kr/kWh mod at lade senere ${nf(ss.charge_price_later)} kr/kWh
+        ${ss.active ? `(gevinst ${nf(ss.gain_per_kwh)} kr/kWh)` : !ss.house_covered ? "– batteriet skal først have reserven til huset" : `– gevinsten ${nf(ss.gain_per_kwh)} kr/kWh er under grænsen ${nf(ss.margin)} kr/kWh`}
+      </div>` : "";
     return `
       <div class="cmp">
         <div class="cmp-title">Reserve til huset frem til ${untilTxt}</div>
-        <div class="res-line">Forventet forbrug <b>${nf(a.expected_house_kwh, 1)} kWh</b>${a.expected_solar_kwh > 0.05 ? ` − sol <b>${nf(a.expected_solar_kwh, 1)} kWh</b>` : ""} → gem <b>${nf(a.reserve_kwh, 1)} kWh</b></div>
+        <div class="res-line">Forventet forbrug <b>${nf(a.expected_house_kwh, 1)} kWh</b>${a.expected_solar_kwh > 0.05 ? ` − sol <b>${nf(a.expected_solar_kwh, 1)} kWh</b>` : ""} → gem <b>${nf(need, 1)} kWh</b></div>
         ${bat != null ? `
-        <div class="res-bar">${seg(a.min_level_kwh, COLORS.mid)}${seg(Math.min(a.reserve_kwh, Math.max(bat - a.min_level_kwh, 0)), COLORS.battery_charge)}${seg(sell, COLORS.battery_discharge)}</div>
-        <div class="res-leg"><span><i style="background:${COLORS.mid}"></i>Laveste niveau</span><span><i style="background:${COLORS.battery_charge}"></i>Reserve</span><span><i style="background:${COLORS.battery_discharge}"></i>Kan sælges</span></div>
-        <div class="cmp-result">Batteriet har ${nf(bat, 1)} kWh · ${sell > 0.05 ? `må sælge <b>${nf(sell, 1)} kWh</b> i de dyre timer` : "sælger ikke – strømmen skal bruges i huset"}</div>` :
+        <div class="res-bar">${seg(floor, COLORS.mid)}${seg(have, COLORS.battery_charge)}${seg(missing, COLORS.battery_charge, "miss")}${seg(sell, COLORS.battery_discharge)}</div>
+        <div class="res-leg">${leg(COLORS.mid, "Laveste niveau")}${leg(COLORS.battery_charge, "Reserve")}${missing > 0.05 ? leg(COLORS.battery_charge, "Mangler", "miss") : ""}${leg(COLORS.battery_discharge, `Kan sælges${sell > 0.05 ? "" : " (0 kWh)"}`)}</div>
+        <div class="cmp-result">${result}</div>${solarLine}` :
         `<div class="cmp-sub" style="margin-left:0">Vælg en sensor for batteriniveau for at se, hvor meget der må sælges.</div>`}
         <div class="prof-title">Husets forbrug pr. time (lært af ${nf(a.learned_days, 0)} dage)</div>
         <div class="prof">${bars}</div>
         <div class="prof-ticks"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>
       </div>`;
+  }
+
+  /** Kommende perioder for en plan (fx afladning) med gennemsnitlig salgs- og købspris. */
+  _salePeriod(key) {
+    const all = (this._st("binary_sensor", key)?.attributes?.slots || []).map((t) => new Date(t).getTime())
+      .filter((t) => t + 900e3 > Date.now()).sort((x, y) => x - y);
+    if (!all.length) return null;
+    // Kun den næste sammenhængende periode – det er den, der gælder frem til næste opladning
+    const slots = [all[0]];
+    for (const t of all.slice(1)) { if (t - slots[slots.length - 1] <= 900e3) slots.push(t); else break; }
+    const ps = this._st("sensor", "current_price")?.attributes || {};
+    const byStart = new Map([...(ps.today || []), ...(ps.tomorrow || [])].map((p) => [new Date(p.start).getTime(), p]));
+    const hits = slots.map((t) => byStart.get(t) || byStart.get(t - (t % 3600e3))).filter(Boolean);
+    if (!hits.length) return null;
+    const avg = (f) => hits.reduce((x, p) => x + (p[f] ?? 0), 0) / hits.length;
+    const first = upcoming(slots.map((t) => new Date(t).toISOString()))[0];
+    const when = first ? (first.active ? `nu–${first.text.split("–")[1]}` : first.text) : "";
+    return { when, avgSale: avg("sale"), avgBuy: avg("price") };
   }
 
   _evCompare(cid) {
@@ -1546,6 +1587,13 @@ class SmartHusCard extends HTMLElement {
       .res-bar { display: flex; gap: 2px; height: 10px; border-radius: 5px; overflow: hidden; margin: 10px 0 4px;
                  background: color-mix(in srgb, var(--primary-text-color) 6%, transparent); }
       .res-bar i { display: block; height: 100%; }
+      .res-bar i.miss, .res-leg i.miss { background: repeating-linear-gradient(135deg, var(--c) 0 3px, transparent 3px 6px) !important; opacity: .7; }
+      .res-sale { margin-top: 4px; font-size: 13px; color: var(--secondary-text-color); }
+      .res-sale b { color: var(--primary-text-color); font-variant-numeric: tabular-nums; }
+      .res-solar { margin-top: 10px; padding: 8px 10px; border-radius: 8px; font-size: 12.5px; line-height: 1.45; color: var(--secondary-text-color);
+                   background: color-mix(in srgb, ${COLORS.solar_sold || "#E0A21B"} 10%, transparent); }
+      .res-solar b { color: var(--primary-text-color); }
+      .res-solar.on { box-shadow: inset 3px 0 0 ${COLORS.solar_sold || "#E0A21B"}; }
       .res-leg { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--secondary-text-color); margin-bottom: 6px; }
       .res-leg i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
       .prof-title { margin-top: 12px; font-size: 12px; color: var(--secondary-text-color); }
