@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.17.3";
+const SMARTHUS_CARD_VERSION = "1.17.4";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -1454,10 +1454,10 @@ class SmartHusCard extends HTMLElement {
                    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
       @container (max-width: 520px) { .tile-line { display: none; } .tile-ic { width: 46px; height: 46px; } .tile-name { font-size: 12px; } .dock { gap: 4px; padding: 12px 10px; } }
       /* Indstillingspanel */
-      .panel { margin: 0 16px 12px; border-radius: 16px; box-shadow: inset 0 0 0 1px var(--sh-line); overflow: hidden; }
-      .panel.anim { animation: sh-panel .18s ease-out; }
+      section.panel { margin: 0 16px 12px; border-radius: 16px; box-shadow: inset 0 0 0 1px var(--sh-line); overflow: hidden; }
+      section.panel.anim { animation: sh-panel .18s ease-out; }
       @keyframes sh-panel { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
-      @media (prefers-reduced-motion: reduce) { .panel { animation: none; } }
+      @media (prefers-reduced-motion: reduce) { section.panel { animation: none; } }
       .panel-head { display: flex; align-items: center; gap: 12px; padding: 12px 12px 12px 16px; background: color-mix(in srgb, #1E9E5C 8%, transparent); border-bottom: 1px solid var(--sh-line); }
       .panel-ic { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: #1E9E5C; --sh-ic: #FFFFFF; }
       .panel-ic svg { width: 26px; height: 26px; }
