@@ -19,6 +19,9 @@ from .const import (
     EDS_DAYAHEAD_FROM,
     EDS_OLD_URL,
     CONF_SALE_FEE,
+    CONF_SL_PRICE_VAT,
+    CONF_SL_SPOT_VAT,
+    CONF_VAT,
     DEFAULT_PRICES,
     ACTION_CHARGE,
     ACTION_DISCHARGE,
@@ -104,6 +107,7 @@ from .profile import (EFFICIENCY, LEARN_DAYS, SUN_END, SUN_START, Profile, Reser
                       expected_load, grid_charge_target, solar_surplus)
 from .savings import SavingsCalculator
 from .flow import energy_flow, to_kw
+from .pricing import has_vat, vat_factor
 from .plug import pick_connected, plug_state
 from .solar import EvSolarState, regulate_ev
 from .weather import forecast_sensor_ids, merge_wh, pick_weather_entity, summarize_forecast
@@ -286,7 +290,11 @@ class SmartHusController:
             return out
 
         buy, spot = means(sl_price), means(sl_spot)
-        spot_vat = bool(sl_spot and sl_spot.endswith("_vat"))
+        # Samme momsvalg som de løbende priser (inkl./ekskl. moms i opsætningen)
+        want_vat = bool(self.config.get(CONF_VAT, DEFAULT_PRICES[CONF_VAT]))
+        f = vat_factor(has_vat(self.config.get(CONF_SL_PRICE_VAT), sl_price), want_vat)
+        buy = {t: p * f for t, p in buy.items()}
+        spot_vat = has_vat(self.config.get(CONF_SL_SPOT_VAT), sl_spot)
         fee = float(self.config.get(CONF_SALE_FEE, DEFAULT_PRICES[CONF_SALE_FEE]))
         missing = sorted(t for t in hours if t not in buy or t not in spot)
         eds = await self._async_eds_hourly_spot(missing[0], missing[-1]) if missing else {}
