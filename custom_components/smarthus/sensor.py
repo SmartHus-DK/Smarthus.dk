@@ -27,13 +27,14 @@ from .const import (
     CONF_HOUSE_ENERGY,
     CONF_SOLAR_ENERGY,
     CONF_SOLAR_FORECAST,
+    CONF_SOLAR_INVESTMENT,
     CONF_SOLAR_POWER,
     MODULE_BATTERY,
     MODULE_HEATING,
     MODULE_HOTWATER,
     MODULE_SOLAR,
 )
-from .savings import import_price
+from .savings import import_price, roi
 from .controller import SmartHusController
 from .entity import SmartHusEntity
 from .planner import EvPlan, Slot, car_settings, cheapest, local_days
@@ -331,6 +332,20 @@ GRID_SENSORS: tuple[SmartHusSensorDescription, ...] = tuple(
 )
 
 
+def _roi(c: SmartHusController) -> dict | None:
+    try:
+        inv = float(c.config.get(CONF_SOLAR_INVESTMENT) or 0)
+    except (TypeError, ValueError):
+        inv = 0.0
+    return roi(c.savings, inv, dt_util.now())
+
+
+ROI_SENSOR = SmartHusSensorDescription(
+    key="solar_roi", icon="mdi:cash-refund", native_unit_of_measurement="%", suggested_display_precision=1,
+    value_fn=lambda c: (round(r["earned"] / r["investment"] * 100, 1) if (r := _roi(c)) else None),
+    attrs_fn=lambda c: _roi(c) or {})
+
+
 FORECAST_SENSOR = SmartHusSensorDescription(
     key="solar_forecast", icon="mdi:solar-power-variant-outline", device_class=SensorDeviceClass.ENERGY,
     native_unit_of_measurement="kWh", suggested_display_precision=1,
@@ -347,6 +362,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
         entities += [SmartHusSensor(entry, controller, d) for d in RESERVE_SENSORS]
     if controller.has(CONF_SOLAR_ENERGY):
         entities += [SmartHusSensor(entry, controller, d) for d in SOLAR_SENSORS]
+        if controller.config.get(CONF_SOLAR_INVESTMENT):
+            entities.append(SmartHusSensor(entry, controller, ROI_SENSOR))
     if controller.has(CONF_IMPORT_ENERGY):
         entities += [SmartHusSensor(entry, controller, d) for d in GRID_SENSORS]
     if controller.has(CONF_SOLAR_ENERGY) or controller.has(CONF_SOLAR_POWER) or controller.has(CONF_SOLAR_FORECAST):

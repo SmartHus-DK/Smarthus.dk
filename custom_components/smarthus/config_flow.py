@@ -61,6 +61,7 @@ from .const import (
     SIGN_IMPORT_POSITIVE,
     CONF_HOUSE_ENERGY,
     CONF_SOLAR_FORECAST,
+    CONF_SOLAR_INVESTMENT,
     CONF_HOTWATER_ENTITY,
     CONF_MARKUP,
     CONF_NAME,
@@ -340,6 +341,9 @@ class SmartHusOptionsFlow(OptionsFlow):
         ]
         cur = {**self._current(), **(user_input or {})}
         schema = _entity_schema(fields, cur).extend({
+            vol.Optional(CONF_SOLAR_INVESTMENT, description={"suggested_value": cur.get(CONF_SOLAR_INVESTMENT)}):
+                selector.NumberSelector(selector.NumberSelectorConfig(
+                    min=0, max=10_000_000, step=1, unit_of_measurement="kr", mode=selector.NumberSelectorMode.BOX)),
             vol.Optional(CONF_GRID_POWER_SIGN, default=cur.get(CONF_GRID_POWER_SIGN) or SIGN_EXPORT_POSITIVE):
                 selector.SelectSelector(selector.SelectSelectorConfig(
                     options=[SIGN_EXPORT_POSITIVE, SIGN_IMPORT_POSITIVE], translation_key="grid_power_sign",

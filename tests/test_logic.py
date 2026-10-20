@@ -181,6 +181,56 @@ def test_solar_overview():
     assert calc.solar("year", "produced") == 0 and calc.solar("total", "produced") == 3.0
 
 
+def test_solar_export_not_lost_when_meters_update_out_of_step():
+    """Inverteren tæller i spring, elmåleren løbende – eksporten må ikke gå tabt."""
+    slots = model().build_slots(records("2026-10-18", CURVE))
+    calc = savings.SavingsCalculator()
+    s = slots[48]
+    t = s.start.astimezone(TZ)
+    avg = planner.avg(slots)
+    calc.update(t, s, avg, {"solar": 100.0, "export": 50.0})
+    # 4 minutter: eksport tikker løbende, inverteren springer først i sidste minut
+    calc.update(t, s, avg, {"solar": 100.0, "export": 50.2})
+    calc.update(t, s, avg, {"solar": 100.0, "export": 50.4})
+    calc.update(t, s, avg, {"solar": 100.0, "export": 50.6})
+    calc.update(t, s, avg, {"solar": 101.0, "export": 50.8})
+    assert calc.solar("today", "produced") == 1.0
+    assert calc.solar("today", "export_kwh") == 0.8
+    assert calc.solar("today", "self_kwh") == 0.2
+    # Egetforbrug falder igen, når eksporten "indhenter" produktionen
+    calc.update(t, s, avg, {"solar": 101.0, "export": 50.9})
+    assert calc.solar("today", "self_kwh") == 0.1 and calc.solar("today", "export_kwh") == 0.9
+    # Eksport kan ikke overstige produktionen (fx batteri der sælger)
+    calc.update(t, s, avg, {"solar": 101.0, "export": 52.0})
+    assert calc.solar("today", "export_kwh") == 1.0 and calc.solar("today", "self_kwh") == 0.0
+
+
+def test_rebuild_solar_from_history():
+    now = datetime(2026, 10, 20, 19, 0, tzinfo=TZ)
+    rows = [
+        {"start": datetime(2026, 7, 9, 12, tzinfo=TZ), "produced": 5.0, "export": 3.0, "import": 0.5, "price": 2.0, "sale": 1.0},
+        {"start": datetime(2026, 10, 19, 12, tzinfo=TZ), "produced": 4.0, "export": 5.0, "import": 1.0, "price": 2.5, "sale": 1.2},
+        {"start": datetime(2026, 10, 20, 9, tzinfo=TZ), "produced": 1.0, "export": None, "import": 2.0, "price": None, "sale": None},
+    ]
+    calc = savings.SavingsCalculator()
+    calc.data["last"] = {"solar": 1.0, "ev": 7.0}
+    res = calc.rebuild_solar(rows, now, {"solar": 1234.5, "export": 99.0, "import": None})
+    assert res["hours"] == 3 and res["hours_without_price"] == 1 and res["from"] == "2026-07-09"
+    assert calc.solar("total", "produced") == 10.0
+    assert calc.solar("total", "export_kwh") == 7.0          # 3 + min(5, 4) + 0
+    assert calc.solar("total", "self_kwh") == 3.0
+    assert calc.solar("total", "self_value") == 2 * 2.0 + 0 + 0
+    assert calc.solar("total", "export_income") == round(3 * 1.0 + 4 * 1.2, 2)
+    assert calc.solar("month", "produced") == 5.0 and calc.solar("today", "produced") == 1.0
+    assert calc.solar("year", "produced") == 10.0
+    assert [d["period"] for d in calc.solar_history()["days"]] == ["2026-07-09", "2026-10-19", "2026-10-20"]
+    assert calc.data["last"] == {"solar": 1234.5, "ev": 7.0, "export": 99.0}
+    # Den løbende optælling fortsætter fra historikkens slutning
+    s = model().build_slots(records("2026-10-20", CURVE))[76]
+    calc.update(now, s, 2.0, {"solar": 1235.5, "export": 99.0})
+    assert calc.solar("today", "produced") == 2.0
+
+
 def test_savings_migration():
     old = {"day": "2026-10-18", "month": "2026-10", "last": {},
            "today": {"battery": 1.0, "solar": 4.0, "ev": 2.0, "heatpump": 0.0},
@@ -536,3 +586,32 @@ def test_heating_whole_hours():
     assert not set(x.start for x in p.heating_boost) & set(x.start for x in p.heating_reduce)
     # De dyreste timer (kl. 16-20) bliver sparetimerne
     assert {a.astimezone(TZ).hour for a, _ in _blocks(p.heating_reduce)} <= {16, 17, 18}
+
+
+def test_solar_roi():
+    calc = savings.SavingsCalculator()
+    now = datetime(2026, 10, 20, 19, 0, tzinfo=TZ)
+    rows = [{"start": datetime(2026, 7, 11, 12, tzinfo=TZ), "produced": 1000.0, "export": 500.0,
+             "import": 0.0, "price": 2.0, "sale": 1.0}]
+    calc.rebuild_solar(rows, now)
+    assert savings.roi(calc, None, now) is None and savings.roi(calc, 0, now) is None
+    r = savings.roi(calc, 100000, now)
+    assert r["earned"] == 1500.0 and r["remaining"] == 98500.0 and r["since"] == "2026-07-11"
+    # 11. juli–20. oktober er ca. en tredjedel af et dansk solår
+    assert 4000 < r["per_year"] < 4700
+    assert r["payback_year"] > 2026 and r["payback_years"] == round(100000 / r["per_year"], 1)
+    # For lidt data: ingen tilbagebetalingstid endnu
+    calc2 = savings.SavingsCalculator()
+    calc2.rebuild_solar([{**rows[0], "start": datetime(2026, 10, 10, 12, tzinfo=TZ)}], now)
+    assert savings.roi(calc2, 100000, now)["payback_year"] is None
+
+
+def test_historic_elafgift():
+    m = model()
+    assert pricing.elafgift_at(datetime(2024, 6, 1, 12, tzinfo=TZ)) == 0.761
+    assert pricing.elafgift_at(datetime(2023, 3, 1, tzinfo=TZ)) == 0.008
+    assert pricing.elafgift_at(datetime(2026, 10, 1, tzinfo=TZ)) == 0.008
+    assert pricing.elafgift_at(datetime(2030, 1, 1, tzinfo=TZ)) is None
+    t = datetime(2025, 3, 1, 12, tzinfo=TZ)
+    # Historisk pris bruger datidens afgift; den løbende pris bruger den indstillede
+    assert round(m.buy_price(1.0, t, historic=True) - m.buy_price(1.0, t), 4) == round((0.720 - m.c[const.CONF_ELAFGIFT]) * 1.25, 4)

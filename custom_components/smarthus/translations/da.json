@@ -130,7 +130,8 @@
           "grid_power_sensor": "Effekt til/fra nettet lige nu (W eller kW) – valgfri",
           "grid_power_sign": "Hvad betyder et positivt tal?",
           "solar_power_sensor": "Solcelleproduktion lige nu (W eller kW) – valgfri",
-          "grid_import_energy_sensor": "Energimåler: købt fra nettet i alt (kWh) – valgfri"
+          "grid_import_energy_sensor": "Energimåler: købt fra nettet i alt (kWh) – valgfri",
+          "solar_investment": "Anlæggets pris (kr) – valgfri"
         },
         "data_description": {
           "solar_forecast_sensor": "Gør batteriets reserve mere præcis, fordi forventet sol trækkes fra. Solcast: sensor.solcast_pv_forecast_forecast_remaining_today. Forecast.Solar: sensor.energy_production_today_remaining.",
@@ -146,7 +147,8 @@
           "grid_power_sensor": "Bruges til solcelleoverskud – både til varmt vand og til elbilen. Vælg en effektsensor, der viser hvad huset sender ud på eller tager fra nettet lige nu, fx fra inverteren ('Grid active power', 'Meter power', 'Grid net power') eller en P1-måler.",
           "grid_power_sign": "Mange invertere viser eksport som positiv, P1-målere viser ofte køb som positiv. Tjek ved at se sensoren, mens solen skinner og huset sender strøm ud.",
           "solar_power_sensor": "Solcellernes effekt lige nu, fx sensor.[inverter]_power. Elbilen begynder først at lade med sol, når produktionen er over 'Start ved sol over' (fx 4 kW). Uden sensor bruges eksporten i stedet.",
-          "grid_import_energy_sensor": "En stigende måler (kWh) for al strøm, du har købt fra nettet, fx fra en P1-måler (HomeWizard, DSMR) eller inverteren ('Grid imported total'). Så viser kortet under Solceller, hvor meget du har købt, hvad det har kostet, og din gennemsnitspris."
+          "grid_import_energy_sensor": "En stigende måler (kWh) for al strøm, du har købt fra nettet, fx fra en P1-måler (HomeWizard, DSMR) eller inverteren ('Grid imported total'). Så viser kortet under Solceller, hvor meget du har købt, hvad det har kostet, og din gennemsnitspris.",
+          "solar_investment": "Hvad solcelleanlægget kostede i alt inkl. montering. Bruges til at vise, hvor stor en del af anlægget strømmen har tjent hjem (ROI) og hvornår det er tilbagebetalt."
         }
       },
       "ev": {
@@ -448,6 +450,9 @@
       },
       "battery_trade_total": {
         "name": "Batteri: tjent ved salg i alt"
+      },
+      "solar_roi": {
+        "name": "Solceller: tilbagebetalt"
       }
     },
     "binary_sensor": {
@@ -624,6 +629,18 @@
     "select": {
       "connected_car": {
         "name": "Tilsluttet bil"
+      }
+    }
+  },
+  "services": {
+    "import_solar_history": {
+      "name": "Importér solcellehistorik",
+      "description": "Genberegner solcellernes produktion, egetforbrug, salg og køb time for time ud fra Home Assistants historik og den faktiske elpris i hver time. Kan køres igen – regnskabet bygges forfra.",
+      "fields": {
+        "start_date": {
+          "name": "Startdato",
+          "description": "Første dag der regnes fra. Tom = så langt tilbage som der er historik."
+        }
       }
     }
   }

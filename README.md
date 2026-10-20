@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.19.2** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
+**Version 1.20.0** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
 
 SmartHus bruger strømmen, når den er billigst, og sparer, når den er dyrest. Den lader elbilen og batteriet i de billige timer, varmer vandet med billig strøm eller solcelleoverskud, skruer lidt op og ned for varmen og stopper salg af solstrøm, når prisen er for lav. Du ser det hele – og hvad du har sparet – på ét kort.
 
@@ -156,6 +156,10 @@ Det kræver en ekstra tilstand eller et script under Konfigurer → Batteri / in
 **Der er ingen solprognose.** Installér Forecast.Solar eller Solcast. Prognosen kan være op til 15 minutter om at dukke op.
 
 **Termostaten skifter tilbage, når jeg ændrer den.** Når styringen er slået til, holder SmartHus temperaturen. Slå styringen fra for området, hvis du vil styre selv.
+
+**Solcelleoverblikket har kun data fra de seneste dage.** Kør handlingen **SmartHus: Importér solcellehistorik** (Udviklerværktøjer → Handlinger → `smarthus.import_solar_history`). Den genberegner produktion, egetforbrug, salg og køb time for time ud fra Home Assistants historik og den faktiske elpris i hver time. Uden startdato starter den, når alle valgte energimålere har historik. Den kan køres igen – regnskabet bygges forfra, så intet tælles dobbelt.
+
+**Hvornår er solcellerne tjent hjem?** Skriv anlæggets pris under Konfigurér → Solceller → *Anlæggets pris*. Kortet viser så, hvor mange procent der er tilbagebetalt, og et skøn over, hvornår anlægget er tjent hjem (skønnet tager højde for, at solen giver mest om sommeren).
 
 **Logoet er hvidt i HACS.** HACS henter logoer fra Home Assistants fælles logo-side, hvor SmartHus ikke er med endnu. Det påvirker ikke integrationen.
 

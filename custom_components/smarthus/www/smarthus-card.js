@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.19.2";
+const SMARTHUS_CARD_VERSION = "1.20.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -442,6 +442,7 @@ class SmartHusCard extends HTMLElement {
           <span class="value">${nf(total, 0)}</span><span class="unit">kr</span>
           <span class="big-lbl">samlet værdi af din solcellestrøm</span>
         </button>
+        ${this._solarRoi()}
         <div class="kpis">
           ${this._kpi("Produceret", `${nf(produced, produced >= 100 ? 0 : 1)} kWh`, null, `solar_produced_${tab}`)}
           ${this._kpi("Sparet", `${nf(a.self_value, 0)} kr`, `${nf(a.self_kwh, 0)} kWh brugt selv`, `solar_saved_${tab}`, COLORS.solar_self)}
@@ -456,6 +457,23 @@ class SmartHusCard extends HTMLElement {
         ${this._solarForecast(true)}
         ${this._solarChart(tab)}
       </div>`;
+  }
+
+  /** Hvor stor en del af anlæggets pris strømmen har tjent hjem (kræver anlæggets pris i opsætningen). */
+  _solarRoi() {
+    const st = this._st("sensor", "solar_roi");
+    if (!st || st.state === "unavailable" || st.state === "unknown") return "";
+    const a = st.attributes || {};
+    const pct = parseFloat(st.state) || 0;
+    const sub = a.payback_year
+      ? `Anslået tilbagebetalt i ${a.payback_year} · ca. ${nf(a.per_year, 0)} kr/år`
+      : "Tilbagebetalingstid anslås efter en måneds data";
+    return `
+      <button class="roi" data-action="more" data-entity="${st.entity_id}" aria-label="Tilbagebetalt ${nf(pct, 1)} procent">
+        <div class="roi-top"><span class="roi-lbl"><ha-icon icon="mdi:cash-refund"></ha-icon>Tilbagebetalt</span><span class="roi-val">${nf(pct, 1)} %</span></div>
+        <div class="roi-bar"><i style="width:${Math.min(Math.max(pct, 0), 100)}%"></i></div>
+        <div class="roi-sub"><span>${nf(a.earned, 0)} af ${nf(a.investment, 0)} kr</span><span>${sub}</span></div>
+      </button>`;
   }
 
   /** Strøm købt fra nettet i perioden: mængde, pris, snitpris og hvor selvforsynende huset er. */
@@ -1450,6 +1468,14 @@ class SmartHusCard extends HTMLElement {
       .lg-dot:first-child { margin-left: 0; }
       .k-val { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
       .k-sub { font-size: 11px; color: var(--secondary-text-color); }
+      .roi { display: block; width: 100%; text-align: left; margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: rgba(63,168,143,.10); border: 1px solid rgba(63,168,143,.25); color: inherit; font: inherit; cursor: pointer; }
+      .roi-top { display: flex; justify-content: space-between; align-items: baseline; }
+      .roi-lbl { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
+      .roi-lbl ha-icon { --mdc-icon-size: 18px; color: ${COLORS.cheap}; }
+      .roi-val { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; color: ${COLORS.cheap}; }
+      .roi-bar { height: 8px; border-radius: 4px; background: rgba(127,127,127,.18); overflow: hidden; margin-top: 8px; }
+      .roi-bar i { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, ${COLORS.cheap}, #7BC043); }
+      .roi-sub { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 11px; color: var(--secondary-text-color); margin-top: 6px; }
       .share { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 14px; gap: 2px; }
       .share i { display: block; height: 100%; }
       .share-lbl { display: flex; justify-content: space-between; font-size: 11px; color: var(--secondary-text-color); margin-top: 4px; }

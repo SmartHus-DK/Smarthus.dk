@@ -1,0 +1,7 @@
+import_solar_history:
+  fields:
+    start_date:
+      required: false
+      example: "2024-01-01"
+      selector:
+        date:

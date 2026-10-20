@@ -9,7 +9,9 @@ from pathlib import Path
 from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
+from homeassistant.exceptions import HomeAssistantError
+import voluptuous as vol
 from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.helpers.typing import ConfigType
 
@@ -38,6 +40,27 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         add_extra_js_url(hass, f"{CARD_URL}?v={CARD_VERSION}")
     except Exception as err:  # noqa: BLE001 – kortet må aldrig stoppe integrationen
         _LOGGER.warning("Kunne ikke registrere SmartHus-kortet: %s", err)
+
+    async def _import_solar_history(call: ServiceCall) -> ServiceResponse:
+        """Genberegn solcelleregnskabet ud fra historikken (alle SmartHus-opsætninger)."""
+        results = {}
+        for entry in hass.config_entries.async_entries(DOMAIN):
+            data = getattr(entry, "runtime_data", None)
+            if data is None:
+                continue
+            try:
+                results[entry.title] = await data.controller.async_import_solar_history(call.data.get("start_date"))
+            except ValueError as err:
+                raise HomeAssistantError(str(err)) from err
+        if not results:
+            raise HomeAssistantError("SmartHus er ikke sat op")
+        return {"result": results}
+
+    hass.services.async_register(
+        DOMAIN, "import_solar_history", _import_solar_history,
+        schema=vol.Schema({vol.Optional("start_date"): cv.date}),
+        supports_response=SupportsResponse.OPTIONAL,
+    )
     return True
 
 

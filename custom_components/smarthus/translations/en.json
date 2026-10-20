@@ -123,7 +123,8 @@
           "grid_power_sensor": "Grid power right now (W or kW) – optional",
           "grid_power_sign": "What does a positive value mean?",
           "solar_power_sensor": "Solar production right now (W or kW) – optional",
-          "grid_import_energy_sensor": "Energy meter: grid import (kWh) – optional"
+          "grid_import_energy_sensor": "Energy meter: grid import (kWh) – optional",
+          "solar_investment": "System price (DKK) – optional"
         },
         "data_description": {
           "solar_forecast_sensor": "Makes the battery reserve more accurate by subtracting expected solar. Solcast: sensor.solcast_pv_forecast_forecast_remaining_today. Forecast.Solar: sensor.energy_production_today_remaining. Without a forecast, solar is assumed not to cover any house consumption – the cautious choice.",
@@ -139,7 +140,8 @@
           "grid_power_sensor": "Used for solar surplus (hot water and EV). A power sensor showing export/import right now.",
           "grid_power_sign": "Many inverters show export as positive; P1 meters often show import as positive.",
           "solar_power_sensor": "Current solar power. EV solar charging starts when production is above 'Start at solar above'. Without it, export is used.",
-          "grid_import_energy_sensor": "Increasing meter (kWh) of all energy bought from the grid, e.g. from a P1 meter. The card then shows how much you bought, what it cost and your average price."
+          "grid_import_energy_sensor": "Increasing meter (kWh) of all energy bought from the grid, e.g. from a P1 meter. The card then shows how much you bought, what it cost and your average price.",
+          "solar_investment": "What the solar system cost in total incl. installation. Used to show how much of the system has been paid back (ROI) and when it will be paid back."
         }
       },
       "ev": {
@@ -436,6 +438,9 @@
       },
       "battery_trade_total": {
         "name": "Battery: trading profit total"
+      },
+      "solar_roi": {
+        "name": "Solar: paid back"
       }
     },
     "binary_sensor": {
@@ -612,6 +617,18 @@
     "select": {
       "connected_car": {
         "name": "Connected car"
+      }
+    }
+  },
+  "services": {
+    "import_solar_history": {
+      "name": "Import solar history",
+      "description": "Rebuilds solar production, self-consumption, export and grid import hour by hour from Home Assistant's long-term statistics and the actual electricity price for each hour. Safe to run again – the figures are rebuilt from scratch.",
+      "fields": {
+        "start_date": {
+          "name": "Start date",
+          "description": "First day to include. Empty = as far back as history goes."
+        }
       }
     }
   }

@@ -15,6 +15,11 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    API_URL,
+    EDS_DAYAHEAD_FROM,
+    EDS_OLD_URL,
+    CONF_SALE_FEE,
+    DEFAULT_PRICES,
     ACTION_CHARGE,
     ACTION_DISCHARGE,
     ACTION_NORMAL,
@@ -198,6 +203,151 @@ class SmartHusController:
             self._unsub_learn = async_track_time_change(self.hass, self.async_learn, hour=0, minute=20, second=30)
             self._unsub_learn_first = async_call_later(self.hass, 60, self.async_learn)
         self.recalculate()
+
+    async def async_import_solar_history(self, start_date=None) -> dict:
+        """Genberegn solcelleregnskabet time for time ud fra Home Assistants langtidsstatistik.
+
+        Bruger produktion, eksport og køb fra de valgte energimålere og den faktiske pris i
+        hver time (Strømlignings historik, ellers spotpris fra Energi Data Service + prismodel).
+        Kan køres igen når som helst – regnskabet bygges forfra, så intet tælles dobbelt.
+        """
+        from homeassistant.components.recorder import get_instance
+        from homeassistant.components.recorder.statistics import statistics_during_period
+
+        def ts_any(row) -> datetime:
+            st = row.get("start")
+            return datetime.fromtimestamp(st, dt_util.UTC) if isinstance(st, (int, float)) else st
+
+        meters = {n: self.config.get(k) for n, k in (("solar", CONF_SOLAR_ENERGY), ("export", CONF_EXPORT_ENERGY),
+                                                     ("import", CONF_IMPORT_ENERGY)) if self.config.get(k)}
+        if "solar" not in meters and "import" not in meters:
+            raise ValueError("Der er ikke valgt en energimåler for solceller eller køb fra nettet")
+        end = dt_util.now().replace(minute=0, second=0, microsecond=0)
+        rec = get_instance(self.hass)
+        if start_date:
+            start = dt_util.start_of_local_day(start_date)
+        else:
+            # Så langt tilbage som målerne har historik (langtidsstatistik gemmes uden udløb)
+            monthly = await rec.async_add_executor_job(
+                statistics_during_period, self.hass, datetime(2000, 1, 1, tzinfo=dt_util.UTC), end,
+                set(meters.values()), "month", {"energy": "kWh"}, {"change"},
+            )
+            firsts = [ts_any(rows[0]) for rows in monthly.values() if rows]
+            if not firsts:
+                raise ValueError("Ingen historik fundet for de valgte energimålere")
+            start = min(firsts)
+        stats = await rec.async_add_executor_job(
+            statistics_during_period, self.hass, start, end, set(meters.values()), "hour",
+            {"energy": "kWh"}, {"change", "state"},
+        )
+        price_ids = set()
+        sl_price = sl_spot = None
+        if self.coordinator.uses_stromligning:
+            sl_price, sl_spot = self.coordinator.sl_entities[0], self.coordinator.sl_spot
+            price_ids = {e for e in (sl_price, sl_spot) if e}
+        pstats = await rec.async_add_executor_job(
+            statistics_during_period, self.hass, start, end, price_ids, "hour", None, {"mean", "state"},
+        ) if price_ids else {}
+
+        def ts(row) -> datetime:
+            st = row.get("start")
+            return datetime.fromtimestamp(st, self.tz) if isinstance(st, (int, float)) else dt_util.as_local(st)
+
+        no_stats = [e for e in meters.values() if not stats.get(e)]
+        if no_stats:
+            raise ValueError(
+                "Ingen langtidsstatistik for: " + ", ".join(no_stats)
+                + ". Målerne skal have state_class 'total' eller 'total_increasing' (de kan ses i Energi-panelet).")
+        hours: dict[datetime, dict] = {}
+        last: dict[str, float] = {}
+        for name, entity_id in meters.items():
+            rows = stats.get(entity_id, [])
+            for row in rows:
+                if row.get("change") is not None:
+                    hours.setdefault(ts(row), {})[name] = float(row["change"])
+            if rows and rows[-1].get("state") is not None:
+                last[name] = float(rows[-1]["state"])  # målerens værdi ved historikkens slutning
+        if not hours:
+            raise ValueError("Ingen historik fundet for de valgte energimålere")
+        if not start_date:
+            # Start først, når alle målere har historik – ellers ser fx timer uden eksportmåler
+            # ud som 100 % egetforbrug
+            firsts = [ts(rows[0]) for rows in (stats.get(e, []) for e in meters.values()) if rows]
+            begin = max(firsts)
+            hours = {t: v for t, v in hours.items() if t >= begin}
+
+        def means(entity_id) -> dict[datetime, float]:
+            # Pris-sensorer med state_class "total" har ingen middelværdi – brug så timens pris
+            out = {}
+            for r in pstats.get(entity_id, []):
+                v = r.get("mean") if r.get("mean") is not None else r.get("state")
+                if v is not None:
+                    out[ts(r)] = float(v)
+            return out
+
+        buy, spot = means(sl_price), means(sl_spot)
+        spot_vat = bool(sl_spot and sl_spot.endswith("_vat"))
+        fee = float(self.config.get(CONF_SALE_FEE, DEFAULT_PRICES[CONF_SALE_FEE]))
+        missing = sorted(t for t in hours if t not in buy or t not in spot)
+        eds = await self._async_eds_hourly_spot(missing[0], missing[-1]) if missing else {}
+
+        rows = []
+        for t, v in hours.items():
+            s_eds = eds.get(t)
+            price = buy.get(t)
+            if price is None and s_eds is not None:
+                price = self.coordinator.model.buy_price(s_eds, t, historic=True)
+            if t in spot:
+                sale = (spot[t] / 1.25 if spot_vat else spot[t]) - fee
+            elif s_eds is not None:
+                sale = self.coordinator.model.sale_price(s_eds)
+            else:
+                sale = None
+            rows.append({"start": t, "produced": v.get("solar"), "export": v.get("export"),
+                         "import": v.get("import"), "price": price, "sale": sale})
+        summary = self.savings.rebuild_solar(rows, dt_util.now(), last)
+        await self._store.async_save(self.savings.data)
+        async_dispatcher_send(self.hass, SIGNAL_TICK.format(entry_id=self.entry.entry_id))
+        _LOGGER.info("SmartHus: solcellehistorik genberegnet: %s", summary)
+        return summary
+
+    async def _async_eds_hourly_spot(self, first: datetime, last: datetime) -> dict[datetime, float]:
+        """Spotpris pr. time (kr/kWh, uden moms) fra Energi Data Service for en periode."""
+        import asyncio
+        import json
+
+        out: dict[datetime, list[float]] = {}
+        day = first.date()
+        while day <= last.date():
+            # Energi Data Service: "Elspotprices" (timepriser) til og med 30/9 2025,
+            # derefter "DayAheadPrices" (kvarterpriser)
+            new_from = EDS_DAYAHEAD_FROM
+            to = min(day + timedelta(days=31), last.date() + timedelta(days=1))
+            old_ds = day < new_from
+            if old_ds:
+                to = min(to, new_from)
+            url, tcol, pcol = (EDS_OLD_URL, "HourUTC", "SpotPriceDKK") if old_ds else (API_URL, "TimeUTC", "DayAheadPriceDKK")
+            params = {"start": day.isoformat(), "end": to.isoformat(),
+                      "filter": json.dumps({"PriceArea": [self.coordinator.area]}),
+                      "columns": f"{tcol},{pcol}", "sort": f"{tcol} ASC", "limit": "10000"}
+            try:
+                async with asyncio.timeout(60):
+                    async with self.coordinator._session.get(url, params=params) as resp:  # noqa: SLF001
+                        resp.raise_for_status()
+                        payload = await resp.json()
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.warning("SmartHus: kunne ikke hente historiske spotpriser %s–%s: %s", day, to, err)
+                payload = {}
+            for r in payload.get("records", []):
+                if r.get(pcol) is None or not r.get(tcol):
+                    continue
+                t = datetime.fromisoformat(r[tcol])
+                if t.tzinfo is None:
+                    t = t.replace(tzinfo=dt_util.UTC)
+                t = dt_util.as_local(t)
+                out.setdefault(t.replace(minute=0, second=0, microsecond=0), []).append(r[pcol] / 1000)
+            day = to
+        return {t: sum(v) / len(v) for t, v in out.items()}
 
     async def async_learn(self, *_args) -> None:
         """Lær husets forbrug pr. time ud fra de seneste dages historik (langtidsstatistik)."""

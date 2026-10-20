@@ -92,6 +92,32 @@ def apply_external_spot(slots: list[Slot], prices: list[tuple[datetime, float]],
     return out, hits
 
 
+# Elafgift (kr/kWh uden moms) for almindeligt forbrug – bruges når gammel historik prisfastsættes.
+# Kilde: Skatteforvaltningens satser. (fra-dato, sats); den seneste dato før tidspunktet gælder.
+ELAFGIFT_HISTORY: tuple[tuple[str, float], ...] = (
+    ("2022-01-01", 0.903),
+    ("2022-07-01", 0.763),
+    ("2022-10-01", 0.723),
+    ("2023-01-01", 0.008),
+    ("2023-07-01", 0.697),
+    ("2024-01-01", 0.761),
+    ("2025-01-01", 0.720),
+    ("2026-01-01", 0.008),
+)
+
+
+def elafgift_at(when: datetime, tz: tzinfo | None = None) -> float | None:
+    """Elafgiften på et tidspunkt ud fra tabellen (None efter tabellens sidste kendte år)."""
+    d = (when.astimezone(tz) if tz else when).date().isoformat()
+    if d >= "2028-01-01":
+        return None  # ukendt – brug den indstillede sats
+    rate = ELAFGIFT_HISTORY[0][1]
+    for start, r in ELAFGIFT_HISTORY:
+        if d >= start:
+            rate = r
+    return rate
+
+
 class PriceModel:
     """Samlet pris = (spot + leverandørtillæg + nettarif + Energinet + elafgift) × moms."""
 
@@ -112,13 +138,17 @@ class PriceModel:
             key = CONF_T_SUMMER_HIGH if summer else CONF_T_WINTER_HIGH
         return float(self.c[key])
 
-    def buy_price(self, spot: float, when: datetime) -> float:
+    def buy_price(self, spot: float, when: datetime, historic: bool = False) -> float:
+        """Købspris. `historic`: brug den elafgift, der gjaldt på tidspunktet (til import af historik)."""
+        afgift = float(self.c[CONF_ELAFGIFT])
+        if historic and (old := elafgift_at(when, self.tz)) is not None:
+            afgift = old
         total = (
             spot
             + float(self.c[CONF_MARKUP])
             + self.net_tariff(when)
             + float(self.c[CONF_ENERGINET])
-            + float(self.c[CONF_ELAFGIFT])
+            + afgift
         )
         if self.c[CONF_VAT]:
             total *= 1.25
