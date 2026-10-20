@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.17.2";
+const SMARTHUS_CARD_VERSION = "1.17.3";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -414,7 +414,7 @@ class SmartHusCard extends HTMLElement {
         <div class="kpis">
           ${this._kpi("Produceret", `${nf(produced, produced >= 100 ? 0 : 1)} kWh`, null, `solar_produced_${tab}`)}
           ${this._kpi("Sparet", `${nf(a.self_value, 0)} kr`, `${nf(a.self_kwh, 0)} kWh brugt selv`, `solar_saved_${tab}`, COLORS.solar_self)}
-          ${this._kpi("Tjent ved salg", noExport ? "–" : `${nf(a.export_income, 0)} kr`, noExport ? "Kræver eksportmåler" : `${nf(a.export_kwh, 0)} kWh solgt`, `solar_sold_${tab}`, COLORS.solar_sold)}
+          ${this._kpi("Tjent ved salg", noExport ? "–" : `${nf(a.export_income, 0)} kr`, noExport ? "Kræver eksportmåler" : `${nf(a.export_kwh, 0)} kWh solgt${a.export_kwh > 0.05 ? `<br>snit ${nf(a.export_income / a.export_kwh, 2)} kr/kWh` : ""}`, `solar_sold_${tab}`, COLORS.solar_sold)}
         </div>
         ${produced > 0 && !noExport ? `
         <div class="share" aria-label="Egetforbrug ${Math.round(selfShare * 100)} procent">

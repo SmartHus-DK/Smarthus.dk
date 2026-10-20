@@ -261,6 +261,8 @@ def _solar_value_attrs(bucket: str):
         attrs = c.savings.solar_attrs(bucket)
         attrs["has_export_meter"] = c.has(CONF_EXPORT_ENERGY)
         attrs["has_import_meter"] = c.has(CONF_IMPORT_ENERGY)
+        exp = attrs.get("export_kwh") or 0
+        attrs["export_price"] = round(attrs.get("export_income", 0) / exp, 3) if exp > 0.05 else None
         if c.has(CONF_IMPORT_ENERGY):
             attrs["import_price"] = import_price(c.savings.data["solar"][bucket])
         if bucket == "total":
