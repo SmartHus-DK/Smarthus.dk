@@ -28,6 +28,7 @@ from .const import (
     CONF_BATTERY_OPT_SELL_SOLAR,
     ACTION_SELL_SOLAR,
     S_SOLAR_SELL_MARGIN,
+    S_BATTERY_MAX_SOC,
     BATTERY_SCRIPTS,
     CONF_HUAWEI_DEVICE,
     CONF_HUAWEI_POWER,
@@ -94,7 +95,8 @@ from .const import (
 )
 from .coordinator import SmartHusPriceCoordinator
 from .planner import CarInput, Plan, build_plan, car_settings, heating_outdoor_ok
-from .profile import EFFICIENCY, LEARN_DAYS, Profile, Reserve, build_profile, calc_reserve
+from .profile import (EFFICIENCY, LEARN_DAYS, SUN_END, SUN_START, Profile, Reserve, build_profile, calc_reserve,
+                      expected_load, grid_charge_target, solar_surplus)
 from .savings import SavingsCalculator
 from .flow import energy_flow, to_kw
 from .plug import pick_connected, plug_state
@@ -141,6 +143,7 @@ class SmartHusController:
         self.reserve: Reserve | None = None
         self.reserve_holds = False  # True når salg fra batteriet er sat på pause for at gemme reserven
         self.sell_solar: dict | None = None  # beslutning om at sælge solstrøm i stedet for at lade batteriet
+        self.grid_charge: dict | None = None  # hvor meget der lades fra nettet, når solen kan fylde resten
         self._unsub_learn = None
         self._unsub_learn_first = None
         self._store: Store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}.savings")
@@ -255,6 +258,7 @@ class SmartHusController:
     def _update_reserve(self) -> None:
         self.reserve, self.reserve_holds = None, False
         self.sell_solar = None
+        self.grid_charge = None
         if not self.has(CONF_HOUSE_ENERGY) or not self.has_battery_control or not self.profile.ready:
             return
         now = dt_util.utcnow()
@@ -271,7 +275,63 @@ class SmartHusController:
                 and self.reserve.sellable_kwh <= 0.05:
             self.plan.battery_action = ACTION_NORMAL
             self.reserve_holds = True
+        self._decide_grid_charge(now)
         self._decide_sell_solar(now)
+
+    def _decide_grid_charge(self, now: datetime) -> None:
+        """Lad kun fra nettet, hvad solen ikke selv kan fylde.
+
+        Er der en planlagt netopladning, og forventer solprognosen et overskud (efter husets forbrug),
+        lades batteriet kun op til: laveste niveau + husets forbrug indtil solen giver overskud – eller
+        så meget, at solen kan fylde resten. Kan det betale sig at sælge solstrømmen i stedet
+        (salgspris midt på dagen > nettopladningens pris inkl. tab + margin), lades der fuldt.
+        """
+        self.grid_charge = None
+        p = self.plan
+        if p.current is None or p.battery_action != ACTION_CHARGE or p.current not in p.battery_charge:
+            return
+        soc = self._float_state(self.config.get(CONF_BATTERY_SOC))
+        if soc is None:
+            return
+        fc = self.solar_forecast
+        local = now.astimezone(self.tz)
+        if local.hour < SUN_START:
+            day, kwh, from_h = local, fc.get("today_kwh"), SUN_START
+        elif local.hour < SUN_END - 3:
+            day, kwh, from_h = local, fc.get("remaining_kwh"), local.hour
+        else:
+            day, kwh, from_h = local + timedelta(days=1), fc.get("tomorrow_kwh"), SUN_START
+        if kwh is None:
+            return
+        surplus = solar_surplus(self.profile, day, kwh, from_h)
+        sun_at = day.replace(hour=min(max(from_h, SUN_START) + 3, 23), minute=0, second=0, microsecond=0)
+        until_sun = expected_load(self.profile, local, max(sun_at, local))
+        cap, mx, mn = self.settings[S_BATTERY_CAPACITY], self.settings[S_BATTERY_MAX_SOC], self.settings[S_BATTERY_MIN_SOC]
+        target = grid_charge_target(capacity=cap, min_soc=mn, max_soc=mx, surplus_kwh=surplus, until_sun_kwh=until_sun)
+        # Er salg af solstrøm midt på dagen bedre end at bruge den selv? Så lades der fuldt fra nettet.
+        mid = [s for s in (self.coordinator.data or [])
+               if s.start.astimezone(self.tz).date() == day.date() and 10 <= s.start.astimezone(self.tz).hour < 15]
+        sale_mid = sum(s.sale for s in mid) / len(mid) if mid else None
+        margin = float(self.settings.get(S_SOLAR_SELL_MARGIN, 0.10))
+        sell_better = (self.has_sell_solar and sale_mid is not None
+                       and sale_mid - p.current.price / EFFICIENCY >= margin)
+        if sell_better:
+            target = cap * mx / 100
+        soc_kwh = cap * soc / 100
+        skip = soc_kwh >= target - 0.05
+        self.grid_charge = {
+            "target_kwh": round(target, 2),
+            "target_soc": round(min(target / cap * 100, mx), 0) if cap else None,
+            "solar_forecast_kwh": round(kwh, 2),
+            "solar_surplus_kwh": round(surplus, 2),
+            "house_until_sun_kwh": round(until_sun, 2),
+            "sale_midday": round(sale_mid, 3) if sale_mid is not None else None,
+            "charge_price": round(p.current.price, 3),
+            "sell_solar_better": sell_better,
+            "skipping": skip,
+        }
+        if skip:
+            p.battery_action = ACTION_NORMAL
 
     def _decide_sell_solar(self, now: datetime) -> None:
         """Sælg solstrømmen nu og lad batteriet billigt senere – hvis det betaler sig og huset er dækket.

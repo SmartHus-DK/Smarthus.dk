@@ -129,3 +129,23 @@ def calc_reserve(profile: Profile, now: datetime, until: datetime, *, soc: float
         r.battery_kwh = capacity * soc / 100
         r.sellable_kwh = max(r.battery_kwh - r.floor_kwh - need, 0.0)
     return r
+
+
+def solar_surplus(profile: Profile, day: datetime, forecast_kwh: float | None, from_hour: int = SUN_START) -> float:
+    """Forventet solcelleoverskud (kWh) en dag: prognose minus husets forbrug i soltimerne."""
+    if not forecast_kwh or forecast_kwh <= 0:
+        return 0.0
+    hours = profile.hours_for(day)
+    load = sum(hours[h] for h in range(max(from_hour, SUN_START), SUN_END))
+    return max(forecast_kwh - load, 0.0)
+
+
+def grid_charge_target(*, capacity: float, min_soc: float, max_soc: float, surplus_kwh: float,
+                       until_sun_kwh: float) -> float:
+    """Hvor mange kWh batteriet bør have efter netopladning, når solen fylder resten.
+
+    Mindst laveste niveau + husets forbrug indtil solen giver overskud – højst fuldt (maks. niveau).
+    """
+    full = capacity * max_soc / 100
+    floor = capacity * min_soc / 100
+    return min(full, max(floor + until_sun_kwh / EFFICIENCY, full - surplus_kwh))

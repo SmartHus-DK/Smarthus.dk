@@ -277,6 +277,33 @@ async def main():
     c.plan.current = mk(0, 1.0, 0.50); c.reserve = prof.Reserve(reserve_kwh=4, sellable_kwh=3, battery_kwh=9)
     c._decide_sell_solar(now)
     assert c.plan.battery_action == "normal"
+    # 19) Netopladning springes over, når solen forventes at fylde batteriet
+    class C(ctl_mod.SmartHusController):
+        fc = {}
+        @property
+        def solar_forecast(self): return self.fc
+    night = datetime(2026, 6, 10, 0, 30, tzinfo=timezone.utc)   # 02:30 dansk tid
+    c, h = make({"battery_mode_entity": "select.mode", "battery_soc_sensor": "sensor.soc"},
+                {"sensor.soc": State("40")})
+    c.__class__ = C
+    c.coordinator = types.SimpleNamespace(data=[])
+    c.profile = prof.build_profile([(datetime(2026, 6, 1, tzinfo=timezone.utc) + timedelta(hours=i), 0.5) for i in range(7 * 24)])
+    slot = planner.Slot(night, night + timedelta(minutes=15), 0, 0.8, 0.2)
+    c.plan.current = slot; c.plan.battery_charge = [slot]; c.plan.battery_action = "charge"
+    c.settings["battery_capacity"] = 10
+    C.fc = {"today_kwh": 30.0}                                   # sol nok til at fylde batteriet
+    c._decide_grid_charge(night)
+    # 40 % er for lidt til natten og morgenen: lad kun op til ca. 49 % (1,5 kWh + 3,25 kWh / 0,95)
+    assert c.plan.battery_action == "charge" and c.grid_charge["target_soc"] == 49, c.grid_charge
+    h.states.get = {"sensor.soc": State("55")}.get; c.plan.battery_action = "charge"
+    c._decide_grid_charge(night)
+    assert c.plan.battery_action == "normal" and c.grid_charge["skipping"], c.grid_charge
+    c.plan.battery_action = "charge"; C.fc = {"today_kwh": 2.0}  # gråvejr: lad op
+    c._decide_grid_charge(night)
+    assert c.plan.battery_action == "charge" and not c.grid_charge["skipping"], c.grid_charge
+    c.plan.battery_action = "charge"; C.fc = {}                  # ingen prognose: uændret
+    c._decide_grid_charge(night)
+    assert c.plan.battery_action == "charge" and c.grid_charge is None
     print("controller OK")
 
 def test_controller_control():

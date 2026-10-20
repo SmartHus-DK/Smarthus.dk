@@ -802,9 +802,10 @@ class SmartHusCard extends HTMLElement {
       case "battery": {
         const r = this._st("sensor", "battery_reserve");
         const ra = r?.attributes || {};
-        if (isOn("battery_charge_now")) return `${prefix}Lader fra nettet`;
+        if (isOn("battery_charge_now") && !ra.grid_charge?.skipping) return `${prefix}Lader fra nettet${ra.grid_charge && !ra.grid_charge.sell_solar_better ? ` til ${nf(ra.grid_charge.target_soc, 0)} %` : ""}`;
         if (ra.holding_for_reserve) return `Gemmer ${nf(ra.reserve_kwh, 1)} kWh til huset`;
         if (ra.sell_solar?.active) return `Sælger solstrøm · lader billigt senere`;
+        if (ra.grid_charge?.skipping) return "Lader ikke fra nettet – solen fylder batteriet";
         if (isOn("battery_discharge_now")) return `${prefix}Sælger${ra.sellable_kwh != null ? ` · ${nf(ra.sellable_kwh, 1)} kWh tilbage at sælge` : ""}`;
         if (r && ra.reserve_kwh != null && ra.until) return `Reserve ${nf(ra.reserve_kwh, 1)} kWh til kl. ${hh(new Date(ra.until))}`;
         return `${prefix}${next("battery_charge_now") ? `Lader ${next("battery_charge_now")}` : "Normal drift"}`;
@@ -1220,10 +1221,24 @@ class SmartHusCard extends HTMLElement {
       if (missing > 0.05) result += `<div class="res-sale">Mangler <b>${nf(missing, 1)} kWh</b> af reserven${charge ? ` – lades ${esc(charge.when)} til ca. ${nf(charge.avgBuy)} kr/kWh` : ""}</div>`;
     }
     const ss = a.sell_solar;
-    const solarLine = ss ? `<div class="res-solar ${ss.active ? "on" : ""}">
-        <b>${ss.active ? "Sælger solstrømmen nu" : "Solstrøm lades i batteriet"}</b> · salg nu ${nf(ss.sale_now)} kr/kWh mod at lade senere ${nf(ss.charge_price_later)} kr/kWh
-        ${ss.active ? `(gevinst ${nf(ss.gain_per_kwh)} kr/kWh)` : !ss.house_covered ? "– batteriet skal først have reserven til huset" : `– gevinsten ${nf(ss.gain_per_kwh)} kr/kWh er under grænsen ${nf(ss.margin)} kr/kWh`}
-      </div>` : "";
+    let solarLine = "";
+    if (ss) {
+      const why = ss.active
+        ? `Salg giver ${nf(ss.sale_now)} kr/kWh, og det koster kun ${nf(ss.charge_price_later)} kr/kWh (plus tab) at lade batteriet fra nettet senere.`
+        : !ss.house_covered
+          ? "Batteriet skal først have reserven til huset."
+          : `Salg giver kun ${nf(ss.sale_now)} kr/kWh, mens det koster ${nf(ss.charge_price_later)} kr/kWh (plus tab) at lade fra nettet senere – så solstrømmen er mere værd i batteriet.`;
+      solarLine = `<div class="res-solar ${ss.active ? "on" : ""}"><b>${ss.active ? "Sælger solstrømmen nu" : "Gemmer solstrømmen i batteriet"}</b> · ${why}</div>`;
+    }
+    const gc = a.grid_charge;
+    if (gc) {
+      const txt = gc.sell_solar_better
+        ? `<b>Lader fuldt fra nettet</b> · solstrømmen kan sælges dyrere midt på dagen (${nf(gc.sale_midday)} kr/kWh).`
+        : gc.skipping
+          ? `<b>Lader ikke fra nettet</b> · solen forventes at give ca. ${nf(gc.solar_surplus_kwh, 0)} kWh overskud, og batteriet har nok til huset, til solen tager over.`
+          : `<b>Lader kun til ${nf(gc.target_soc, 0)} % fra nettet</b> · solen forventes at fylde resten (ca. ${nf(gc.solar_surplus_kwh, 0)} kWh overskud).`;
+      solarLine += `<div class="res-solar on">${txt}</div>`;
+    }
     return `
       <div class="cmp">
         <div class="cmp-title">Reserve til huset frem til ${untilTxt}</div>
