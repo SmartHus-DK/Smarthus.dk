@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.17.4";
+const SMARTHUS_CARD_VERSION = "1.18.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -331,6 +331,32 @@ class SmartHusCard extends HTMLElement {
     return out;
   }
 
+  /** Klokken og datoen øverst på kortet. */
+  _clockHtml() {
+    const d = new Date();
+    const time = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+    const long = cap(d.toLocaleDateString("da-DK", { weekday: "long", day: "numeric", month: "long" }));
+    const short = cap(d.toLocaleDateString("da-DK", { weekday: "short", day: "numeric", month: "short" }));
+    return `<span class="clock-time">${time}</span><span class="clock-date long">${esc(long)}</span><span class="clock-date short">${esc(short)}</span>`;
+  }
+
+  // Klokken tikker selv – uden at hele kortet tegnes forfra
+  connectedCallback() {
+    clearInterval(this._clockTimer);
+    this._clockTimer = setInterval(() => {
+      const el = this.shadowRoot.querySelector(".clock");
+      if (el) {
+        const html = this._clockHtml();
+        if (el.innerHTML !== html) el.innerHTML = html;
+      }
+    }, 5000);
+  }
+
+  disconnectedCallback() {
+    clearInterval(this._clockTimer);
+  }
+
   _renderHeader() {
     const price = this._num("sensor", "current_price");
     const sale = this._num("sensor", "sale_price");
@@ -349,7 +375,10 @@ class SmartHusCard extends HTMLElement {
             ${this._config.logo ? `<img class="logo" src="${esc(this._config.logo)}" alt="" onerror="this.remove()">` : ""}
             <div class="title">${esc(this._config.title)}</div>
           </div>
-          ${master ? this._toggle(master.entity_id, masterOn, masterOn ? "Styring til" : "Styring fra") : ""}
+          <div class="title-end">
+            ${this._config.clock === false ? "" : `<div class="clock">${this._clockHtml()}</div>`}
+            ${master ? this._toggle(master.entity_id, masterOn, masterOn ? "Styring til" : "Styring fra") : ""}
+          </div>
         </div>
         <div class="now level-${level}">
           <div class="price"><span class="value">${nf(price)}</span><span class="unit">kr/kWh</span></div>
@@ -1388,6 +1417,8 @@ class SmartHusCard extends HTMLElement {
         .head .now { flex-direction: column; align-items: flex-start; gap: 4px; }
         .legend { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .legend .lg-val { text-align: left; }
+        .clock .clock-date.long { display: none; }
+        .clock .clock-date.short { display: block; }
         .savings .s-val { font-size: 16px; white-space: nowrap; }
       }
       button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
@@ -1399,6 +1430,11 @@ class SmartHusCard extends HTMLElement {
       .logo { width: 34px; height: 34px; object-fit: contain; }
       .title { font-size: 15px; font-weight: 600; letter-spacing: .01em; color: var(--secondary-text-color); }
       .now { display: flex; align-items: flex-end; gap: 14px; margin-top: 6px; }
+      .title-end { display: flex; align-items: center; gap: 14px; min-width: 0; }
+      .clock { display: flex; flex-direction: column; align-items: flex-end; text-align: right; min-width: 0; }
+      .clock-time { font-size: 20px; line-height: 1.1; font-weight: 600; font-variant-numeric: tabular-nums; }
+      .clock-date.short { display: none; }
+      .clock-date { font-size: 12px; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
       .price { display: flex; align-items: baseline; gap: 6px; }
       .price .value { font-size: 44px; line-height: 1; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
       .price .unit { font-size: 14px; color: var(--secondary-text-color); }
