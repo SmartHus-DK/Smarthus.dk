@@ -153,7 +153,10 @@ class SmartHusController:
         # Varmt vand med temperaturføler: True når øvre grænse er nået
         self.hotwater_full = False
         self.heating_outdoor_ok = True     # varmestyringen er aktiv ift. udetemperaturen
-        self._hw_button_on = False         # varmt vand via knap: trykket i den nuværende periode
+        self._hw_button_on = False
+        # Fælles energimåler for varme og varmt vand: fordeles mellem de to
+        self._heat_last: float | None = None
+        self._heat_cum = {"heatpump": 0.0, "hotwater": 0.0}         # varmt vand via knap: trykket i den nuværende periode
         # Solprognose (Wh pr. periode) fra Forecast.Solar/Solcast – hentes hvert 15. minut
         self._forecast_wh: dict[str, float] = {}
         self._forecast_key_is_end = False
@@ -487,12 +490,39 @@ class SmartHusController:
         for name, key in mapping.items():
             if self.has(key):
                 readings[name] = self._energy_kwh(key)
+        if self._shared_heat_meter:
+            readings.update(self._split_heat_meter(readings.get("heatpump")))
         soc = self._float_state(self.config.get(CONF_BATTERY_SOC))
         bat_kwh = soc / 100 * self.settings[S_BATTERY_CAPACITY] if soc is not None else None
         action = self.plan.battery_action if self.active(MODULE_BATTERY) else None
         self.savings.update(dt_util.now(), self.plan.current, self.plan.day_avg, readings,
                             battery_action=action, battery_kwh=bat_kwh)
         self._store.async_delay_save(lambda: self.savings.data, 60)
+
+    @property
+    def _shared_heat_meter(self) -> bool:
+        """Varme og varmt vand bruger samme energimåler (fx én varmepumpe til begge)."""
+        hp, hw = self.config.get(CONF_HEATPUMP_ENERGY), self.config.get(CONF_HOTWATER_ENERGY)
+        return bool(hp) and hp == hw
+
+    @property
+    def _heating_water_now(self) -> bool:
+        """Varmer SmartHus vand lige nu (billig periode eller solcelleoverskud)?"""
+        return (self.active(MODULE_HOTWATER) and bool(self.plan.hotwater_on or self.hotwater_surplus)
+                and not self.hotwater_full)
+
+    def _split_heat_meter(self, total: float | None) -> dict[str, float]:
+        """Fordel en fælles måler: forbruget tæller som varmt vand, mens SmartHus varmer vand,
+        ellers som varme. Så tælles hver kWh kun én gang."""
+        out = {"heatpump": self._heat_cum["heatpump"], "hotwater": self._heat_cum["hotwater"]}
+        if total is None:
+            return out
+        last, self._heat_last = self._heat_last, total
+        if last is not None and 0 <= total - last <= 5:
+            key = "hotwater" if self._heating_water_now else "heatpump"
+            self._heat_cum[key] += total - last
+            out[key] = self._heat_cum[key]
+        return out
 
     # --- Styring -----------------------------------------------------------
     def _rate_ok(self, entity_id: str) -> bool:

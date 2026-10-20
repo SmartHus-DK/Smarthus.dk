@@ -160,7 +160,7 @@
         },
         "data_description": {
           "hotwater_entity": "What SmartHus uses to heat the water in the cheapest period: • the heat pump's own hot water function, e.g. a switch or button such as 'Charge' or 'Hot water boost' • a switch/relay for the heating element, e.g. a Shelly • a water_heater/climate entity – then the temperature is set instead. A button is pressed once when heating should start, and the heat pump stops by itself.",
-          "hotwater_energy_sensor": "Increasing meter (kWh) for hot water. Only used for savings.",
+          "hotwater_energy_sensor": "Increasing meter (kWh) for hot water. Only used for savings. If one heat pump does both heating and hot water, select the same meter here and under Heating – consumption then counts as hot water while SmartHus heats water and as heating otherwise. It is only counted once.",
           "hotwater_temp_sensor": "Measures the water temperature. With a sensor, SmartHus turns the switch off when the water reaches the max. temperature and on again in the cheap period if it has cooled 3 °C."
         }
       },

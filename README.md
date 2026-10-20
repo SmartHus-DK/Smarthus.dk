@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.19.0** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
+**Version 1.19.1** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
 
 SmartHus bruger strømmen, når den er billigst, og sparer, når den er dyrest. Den lader elbilen og batteriet i de billige timer, varmer vandet med billig strøm eller solcelleoverskud, skruer lidt op og ned for varmen og stopper salg af solstrøm, når prisen er for lav. Du ser det hele – og hvad du har sparet – på ét kort.
 
@@ -391,7 +391,7 @@ Alle entiteter har faste id'er, uanset sprog:
 - **Besparelse (batteri)** = afladet kWh × pris − opladet kWh × pris.
 - **Solceller – sparet** = egetforbrug × købspris. **Solceller – tjent ved salg** = eksport × salgspris. Solcellerne tæller ikke med i SmartHus-besparelsen, fordi de også producerer uden styring.
 
-Besparelser kræver, at du vælger energimålere (kWh, stigende) i opsætningen.
+Besparelser kræver, at du vælger energimålere (kWh, stigende) i opsætningen. Laver én varmepumpe både varme og varmt vand, kan samme måler vælges begge steder – forbruget fordeles efter, om SmartHus varmer vand lige nu, og tælles kun én gang.
 </details>
 
 <details><summary><b>Manuel installation</b></summary>

@@ -304,6 +304,20 @@ async def main():
     c.plan.battery_action = "charge"; C.fc = {}                  # ingen prognose: uændret
     c._decide_grid_charge(night)
     assert c.plan.battery_action == "charge" and c.grid_charge is None
+    # 18) Fælles energimåler for varme og varmt vand tælles kun én gang
+    c, h = make({"heatpump_energy_sensor": "sensor.vp", "hotwater_energy_sensor": "sensor.vp",
+                 "hotwater_entity": "switch.vand"}, {})
+    c._heat_last, c._heat_cum = None, {"heatpump": 0.0, "hotwater": 0.0}
+    c.enabled.update({"hotwater": True})
+    assert c._shared_heat_meter
+    c._split_heat_meter(100.0)                                  # første aflæsning: kun udgangspunkt
+    r = c._split_heat_meter(101.0)                              # 1 kWh – ingen varmt vand nu: varme
+    assert r == {"heatpump": 1.0, "hotwater": 0.0}, r
+    c.plan.hotwater_on = True
+    r = c._split_heat_meter(101.5)                              # 0,5 kWh mens vandet varmes
+    assert r == {"heatpump": 1.0, "hotwater": 0.5}, r
+    c, h = make({"heatpump_energy_sensor": "sensor.vp", "hotwater_energy_sensor": "sensor.vv"}, {})
+    assert not c._shared_heat_meter
     print("controller OK")
 
 def test_controller_control():
