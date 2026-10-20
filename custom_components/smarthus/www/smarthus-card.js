@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.17.1";
+const SMARTHUS_CARD_VERSION = "1.17.2";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -1370,7 +1370,7 @@ class SmartHusCard extends HTMLElement {
         .panel .mod-body { columns: 2; column-gap: 32px; }
         .panel-mods.multi .mod-body { columns: 1; }
       }
-      @container (min-width: 1200px) {
+      @container (min-width: 900px) {
         /* Prisgrafen rykker op under pris og energiflow, ved siden af solcellerne */
         .top { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr); grid-template-rows: auto 1fr;
                grid-template-areas: "head scene solar" "strip strip solar"; align-items: start; }
@@ -1380,6 +1380,15 @@ class SmartHusCard extends HTMLElement {
         .top.no-scene { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); grid-template-areas: "head solar" "strip solar"; }
         .top > .scene { padding: 0 8px; border-left: 1px solid var(--sh-line); }
         .top > .scene svg { max-height: 250px; }
+      }
+      /* Tablet (900–1199 px): tre kolonner, men pris over teksten og mere plads til huset */
+      @container (min-width: 900px) and (max-width: 1199px) {
+        .top { grid-template-columns: minmax(0, .9fr) minmax(0, 1.2fr) minmax(0, 1fr); }
+        .top > .scene svg { max-height: 280px; }
+        .head .now { flex-direction: column; align-items: flex-start; gap: 4px; }
+        .legend { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .legend .lg-val { text-align: left; }
+        .savings .s-val { font-size: 16px; white-space: nowrap; }
       }
       button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
       button:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; border-radius: 6px; }
