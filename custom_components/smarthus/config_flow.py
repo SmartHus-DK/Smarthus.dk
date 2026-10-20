@@ -69,6 +69,9 @@ from .const import (
     CONF_SALE_FEE,
     CONF_SL_PRICE,
     CONF_SL_SPOT,
+    CONF_SL_PRICE_VAT,
+    CONF_SL_SPOT_VAT,
+    VAT_OPTIONS,
     CONF_SL_TOMORROW,
     DEFAULT_SL_PRICE,
     DEFAULT_SL_SPOT,
@@ -160,6 +163,11 @@ def _new_car_id(name: str, cars: list[dict]) -> str:
     return cid
 
 
+VAT_SELECT = selector.SelectSelector(
+    selector.SelectSelectorConfig(options=VAT_OPTIONS, translation_key="vat", mode=selector.SelectSelectorMode.LIST)
+)
+
+
 def _price_schema(values: dict) -> vol.Schema:
     v = {**DEFAULT_PRICES, CONF_PRICE_SOURCE: SOURCE_EDS, **values}
     return vol.Schema(
@@ -170,10 +178,12 @@ def _price_schema(values: dict) -> vol.Schema:
             ),
             vol.Optional(CONF_SL_PRICE, description={"suggested_value": v.get(CONF_SL_PRICE) or DEFAULT_SL_PRICE}):
                 selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
+            vol.Required(CONF_SL_PRICE_VAT, default=v.get(CONF_SL_PRICE_VAT) or "incl"): VAT_SELECT,
             vol.Optional(CONF_SL_TOMORROW, description={"suggested_value": v.get(CONF_SL_TOMORROW) or DEFAULT_SL_TOMORROW}):
                 selector.EntitySelector(selector.EntitySelectorConfig(domain=["binary_sensor", "sensor"])),
             vol.Optional(CONF_SL_SPOT, description={"suggested_value": v.get(CONF_SL_SPOT) or DEFAULT_SL_SPOT}):
                 selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
+            vol.Required(CONF_SL_SPOT_VAT, default=v.get(CONF_SL_SPOT_VAT) or "incl"): VAT_SELECT,
             vol.Required(CONF_AREA, default=v[CONF_AREA]): selector.SelectSelector(
                 selector.SelectSelectorConfig(options=AREA_OPTIONS,
                                               mode=selector.SelectSelectorMode.LIST)

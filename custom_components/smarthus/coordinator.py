@@ -23,6 +23,9 @@ from .const import (
     CONF_SL_PRICE,
     CONF_SL_SPOT,
     CONF_SL_TOMORROW,
+    CONF_SL_PRICE_VAT,
+    CONF_SL_SPOT_VAT,
+    CONF_VAT,
     DEFAULT_PRICES,
     DEFAULT_SL_PRICE,
     DEFAULT_SL_SPOT,
@@ -31,7 +34,7 @@ from .const import (
     SOURCE_STROMLIGNING,
 )
 from .planner import Slot
-from .pricing import PriceModel, apply_external_prices, apply_external_spot, parse_price_list
+from .pricing import PriceModel, apply_external_prices, apply_external_spot, has_vat, parse_price_list, vat_factor
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -67,18 +70,22 @@ class SmartHusPriceCoordinator(DataUpdateCoordinator[list[Slot]]):
         if not self.uses_stromligning:
             return slots
         prices = []
+        want_vat = bool(self.config.get(CONF_VAT, DEFAULT_PRICES[CONF_VAT]))
+        price_vat = has_vat(self.config.get(CONF_SL_PRICE_VAT), self.sl_entities[0])
+        f = vat_factor(price_vat, want_vat)   # priser uden moms får lagt moms på – og omvendt
         for entity_id in self.sl_entities:
             st = self.hass.states.get(entity_id)
             if st is not None:
-                prices += parse_price_list(st.attributes.get("prices"))
+                prices += [(t, p * f) for t, p in parse_price_list(st.attributes.get("prices"))]
         prices = sorted({t: p for t, p in prices}.items())
         out, self.external_hits = apply_external_prices(slots, prices)
         st = self.hass.states.get(self.sl_spot)
         if st is not None:
             spot = parse_price_list(st.attributes.get("prices"))
-            # Sensorer der ender på "_vat" er inkl. moms – salgsprisen beregnes uden moms
+            # Salgsprisen er altid uden moms – spotprisen omregnes efter valget i opsætningen
             fee = float(self.config.get(CONF_SALE_FEE, DEFAULT_PRICES[CONF_SALE_FEE]))
-            out, _ = apply_external_spot(out, spot, self.sl_spot.endswith("_vat"), fee)
+            spot_vat = has_vat(self.config.get(CONF_SL_SPOT_VAT), self.sl_spot)
+            out, _ = apply_external_spot(out, spot, spot_vat, fee)
         if not self.external_hits:
             _LOGGER.warning("Ingen priser fra Strømligning (%s) – bruger SmartHus' egen beregning",
                             ", ".join(self.sl_entities))

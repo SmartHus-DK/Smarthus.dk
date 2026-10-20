@@ -27,7 +27,9 @@
           "tariff_winter_peak": "Nettarif vinter, spids (17–21)",
           "tariff_summer_low": "Nettarif sommer, lav (00–06)",
           "tariff_summer_high": "Nettarif sommer, høj (06–17 og 21–24)",
-          "tariff_summer_peak": "Nettarif sommer, spids (17–21)"
+          "tariff_summer_peak": "Nettarif sommer, spids (17–21)",
+          "stromligning_price_vat": "Prissensoren er",
+          "stromligning_spot_vat": "Spotpris-sensoren er"
         },
         "data_description": {
           "price_source": "Strømligning giver kundens rigtige pris fra elabonnementet. Ellers beregner SmartHus prisen ud fra spotprisen og tarifferne nedenfor.",
@@ -45,7 +47,9 @@
           "tariff_winter_peak": "Oktober–marts kl. 17–21 (spidslast).",
           "tariff_summer_low": "April–september kl. 00–06.",
           "tariff_summer_high": "April–september kl. 06–17 og 21–24.",
-          "tariff_summer_peak": "April–september kl. 17–21 (spidslast)."
+          "tariff_summer_peak": "April–september kl. 17–21 (spidslast).",
+          "stromligning_price_vat": "Vælg om prissensoren (og sensoren for morgendagens priser) viser priser inkl. eller ekskl. moms. Er den uden moms, lægger SmartHus selv 25 % moms på, så alle priser og besparelser er inkl. moms.",
+          "stromligning_spot_vat": "Vælg om spotpris-sensoren er inkl. eller ekskl. moms. Salgsprisen for solstrøm regnes altid uden moms."
         }
       }
     },
@@ -216,7 +220,9 @@
           "tariff_winter_peak": "Nettarif vinter, spids (17–21)",
           "tariff_summer_low": "Nettarif sommer, lav (00–06)",
           "tariff_summer_high": "Nettarif sommer, høj (06–17 og 21–24)",
-          "tariff_summer_peak": "Nettarif sommer, spids (17–21)"
+          "tariff_summer_peak": "Nettarif sommer, spids (17–21)",
+          "stromligning_price_vat": "Prissensoren er",
+          "stromligning_spot_vat": "Spotpris-sensoren er"
         },
         "data_description": {
           "price_source": "Strømligning giver kundens rigtige pris fra elabonnementet. Ellers beregner SmartHus prisen ud fra spotprisen og tarifferne nedenfor.",
@@ -234,7 +240,9 @@
           "tariff_winter_peak": "Oktober–marts kl. 17–21 (spidslast).",
           "tariff_summer_low": "April–september kl. 00–06.",
           "tariff_summer_high": "April–september kl. 06–17 og 21–24.",
-          "tariff_summer_peak": "April–september kl. 17–21 (spidslast)."
+          "tariff_summer_peak": "April–september kl. 17–21 (spidslast).",
+          "stromligning_price_vat": "Vælg om prissensoren (og sensoren for morgendagens priser) viser priser inkl. eller ekskl. moms. Er den uden moms, lægger SmartHus selv 25 % moms på, så alle priser og besparelser er inkl. moms.",
+          "stromligning_spot_vat": "Vælg om spotpris-sensoren er inkl. eller ekskl. moms. Salgsprisen for solstrøm regnes altid uden moms."
         }
       },
       "ev_car": {
@@ -289,6 +297,12 @@
       "options": {
         "discharge_positive": "Positiv = afladning",
         "charge_positive": "Positiv = opladning"
+      }
+    },
+    "vat": {
+      "options": {
+        "incl": "Inkl. moms",
+        "excl": "Ekskl. moms"
       }
     }
   },

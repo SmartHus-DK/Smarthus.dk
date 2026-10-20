@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.20.0** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
+**Version 1.20.1** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
 
 SmartHus bruger strømmen, når den er billigst, og sparer, når den er dyrest. Den lader elbilen og batteriet i de billige timer, varmer vandet med billig strøm eller solcelleoverskud, skruer lidt op og ned for varmen og stopper salg af solstrøm, når prisen er for lav. Du ser det hele – og hvad du har sparet – på ét kort.
 
@@ -170,6 +170,8 @@ Det kræver en ekstra tilstand eller et script under Konfigurer → Batteri / in
 <details><summary><b>Elpris uden Strømligning</b></summary>
 
 Vælg prisområde og indtast leverandørens tillæg og nettarif i kr/kWh ekskl. moms (står på elregningen eller netselskabets hjemmeside). Spotpriserne hentes fra Energi Data Service. Med Strømligning bruges `sensor.stromligning_current_price_vat`, `binary_sensor.stromligning_tomorrow_available_vat` og `sensor.stromligning_spotprice_vat` (salgspris). Energi Data Service bruges som reserve.
+
+**Moms:** Under Konfigurer → Elpris vælger du for både prissensoren og spotpris-sensoren, om de er **inkl. eller ekskl. moms**. Er en sensor uden moms (fx `sensor.stromligning_current_price`), lægger SmartHus selv moms på, så alle priser og besparelser er inkl. moms. Salgsprisen for solstrøm regnes altid uden moms.
 </details>
 
 <details><summary><b>SigEnergy – eksempel</b></summary>

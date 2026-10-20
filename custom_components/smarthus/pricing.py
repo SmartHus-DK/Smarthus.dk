@@ -190,3 +190,20 @@ class PriceModel:
                 )
             )
         return slots
+
+
+def has_vat(setting: str | None, entity_id: str | None) -> bool:
+    """Er sensorens priser med moms? Valget i opsætningen gælder. Ældre opsætninger uden valg
+    falder tilbage på navnet (Strømligning bruger "_vat" for priser med moms)."""
+    if setting in ("incl", "excl"):
+        return setting == "incl"
+    return (entity_id or "").endswith("_vat")
+
+
+def vat_factor(source_has_vat: bool, want_vat: bool) -> float:
+    """Faktor der omregner en ekstern pris til SmartHus' prisgrundlag (med eller uden moms)."""
+    if want_vat and not source_has_vat:
+        return 1.25
+    if source_has_vat and not want_vat:
+        return 1 / 1.25
+    return 1.0

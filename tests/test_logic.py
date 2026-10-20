@@ -615,3 +615,11 @@ def test_historic_elafgift():
     t = datetime(2025, 3, 1, 12, tzinfo=TZ)
     # Historisk pris bruger datidens afgift; den løbende pris bruger den indstillede
     assert round(m.buy_price(1.0, t, historic=True) - m.buy_price(1.0, t), 4) == round((0.720 - m.c[const.CONF_ELAFGIFT]) * 1.25, 4)
+
+
+def test_external_vat():
+    assert pricing.has_vat("incl", "sensor.hvad_som_helst") and not pricing.has_vat("excl", "sensor.x_vat")
+    assert pricing.has_vat(None, "sensor.stromligning_current_price_vat")       # ældre opsætning uden valg
+    assert pricing.vat_factor(True, True) == 1.0
+    assert pricing.vat_factor(False, True) == 1.25                               # uden moms → læg moms på
+    assert abs(pricing.vat_factor(True, False) - 0.8) < 1e-9                     # erhverv uden moms

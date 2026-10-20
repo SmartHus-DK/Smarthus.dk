@@ -27,7 +27,9 @@
           "tariff_winter_peak": "Grid tariff winter, peak (17–21)",
           "tariff_summer_low": "Grid tariff summer, low (00–06)",
           "tariff_summer_high": "Grid tariff summer, high (06–17 and 21–24)",
-          "tariff_summer_peak": "Grid tariff summer, peak (17–21)"
+          "tariff_summer_peak": "Grid tariff summer, peak (17–21)",
+          "stromligning_price_vat": "Price sensor is",
+          "stromligning_spot_vat": "Spot price sensor is"
         },
         "data_description": {
           "price_source": "Strømligning gives the actual price from the customer's plan. Otherwise SmartHus calculates it from the spot price and the tariffs below.",
@@ -40,7 +42,9 @@
           "tariff_winter_peak": "Oct–Mar 17–21 (peak).",
           "tariff_summer_low": "Apr–Sep 00–06.",
           "tariff_summer_high": "Apr–Sep 06–17 and 21–24.",
-          "tariff_summer_peak": "Apr–Sep 17–21 (peak)."
+          "tariff_summer_peak": "Apr–Sep 17–21 (peak).",
+          "stromligning_price_vat": "Choose whether the price sensor (and the tomorrow sensor) shows prices including or excluding VAT. Without VAT, SmartHus adds 25 % VAT so all prices and savings include VAT.",
+          "stromligning_spot_vat": "Choose whether the spot price sensor includes VAT. The sale price for solar power is always without VAT."
         }
       }
     },
@@ -209,7 +213,9 @@
           "tariff_winter_peak": "Grid tariff winter, peak (17–21)",
           "tariff_summer_low": "Grid tariff summer, low (00–06)",
           "tariff_summer_high": "Grid tariff summer, high (06–17 and 21–24)",
-          "tariff_summer_peak": "Grid tariff summer, peak (17–21)"
+          "tariff_summer_peak": "Grid tariff summer, peak (17–21)",
+          "stromligning_price_vat": "Price sensor is",
+          "stromligning_spot_vat": "Spot price sensor is"
         },
         "data_description": {
           "price_source": "Strømligning gives the actual price from the customer's plan. Otherwise SmartHus calculates it from the spot price and the tariffs below.",
@@ -222,7 +228,9 @@
           "tariff_winter_peak": "Oct–Mar 17–21 (peak).",
           "tariff_summer_low": "Apr–Sep 00–06.",
           "tariff_summer_high": "Apr–Sep 06–17 and 21–24.",
-          "tariff_summer_peak": "Apr–Sep 17–21 (peak)."
+          "tariff_summer_peak": "Apr–Sep 17–21 (peak).",
+          "stromligning_price_vat": "Choose whether the price sensor (and the tomorrow sensor) shows prices including or excluding VAT. Without VAT, SmartHus adds 25 % VAT so all prices and savings include VAT.",
+          "stromligning_spot_vat": "Choose whether the spot price sensor includes VAT. The sale price for solar power is always without VAT."
         }
       },
       "ev_car": {
@@ -277,6 +285,12 @@
       "options": {
         "discharge_positive": "Positive = discharging",
         "charge_positive": "Positive = charging"
+      }
+    },
+    "vat": {
+      "options": {
+        "incl": "Including VAT",
+        "excl": "Excluding VAT"
       }
     }
   },
