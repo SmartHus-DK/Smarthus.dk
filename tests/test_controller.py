@@ -52,6 +52,7 @@ def make(config, states):
     c._last_cmd, c._script_state = {}, {}
     c.hotwater_full, c.hotwater_surplus, c._surplus_count = False, False, 0
     c.heating_outdoor_ok = True
+    c._heating_paused_applied = False
     c._hw_surplus_sec, c._hw_done_date = 0.0, None
     c.flags = {"hotwater_surplus_smart": True}
     c.ev_solar, c._ev_current_sent = {}, {}
@@ -318,6 +319,19 @@ async def main():
     assert r == {"heatpump": 1.0, "hotwater": 0.5}, r
     c, h = make({"heatpump_energy_sensor": "sensor.vp", "hotwater_energy_sensor": "sensor.vv"}, {})
     assert not c._shared_heat_meter
+    # 19) Varme: pause over grænsen sætter grundtemperatur én gang; hævet grænse starter igen
+    st = {"sensor.ude": State("9.7"), "climate.vp": State("heat", temperature=22.0)}
+    c, h = make({"heating_climate_entity": "climate.vp", "outdoor_temp_sensor": "sensor.ude"}, st)
+    c.enabled.update({"heating": True})
+    c.heating_outdoor_ok = False                      # var på pause (det var over 10 °C tidligere)
+    c.plan.heating_mode = "boost"
+    c.settings["heating_base_temp"] = 20.5
+    await c._apply_heating_step(c.plan, False); await c._apply_heating_step(c.plan, False)
+    assert h.services.calls == [("climate", "set_temperature", {"entity_id": "climate.vp", "temperature": 20.5})]
+    c.settings["heating_max_outdoor"] = 12.0          # grænsen hæves: 9,7 °C < 11 °C → aktiv igen
+    c._last_cmd.clear()
+    await c._apply_heating_step(c.plan, False)
+    assert c.heating_outdoor_ok and h.services.calls[-1][2]["temperature"] == 21.5, h.services.calls
     print("controller OK")
 
 def test_controller_control():

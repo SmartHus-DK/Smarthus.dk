@@ -153,6 +153,7 @@ class SmartHusController:
         # Varmt vand med temperaturføler: True når øvre grænse er nået
         self.hotwater_full = False
         self.heating_outdoor_ok = True     # varmestyringen er aktiv ift. udetemperaturen
+        self._heating_paused_applied = False  # grundtemperaturen er sat for den nuværende pause
         self._hw_button_on = False
         # Fælles energimåler for varme og varmt vand: fordeles mellem de to
         self._heat_last: float | None = None
@@ -460,6 +461,8 @@ class SmartHusController:
             if self.ev_force.get(cid) and ep.target_reached:
                 self.ev_force[cid] = False  # "Lad nu" slukker selv ved mål-SoC
         self._update_reserve()
+        if self.has(CONF_HEATING_CLIMATE):
+            self._update_heating_outdoor()   # så kortet viser pause/aktiv med det samme
         async_dispatcher_send(self.hass, SIGNAL_TICK.format(entry_id=self.entry.entry_id))
 
     async def _async_tick(self, now: datetime) -> None:
@@ -699,14 +702,27 @@ class SmartHusController:
         return self.config.get(key) or DEFAULT_BATTERY_OPTIONS[key]
 
     async def async_apply(self, force: bool = False) -> None:
-        """Bring enhederne i den tilstand planen ønsker."""
+        """Bring enhederne i den tilstand planen ønsker. En fejl i ét modul stopper ikke de andre."""
         p = self.plan
         if p.current is None:
             return
+        for name, step in (("batteri", self._apply_battery_step), ("eksport", self._apply_export_step),
+                           ("elbil", self._apply_ev_step), ("varmt vand", self._apply_hotwater_step),
+                           ("varme", self._apply_heating_step)):
+            try:
+                await step(p, force)
+            except Exception:  # noqa: BLE001 – ét modul må ikke stoppe resten af styringen
+                _LOGGER.exception("SmartHus: fejl i styringen af %s", name)
+
+    async def _apply_battery_step(self, p, force: bool) -> None:
         if self.active(MODULE_BATTERY) and self.has_battery_control:
             await self._apply_battery(p.battery_action, force)
+
+    async def _apply_export_step(self, p, force: bool) -> None:
         if self.active(MODULE_SOLAR) and self.has_export_control:
             await self._apply_export(p.solar_curtail, force)
+
+    async def _apply_ev_step(self, p, force: bool) -> None:
         solar_car = next((cid for cid, st in self.ev_solar.items() if st.active), None)
         for car in self.cars:
             ep = p.evs.get(car["id"])
@@ -720,22 +736,29 @@ class SmartHusController:
                 await self._ensure_switch(car["charger"], on, force)
                 if on and current is not None:
                     await self._apply_current(car, current, force)
+
+    async def _apply_hotwater_step(self, p, force: bool) -> None:
         if self.active(MODULE_HOTWATER) and self.has(CONF_HOTWATER_ENTITY):
             await self._apply_hotwater(p.hotwater_on, force)
-        if self.active(MODULE_HEATING) and self.has(CONF_HEATING_CLIMATE):
-            was_ok = self.heating_outdoor_ok
-            if not self._update_heating_outdoor():
-                if was_ok or force:     # sæt grundtemperaturen én gang, og lad så termostaten være
-                    await self._ensure_temperature(self.config[CONF_HEATING_CLIMATE],
-                                                   self.settings[S_HEATING_BASE_TEMP], True)
-                return
-            base = self.settings[S_HEATING_BASE_TEMP]
-            temp = base
-            if p.heating_mode == HEATING_BOOST:
-                temp = base + self.settings[S_HEATING_BOOST_DEG]
-            elif p.heating_mode == HEATING_REDUCE:
-                temp = base - self.settings[S_HEATING_REDUCE_DEG]
-            await self._ensure_temperature(self.config[CONF_HEATING_CLIMATE], temp, force)
+
+    async def _apply_heating_step(self, p, force: bool) -> None:
+        if not (self.active(MODULE_HEATING) and self.has(CONF_HEATING_CLIMATE)):
+            return
+        if not self._update_heating_outdoor():
+            if not self._heating_paused_applied or force:
+                # sæt grundtemperaturen én gang, og lad så termostaten være
+                await self._ensure_temperature(self.config[CONF_HEATING_CLIMATE],
+                                               self.settings[S_HEATING_BASE_TEMP], True)
+                self._heating_paused_applied = True
+            return
+        self._heating_paused_applied = False
+        base = self.settings[S_HEATING_BASE_TEMP]
+        temp = base
+        if p.heating_mode == HEATING_BOOST:
+            temp = base + self.settings[S_HEATING_BOOST_DEG]
+        elif p.heating_mode == HEATING_REDUCE:
+            temp = base - self.settings[S_HEATING_REDUCE_DEG]
+        await self._ensure_temperature(self.config[CONF_HEATING_CLIMATE], temp, force)
 
     def _plug(self, car: dict) -> bool | None:
         entity_id = car.get("plug")
@@ -1114,6 +1137,8 @@ class SmartHusController:
     async def async_set_setting(self, key: str, value: float) -> None:
         self.settings[key] = value
         self.recalculate()
+        if key == S_HEATING_MAX_OUTDOOR:
+            await self.async_apply()        # pause/start varmestyringen med det samme
 
     async def async_set_ev_force(self, cid: str, on: bool) -> None:
         self.ev_force[cid] = on
