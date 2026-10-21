@@ -643,6 +643,14 @@
     "select": {
       "connected_car": {
         "name": "Tilsluttet bil"
+      },
+      "ev_ready_day": {
+        "name": "{car}: klar dag",
+        "state": {
+          "next": "Næste gang",
+          "today": "I dag",
+          "tomorrow": "I morgen"
+        }
       }
     }
   },

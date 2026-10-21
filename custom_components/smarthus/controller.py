@@ -102,7 +102,7 @@ from .const import (
     SIGNAL_TICK,
 )
 from .coordinator import SmartHusPriceCoordinator
-from .planner import CarInput, Plan, _next_ready, build_plan, car_settings, heating_outdoor_ok
+from .planner import CarInput, Plan, build_plan, car_ready, car_settings, heating_outdoor_ok
 from .profile import (EFFICIENCY, LEARN_DAYS, SUN_END, SUN_START, Profile, Reserve, build_profile, calc_reserve,
                       expected_load, grid_charge_target, solar_surplus)
 from .savings import SavingsCalculator
@@ -163,7 +163,8 @@ class SmartHusController:
         self.hotwater_full = False
         self.heating_outdoor_ok = True     # varmestyringen er aktiv ift. udetemperaturen
         self._heating_paused_applied = False
-        self._ev_charged: dict[str, tuple[str, float]] = {}  # bil → (klar-tidspunkt, ladede timer)  # grundtemperaturen er sat for den nuværende pause
+        self._ev_charged: dict[str, tuple[str, float]] = {}
+        self.ev_ready_date: dict = {}  # bil → fast dato for "klar kl." (None = næste gang)  # bil → (klar-tidspunkt, ladede timer)  # grundtemperaturen er sat for den nuværende pause
         self._hw_button_on = False
         # Fælles energimåler for varme og varmt vand: fordeles mellem de to
         self._heat_last: float | None = None
@@ -613,7 +614,8 @@ class SmartHusController:
             CarInput(car["id"], car.get("name") or "Elbil",
                      soc=self._float_state(car.get("soc")), force=self.ev_force.get(car["id"], False),
                      connected=self.connected.get(car["id"], True),
-                     charged_h=self._charged_hours(car["id"]))
+                     charged_h=self._charged_hours(car["id"]),
+                     ready_date=self._ready_date(car["id"]))
             for car in self.cars
         ]
         self.plan = build_plan(slots, dt_util.utcnow(), self.tz, self.settings, soc=soc, cars=cars)
@@ -636,8 +638,26 @@ class SmartHusController:
         await self.async_apply()
         self._update_savings()
 
+    def ready_at(self, cid: str) -> datetime:
+        return car_ready(dt_util.utcnow(), self.tz, int(car_settings(self.settings, cid)["ready_hour"]),
+                         self.ev_ready_date.get(cid))
+
+    def _ready_date(self, cid: str):
+        """Den valgte dag – ryddes, når klar-tidspunktet er passeret (så gælder 'næste gang')."""
+        d = self.ev_ready_date.get(cid)
+        if d is not None:
+            hour = int(car_settings(self.settings, cid)["ready_hour"]) % 24
+            if datetime(d.year, d.month, d.day, hour, tzinfo=self.tz) <= dt_util.utcnow():
+                self.ev_ready_date[cid] = None
+                return None
+        return d
+
+    def set_ready_day(self, cid: str, day) -> None:
+        self.ev_ready_date[cid] = day
+        self.recalculate()
+
     def _ready_key(self, cid: str) -> str:
-        return _next_ready(dt_util.utcnow(), self.tz, int(car_settings(self.settings, cid)["ready_hour"])).isoformat()
+        return self.ready_at(cid).isoformat()
 
     def _charged_hours(self, cid: str) -> float:
         """Timer der er ladet frem mod bilens næste klar-tidspunkt (bruges uden SoC-sensor)."""

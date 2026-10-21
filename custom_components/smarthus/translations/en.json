@@ -631,6 +631,14 @@
     "select": {
       "connected_car": {
         "name": "Connected car"
+      },
+      "ev_ready_day": {
+        "name": "{car}: ready day",
+        "state": {
+          "next": "Next time",
+          "today": "Today",
+          "tomorrow": "Tomorrow"
+        }
       }
     }
   },

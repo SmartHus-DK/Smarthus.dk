@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 from homeassistant.components.select import SelectEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.util import dt as dt_util
 
 from . import SmartHusConfigEntry
 from .controller import SmartHusController
@@ -22,6 +25,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
     for n, (charger, ids) in enumerate(controller.shared_chargers.items(), start=1):
         key = "connected_car" if n == 1 else f"connected_car_{n}"
         entities.append(ConnectedCarSelect(entry, controller, key, charger, ids))
+    for car in controller.cars:
+        entities.append(ReadyDaySelect(entry, controller, car["id"], car.get("name") or "Elbil"))
     async_add_entities(entities)
 
 
@@ -70,5 +75,53 @@ class ConnectedCarSelect(SmartHusEntity, SelectEntity, RestoreEntity):
     async def async_select_option(self, option: str) -> None:
         self.controller.connected_choice[self.charger] = self._by_name.get(option, NONE)
         self.controller.recalculate()
+        await self.controller.async_apply(force=True)
+        self.async_write_ha_state()
+
+
+class ReadyDaySelect(SmartHusEntity, SelectEntity, RestoreEntity):
+    """Hvilken dag skal bilen være klar: næste gang klokken er der, i dag eller i morgen.
+
+    "I dag" og "I morgen" gemmes som en fast dato, så valget ikke flytter sig, når døgnet skifter
+    eller nye priser kommer. Når tidspunktet er passeret, går valget selv tilbage til "næste gang".
+    """
+
+    _domain = "select"
+    _attr_icon = "mdi:calendar-clock"
+    _attr_options = ["next", "today", "tomorrow"]
+
+    def __init__(self, entry, controller: SmartHusController, cid: str, name: str) -> None:
+        key = "ev_ready_day" if cid == "ev" else f"{cid}_ready_day"
+        super().__init__(entry, controller, key, "ev_ready_day", name)
+        self.cid = cid
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        raw = last.attributes.get("ready_date") if last is not None else None
+        if raw:
+            try:
+                self.controller.ev_ready_date[self.cid] = date.fromisoformat(raw)
+            except ValueError:
+                pass
+
+    @property
+    def current_option(self) -> str:
+        d = self.controller._ready_date(self.cid)
+        if d is None:
+            return "next"
+        today = dt_util.now().date()
+        return "today" if d == today else "tomorrow" if d == today + timedelta(days=1) else "next"
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        d = self.controller.ev_ready_date.get(self.cid)
+        return {"ready_date": d.isoformat() if d else None,
+                "ready_at": self.controller.ready_at(self.cid).isoformat()}
+
+    async def async_select_option(self, option: str) -> None:
+        today = dt_util.now().date()
+        day = {"today": today, "tomorrow": today + timedelta(days=1)}.get(option)
+        self.controller.set_ready_day(self.cid, day)
         await self.controller.async_apply(force=True)
         self.async_write_ha_state()

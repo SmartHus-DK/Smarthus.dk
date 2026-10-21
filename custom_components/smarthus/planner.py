@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, tzinfo
+from datetime import date, datetime, timedelta, tzinfo
 
 
 @dataclass(frozen=True)
@@ -216,6 +216,7 @@ class CarInput:
     force: bool = False
     connected: bool = True   # False = bilen sidder ikke i laderen
     charged_h: float = 0.0   # uden SoC: timer der allerede er ladet frem mod dette klar-tidspunkt
+    ready_date: date | None = None  # fast dag for "klar kl." (None = næste gang klokken er der)
 
 
 @dataclass
@@ -375,18 +376,33 @@ def _next_ready(now: datetime, tz: tzinfo, ready_hour: int) -> datetime:
     return ready
 
 
+def car_ready(now: datetime, tz: tzinfo, ready_hour: int, ready_date: date | None = None) -> datetime:
+    """Bilens klar-tidspunkt: den valgte dag kl. ready_hour – eller næste gang klokken er der.
+
+    En valgt dag er en fast dato, så "i morgen" ikke flytter sig, når nye priser kommer eller
+    døgnet skifter. Når tidspunktet er passeret, gælder "næste gang" igen.
+    """
+    if ready_date is not None:
+        r = datetime(ready_date.year, ready_date.month, ready_date.day, ready_hour % 24, tzinfo=tz)
+        if r > now:
+            return r
+    return _next_ready(now, tz, ready_hour)
+
+
 def plan_cars(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
               cars: list[CarInput]) -> dict[str, EvPlan]:
     """Planlæg alle elbiler. Med maks. samlet ladeeffekt får bilen med det
     tidligste klar-tidspunkt førsteret til de billigste timer."""
     max_kw = float(settings.get("ev_max_total_power", 0) or 0)
     used: dict[datetime, float] = {}
-    order = sorted(cars, key=lambda c: _next_ready(now, tz, int(car_settings(settings, c.cid)["ready_hour"])))
+    order = sorted(cars, key=lambda c: car_ready(now, tz, int(car_settings(settings, c.cid)["ready_hour"]), c.ready_date))
     result: dict[str, EvPlan] = {}
     for car in order:
         cs = car_settings(settings, car.cid)
         kw = max(cs["charge_power"], 0.1)
         ep = EvPlan(car.cid, car.name, soc=car.soc)
+        ready = car_ready(now, tz, int(cs["ready_hour"]), car.ready_date)
+        ep.ready_at = ready
         if not car.connected:
             ep.connected = False
             result[car.cid] = ep
@@ -399,17 +415,16 @@ def plan_cars(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
             # (fra nu – timer der allerede er gået, kan ikke bruges)
             wanted = max(cs["hours"] - car.charged_h, 0.0)
             ep.slots = ev_plan(slots, now, tz, wanted, int(cs["ready_hour"]), from_now=True,
-                               available=available) if wanted >= 0.125 else []
+                               available=available, ready_at=ready) if wanted >= 0.125 else []
         else:
             ep.hours_needed = ev_hours_needed(car.soc, cs)
             ep.target_reached = ep.hours_needed <= 0
             wanted = ep.hours_needed
             if not ep.target_reached:
                 ep.slots = ev_plan(slots, now, tz, ep.hours_needed, int(cs["ready_hour"]),
-                                   from_now=True, available=available)
+                                   from_now=True, available=available, ready_at=ready)
                 # Er der tid nok til klar-tidspunktet? Ellers lades der hele tiden, og vi
                 # fortæller, hvor langt bilen når
-                ep.ready_at = _next_ready(now, tz, int(cs["ready_hour"]))
                 hours_left = (ep.ready_at - now).total_seconds() / 3600
                 if hours_left + 0.01 < ep.hours_needed:
                     ep.short_of_time = True
@@ -477,7 +492,7 @@ def ev_hours_needed(ev_soc: float, cs: dict) -> float:
 
 
 def ev_plan(slots: list[Slot], now: datetime, tz: tzinfo, hours: float, ready_hour: int,
-            from_now: bool = False, available=None) -> list[Slot]:
+            from_now: bool = False, available=None, ready_at: datetime | None = None) -> list[Slot]:
     """Billigste tidsrum i vinduet [klar-tid − 24 t, klar-tid).
 
     Hvis priserne for hele vinduet endnu ikke er kendt (før ca. kl. 13), ventes
@@ -487,7 +502,7 @@ def ev_plan(slots: list[Slot], now: datetime, tz: tzinfo, hours: float, ready_ho
     if hours <= 0 or not slots:
         return []
     local_now = now.astimezone(tz)
-    ready = _next_ready(now, tz, ready_hour)
+    ready = ready_at or _next_ready(now, tz, ready_hour)
     start = ready - timedelta(days=1)
     if from_now:
         window = [s for s in slots if s.end > now and s.start < ready]

@@ -658,3 +658,27 @@ def test_ev_ready_same_day():
     # Uden SoC: allerede ladet 1,5 time frem mod kl. 22 → kun en halv time mere
     ep = planner.build_plan(slots, now, TZ, s, cars=[planner.CarInput("ev", "Bil", charged_h=1.5)]).evs["ev"]
     assert sum(x.hours for x in ep.slots) == 0.5
+
+
+def test_ev_ready_day_fixed():
+    from datetime import date
+    s = dict(const.DEFAULT_SETTINGS)
+    s.update({"ev_ready_hour": 22, "ev_target_soc": 80, "ev_charge_power": 11, "ev_battery_capacity": 60})
+    tomorrow = date(2026, 10, 22)
+    # Valgt kl. 9 den 21/10: klar i morgen kl. 22
+    now = datetime(2026, 10, 21, 9, 0, tzinfo=TZ).astimezone(timezone.utc)
+    assert planner.car_ready(now, TZ, 22, tomorrow) == datetime(2026, 10, 22, 22, 0, tzinfo=TZ)
+    assert planner.car_ready(now, TZ, 22, None) == datetime(2026, 10, 21, 22, 0, tzinfo=TZ)   # næste gang = i dag
+    # Næste dag kl. 14 kommer nye priser (for 23/10) – målet flytter sig ikke
+    now2 = datetime(2026, 10, 22, 14, 0, tzinfo=TZ).astimezone(timezone.utc)
+    assert planner.car_ready(now2, TZ, 22, tomorrow) == datetime(2026, 10, 22, 22, 0, tzinfo=TZ)
+    recs = records("2026-10-21", CURVE) + records("2026-10-22", CURVE) + records("2026-10-23", CURVE)
+    slots = model().build_slots(recs)
+    ep = planner.build_plan(slots, now2, TZ, s, cars=[planner.CarInput("ev", "Bil", soc=40, ready_date=tomorrow)]).evs["ev"]
+    assert ep.slots and max(x.end for x in ep.slots) <= datetime(2026, 10, 22, 22, 0, tzinfo=TZ)
+    # Fra 21/10 kl. 9 med "i morgen" må den gerne bruge nattens billige timer
+    ep = planner.build_plan(slots, now, TZ, s, cars=[planner.CarInput("ev", "Bil", soc=40, ready_date=tomorrow)]).evs["ev"]
+    assert any(x.start.astimezone(TZ).date() == tomorrow for x in ep.slots)
+    # Når tidspunktet er passeret, gælder "næste gang" igen
+    now3 = datetime(2026, 10, 22, 22, 30, tzinfo=TZ).astimezone(timezone.utc)
+    assert planner.car_ready(now3, TZ, 22, tomorrow) == datetime(2026, 10, 23, 22, 0, tzinfo=TZ)

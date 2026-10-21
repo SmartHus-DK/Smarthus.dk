@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.20.4";
+const SMARTHUS_CARD_VERSION = "1.21.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -90,7 +90,7 @@ const CAR_COLORS = [COLORS.ev, COLORS.ev2, COLORS.ev3];
 /** Et felt pr. elbil. Bilens id er fx "ev" eller "ev_tesla". */
 function carModule(cid, name, first) {
   const groups = [
-    { title: null, items: [`${cid}_target_soc`, `${cid}_ready_hour`, `${cid}_hours`] },
+    { title: null, items: [`${cid}_target_soc`, `${cid}_ready_hour`, { day: cid }, `${cid}_hours`] },
     { title: "Bil og lader", items: [`${cid}_battery_capacity`, `${cid}_charge_power`] },
     { title: "Solcelleladning", items: [{ sw: `${cid}_solar`, label: "Lad med solcelleoverskud",
       note: "Ladestrømmen følger overskuddet, 1 A ad gangen" }, `${cid}_solar_start_kw`, `${cid}_solar_min_a`, `${cid}_solar_max_a`] },
@@ -891,6 +891,7 @@ class SmartHusCard extends HTMLElement {
         const rows = g.items
           .map((it) => {
             if (it && it.sw) return this._st("switch", it.sw) ? this._switchRow(it) : "";
+            if (it && it.day) return this._readyDayRow(it.day);
             if (Array.isArray(it)) return this._st("number", it[0]) && this._st("number", it[1]) ? this._window(it[0], it[1]) : "";
             return this._st("number", it) && !hide(it) ? this._stepper(it) : "";
           })
@@ -1177,6 +1178,30 @@ class SmartHusCard extends HTMLElement {
         return `<div class="picker"><div class="picker-head"><ha-icon icon="mdi:ev-plug-type2"></ha-icon><span>Tilsluttet bil</span>
           <span class="picker-note">${note}</span></div><div class="chips">${chips}</div></div>`;
       }).join("");
+  }
+
+  /** Hvilken dag skal bilen være klar: næste gang, i dag eller i morgen (fast dato). */
+  _readyDayRow(cid) {
+    const st = this._st("select", `${cid}_ready_day`);
+    if (!st) return "";
+    const h = this._num("number", `${cid}_ready_hour`);
+    const passed = h != null && new Date().getHours() >= h;
+    const labels = { next: "Næste gang", today: "I dag", tomorrow: "I morgen" };
+    const chips = ["next", "today", "tomorrow"].map((o) => {
+      const off = o === "today" && passed;
+      return `<button class="chip ${st.state === o ? "on" : ""}" data-action="select" data-entity="${st.entity_id}" data-option="${o}"
+        aria-pressed="${st.state === o}" ${off ? "disabled title=\"Klokken er allerede passeret i dag\"" : ""}>${labels[o]}</button>`;
+    }).join("");
+    const at = st.attributes.ready_at ? new Date(st.attributes.ready_at) : null;
+    let when = "";
+    if (at) {
+      const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+      const days = Math.round((new Date(at).setHours(0, 0, 0, 0) - d0) / 864e5);
+      const day = days === 0 ? "i dag" : days === 1 ? "i morgen" : at.toLocaleDateString("da-DK", { weekday: "long", day: "numeric", month: "short" });
+      when = `Klar ${day} kl. ${hh(at)}`;
+    }
+    return `<div class="step day-row"><span class="step-lbl">Dag<span class="win-note">${esc(when)}</span></span>
+      <span class="chips day-chips">${chips}</span></div>`;
   }
 
   _switchRow(it) {
@@ -1741,6 +1766,9 @@ class SmartHusCard extends HTMLElement {
       .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
       .chip { padding: 7px 14px; border-radius: 18px; font-size: 14px; box-shadow: inset 0 0 0 1px var(--sh-line); }
       .chip.on { background: var(--primary-color); color: var(--text-primary-color, #fff); box-shadow: none; }
+      .chip[disabled] { opacity: .4; cursor: default; }
+      .day-chips { margin-top: 0; gap: 6px; justify-content: flex-end; }
+      .day-chips .chip { padding: 6px 11px; font-size: 13px; }
       .hint { font-size: 13px; color: var(--secondary-text-color); }
       .win-note { display: block; font-size: 11px; color: var(--secondary-text-color); }
       .win-ctl { display: flex; align-items: center; gap: 2px; }
