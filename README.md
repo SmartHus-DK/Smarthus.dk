@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.23.0** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
+**Version 1.23.1** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
 
 SmartHus bruger strømmen, når den er billigst, og sparer, når den er dyrest. Den lader elbilen og batteriet i de billige timer, varmer vandet med billig strøm eller solcelleoverskud, skruer lidt op og ned for varmen og stopper salg af solstrøm, når prisen er for lav. Du ser det hele – og hvad du har sparet – på ét kort.
 
@@ -117,7 +117,7 @@ Energimålere (kWh) er valgfrie, men skal vælges, hvis du vil se, hvad du har s
 - **Øverst:** klokken og datoen, elprisen lige nu, hvad SmartHus har sparet, huset med energiflow og vejr, og solcellerne med prognose.
 - **Prisgrafen:** dagens og morgendagens priser (grøn = billig, rød = dyr) og hvornår elbil, batteri, varmt vand og varme kører.
 - **Knapperne** (Elbil, Varmt vand, Varme, Batteri, Solceller): tryk for at se og ændre indstillingerne. **Luk** fører tilbage til overblikket. Den grønne prik betyder, at SmartHus styrer området.
-- **Lad i:** under Elbil vælger du, hvor de billigste timer skal findes: **Til klar kl.** (standard – frem til næste "Klar kl."), **I dag** (resten af i dag), **I morgen** (00–24), **Begge dage** (nu til og med i morgen) eller **Billigste i sigte** (alle kendte priser – flytter sig, hvis næste dags priser er billigere). Dagene gemmes som faste datoer, så perioden ikke flytter sig, når døgnet skifter eller nye priser kommer. Når perioden er slut, går valget selv tilbage til *Til klar kl.* Kortet viser altid **Forventet klar** – hvornår den sidste valgte billige ladetime slutter.
+- **Lad i:** under Elbil vælger du, hvor de billigste timer skal findes: **Til klar kl.** (standard – frem til næste "Klar kl."), **I dag** (resten af i dag), **I morgen** (00–24), **Begge dage** (nu til og med i morgen) eller **Billigste i sigte** (alle kendte priser – flytter sig, hvis næste dags priser er billigere). Dagene gemmes som faste datoer, så perioden ikke flytter sig, når døgnet skifter eller nye priser kommer. Når perioden er slut, går valget selv tilbage til *Til klar kl.* Er morgendagens priser ikke kommet endnu (ca. kl. 13), står der, at der ventes på dem. "Klar kl." kan også sættes til **00** (midnat i nat). Kortet viser altid **Forventet klar** – hvornår den sidste valgte billige ladetime slutter.
 - **Elbil:** Har flere biler samme lader, vælger du den tilsluttede bil i Elbil-menuen. Kun den valgte bil styres og vises i indstillingerne – i energiflowet ses begge biler med batteriniveau, den ikke-valgte lidt gennemsigtig. Med **Lad nu** lader bilen med det samme.
 
 Slår du styringen fra for et område, sættes udstyret tilbage til normal drift.
@@ -371,7 +371,7 @@ car: ev_tesla      # valgfri – ellers vises den bil, der sidder i laderen
 details: false     # valgfri – skjul "Mere" (pris-sammenligning og bilens indstillinger)
 ```
 
-Kortet viser batteriniveauet som en stor ring med målet, om bilen lader (kW), hvornår den er klar, hvad der spares, valget af tilsluttet bil, "Lad til", "Klar kl.", "Lad i" og en stor **Lad nu**-knap.
+Kortet viser batteriniveauet som en stor ring med målet, prisen for opladningen (lad nu · det valgte · billigste i sigte), om bilen lader (kW), hvornår den er klar, hvad der spares, valget af tilsluttet bil, "Lad til", "Klar kl.", "Lad i" og en stor **Lad nu**-knap.
 </details>
 
 <details><summary><b>Kortets indstillinger</b></summary>

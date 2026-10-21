@@ -707,3 +707,17 @@ def test_ev_charge_period():
     assert not today.short_of_time and not tomorrow.short_of_time
     # Forventet klar = slutningen af den sidste valgte ladetime
     assert tomorrow.done_at == max(x.end for x in tomorrow.slots) and d22 < tomorrow.done_at <= d23
+
+
+def test_ev_waiting_and_horizon_cost():
+    slots_today = model().build_slots(records("2026-10-21", CURVE))     # morgendagens priser ikke kendt
+    s = dict(const.DEFAULT_SETTINGS)
+    s.update({"ev_target_soc": 80, "ev_charge_power": 11, "ev_battery_capacity": 60, "ev_ready_hour": 0})
+    now = datetime(2026, 10, 21, 9, 0, tzinfo=TZ).astimezone(timezone.utc)
+    d22, d23 = datetime(2026, 10, 22, tzinfo=TZ), datetime(2026, 10, 23, tzinfo=TZ)
+    ep = planner.build_plan(slots_today, now, TZ, s, cars=[planner.CarInput("ev", "Bil", soc=50, deadline=d23, earliest=d22)]).evs["ev"]
+    assert not ep.slots and ep.waiting_for_prices and ep.done_at is None
+    # Klar kl. 00: midnat i nat – planlægges i dag
+    ep = planner.build_plan(slots_today, now, TZ, s, cars=[planner.CarInput("ev", "Bil", soc=50)]).evs["ev"]
+    assert ep.ready_at == d22 and ep.slots and not ep.waiting_for_prices
+    assert ep.cost_horizon is not None and ep.cost_horizon <= ep.cost_planned + 0.01 <= ep.cost_now + 0.02

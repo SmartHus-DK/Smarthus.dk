@@ -175,6 +175,8 @@ def _ev_attrs(c: SmartHusController, cid: str) -> dict:
         "soc_at_ready": ep.soc_at_ready,
         "ready_at": ep.ready_at.isoformat() if ep.ready_at else None,
         "done_at": ep.done_at.isoformat() if ep.done_at else None,
+        "cost_horizon": ep.cost_horizon,
+        "waiting_for_prices": ep.waiting_for_prices,
     }
 
 

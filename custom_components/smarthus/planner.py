@@ -242,6 +242,8 @@ class EvPlan:
     soc_at_ready: float | None = None  # forventet batteriniveau ved klar-tidspunktet
     ready_at: datetime | None = None
     done_at: datetime | None = None  # forventet færdig: slutningen af den sidste planlagte ladetime
+    cost_horizon: float | None = None  # kr i de billigste kendte timer uden frist ("billigste i sigte")
+    waiting_for_prices: bool = False  # perioden går ud over de kendte priser – venter på nye priser
 
 
 @dataclass
@@ -450,6 +452,9 @@ def plan_cars(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
             used[s.start] = used.get(s.start, 0.0) + kw
         if ep.slots and not ep.target_reached:
             ep.done_at = max(s.end for s in ep.slots)
+        elif not ep.slots and wanted > 0 and not ep.target_reached and slots:
+            # Ingen plan endnu: perioden rækker ud over de kendte priser (fx morgendagens før kl. 13)
+            ep.waiting_for_prices = max(s.end for s in slots) < ready
         _ev_costs(ep, slots, now, cs)
         ep.on = (car.force or any(s.start <= now < s.end for s in ep.slots)) and not ep.target_reached
         result[car.cid] = ep
@@ -485,6 +490,8 @@ def _ev_costs(ep: EvPlan, slots: list[Slot], now: datetime, cs: dict) -> None:
         return
     future = sorted((s for s in slots if s.end > now), key=lambda s: s.start)
     ep.cost_now = charge_cost(future, energy, kw)
+    # Billigste i sigte: de billigste kendte timer uden frist
+    ep.cost_horizon = charge_cost(sorted(future, key=lambda s: (s.price, s.start)), energy, kw)
     real = [find_slot(slots, s.start) for s in ep.slots if s.end > now]
     if real and all(real):
         ep.cost_planned = charge_cost(sorted(real, key=lambda s: s.start), energy, kw)

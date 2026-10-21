@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.23.0";
+const SMARTHUS_CARD_VERSION = "1.23.1";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -146,6 +146,16 @@ const esc = (s) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 const hh = (d) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+/** "i dag kl. 14:00", "i morgen kl. 04:30" – og midnat som "i nat kl. 00:00" (slutningen af i dag). */
+const whenText = (d) => {
+  const midnight = d.getHours() === 0 && d.getMinutes() === 0;
+  const ref = midnight ? new Date(d.getTime() - 1) : d;
+  const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+  const n = Math.round((new Date(ref).setHours(0, 0, 0, 0) - d0) / 864e5);
+  const day = n === 0 ? (midnight ? "i nat" : "i dag") : n === 1 ? (midnight ? "i morgen nat" : "i morgen")
+    : ref.toLocaleDateString("da-DK", { weekday: "long", day: "numeric", month: "short" });
+  return `${day} kl. ${hh(d)}`;
+};
 
 /** Saml 15-minutters tidsrum til kommende perioder, fx "i morgen 02:00–03:45". */
 function upcoming(slots) {
@@ -1197,7 +1207,7 @@ class SmartHusCard extends HTMLElement {
       return n === 0 ? "i dag" : n === 1 ? "i morgen" : d.toLocaleDateString("da-DK", { weekday: "long", day: "numeric", month: "short" });
     };
     const notes = {
-      next: at ? `Klar ${dayTxt(at)} kl. ${hh(at)}` : "",
+      next: at ? `Klar ${whenText(at)}` : "",
       today: "De billigste timer i resten af i dag",
       tomorrow: "De billigste timer i morgen (00–24)",
       both: "De billigste timer fra nu og til og med i morgen",
@@ -1206,9 +1216,10 @@ class SmartHusCard extends HTMLElement {
     // Hvornår er bilen færdig ud fra de valgte billige timer?
     const sv = this._st("sensor", `${cid}_smart_saving`)?.attributes || {};
     const done = sv.done_at && !sv.target_reached && !sv.short_of_time ? new Date(sv.done_at) : null;
-    const doneTxt = done ? `Forventet klar ${dayTxt(done)} kl. ${hh(done)}${sv.target_soc != null && sv.soc != null ? ` (${nf(sv.target_soc, 0)} %)` : ""}` : "";
+    const doneTxt = done ? `Forventet klar ${whenText(done)}${sv.target_soc != null && sv.soc != null ? ` (${nf(sv.target_soc, 0)} %)` : ""}` : "";
+    const waitTxt = sv.waiting_for_prices ? "Venter på morgendagens priser – de kommer normalt ca. kl. 13, så vælges de billigste timer" : "";
     return `<div class="day-row"><div class="step-lbl">Lad i<span class="win-note">${esc(notes[st.state] || "")}</span>
-      ${doneTxt ? `<span class="done-note">${esc(doneTxt)}</span>` : ""}</div>
+      ${doneTxt ? `<span class="done-note">${esc(doneTxt)}</span>` : ""}${waitTxt ? `<span class="done-note wait">${esc(waitTxt)}</span>` : ""}</div>
       <div class="chips day-chips">${chips}</div></div>`;
   }
 
@@ -1386,6 +1397,8 @@ class SmartHusCard extends HTMLElement {
         <div class="cmp-title">${nf(a.energy_kwh, 1)} kWh${a.soc != null ? ` fra ${nf(a.soc, 0)} % til ${nf(a.target_soc, 0)} %` : ""}</div>
         ${row("Lad nu", a.cost_now, a.price_now, COLORS.expensive)}
         ${row("Billigste timer", a.cost_planned, a.price_planned, COLORS.cheap)}
+        ${a.cost_horizon != null && a.cost_horizon < a.cost_planned - 0.5 && this._st("select", `${cid}_ready_day`)?.state !== "horizon"
+          ? row("Billigste i sigte", a.cost_horizon, a.energy_kwh ? a.cost_horizon / a.energy_kwh : 0, "#7FC8B5") : ""}
         <div class="cmp-result">${save > 0.005
           ? `Du sparer <b>${nf(save)} kr</b> ved at lade ${esc(when || "i de billigste timer")}`
           : "Det er lige så billigt at lade nu"}</div>
@@ -1463,6 +1476,11 @@ class SmartHusCard extends HTMLElement {
       const min = s.attributes.min ?? -Infinity;
       const max = s.attributes.max ?? Infinity;
       let v = parseFloat(s.state) + step * parseInt(el.dataset.dir, 10);
+      if (s.attributes.unit_of_measurement === "kl." && isFinite(min) && isFinite(max)) {
+        // Klokkeslæt går rundt: 23 → 00 og 00 → 23
+        if (v > max) v = min;
+        else if (v < min) v = max;
+      }
       v = Math.min(max, Math.max(min, Math.round(v / step) * step));
       this._hass.callService("number", "set_value", { entity_id: entity, value: Number(v.toFixed(3)) });
     } else if (action === "select") {
@@ -1777,6 +1795,7 @@ class SmartHusCard extends HTMLElement {
       .chip.on { background: var(--primary-color); color: var(--text-primary-color, #fff); box-shadow: none; }
       .chip[disabled] { opacity: .4; cursor: default; }
       .day-row { padding: 8px 0; }
+      .done-note.wait { color: #C98A12; font-weight: 500; }
       .done-note { display: block; margin-top: 2px; font-size: 13px; font-weight: 600; color: ${COLORS.cheap}; }
       .step.unused .step-ctl, .step.unused > .step-lbl { opacity: .5; }
       .day-chips { margin-top: 8px; gap: 6px; }
@@ -1890,11 +1909,24 @@ class SmartHusEvCard extends SmartHusCard {
     const facts = [
       !connected ? `<div class="ev-fact"><b>Ikke tilsluttet</b></div>` : "",
       connected && charging && kw != null ? `<div class="ev-fact"><span>Lader nu</span><b>${nf(kw, 1)} kW</b></div>` : "",
-      done ? `<div class="ev-fact"><span>Klar</span><b>${dayTxt(done)} kl. ${hh(done)}</b></div>` : "",
+      done ? `<div class="ev-fact"><span>Klar</span><b>${whenText(done)}</b></div>` : "",
+      a.waiting_for_prices ? `<div class="ev-fact"><span>Venter på priser</span><b class="wait">Ca. kl. 13</b></div>` : "",
       a.target_reached ? `<div class="ev-fact"><b>Opladet til ${nf(target, 0)} %</b></div>` : "",
-      a.cost_now != null && a.cost_planned != null && a.cost_now - a.cost_planned > 0.5 && !a.short_of_time
-        ? `<div class="ev-fact"><span>Sparer</span><b class="ok">${nf(a.cost_now - a.cost_planned, 0)} kr</b></div>` : "",
     ].join("");
+    // Pris for opladningen: lad nu · det valgte · billigste i sigte
+    const mode = this._st("select", `${cid}_ready_day`)?.state || "next";
+    const modeName = { next: `Til klar kl. ${String(this._num("number", `${cid}_ready_hour`) ?? "").padStart(2, "0")}`,
+      today: "I dag", tomorrow: "I morgen", both: "Begge dage", horizon: "Billigste i sigte" }[mode];
+    const priceRows = [];
+    if (!a.target_reached && !a.short_of_time && a.cost_now != null && connected) {
+      priceRows.push(["Lad nu", a.cost_now, ""]);
+      if (a.cost_planned != null && mode !== "horizon") priceRows.push([modeName, a.cost_planned, "sel"]);
+      else if (a.waiting_for_prices) priceRows.push([modeName, null, "sel"]);
+      if (a.cost_horizon != null) priceRows.push(["Billigste i sigte", a.cost_horizon, mode === "horizon" ? "sel" : "best"]);
+    }
+    const prices = priceRows.length ? `<div class="ev-prices">${priceRows.map(([l, v, c]) => `
+        <div class="ev-price ${c}"><span>${esc(l)}</span><b>${v == null ? "venter" : `${nf(v, 0)} kr`}</b></div>`).join("")}
+      ${a.energy_kwh ? `<div class="ev-price-note">${nf(a.energy_kwh, 1)} kWh til ${nf(target, 0)} %</div>` : ""}</div>` : "";
 
     const force = this._st("switch", this._forceKey(cid));
     const fon = force?.state === "on";
@@ -1915,6 +1947,7 @@ class SmartHusEvCard extends SmartHusCard {
           ${sw ? this._toggle(sw.entity_id, on, `Styr ${car.name}`) : ""}
         </div>
         <div class="ev-main">${ring}<div class="ev-facts">${facts}</div></div>
+        ${prices}
         ${this._config.car ? "" : this._connectedPicker()}
         ${warn}
         <div class="ev-rows">${step(`${cid}_target_soc`)}${this._st("select", `${cid}_ready_day`)?.attributes?.uses_ready_hour === false ? "" : step(`${cid}_ready_hour`)}${this._readyDayRow(cid)}</div>
@@ -1945,6 +1978,15 @@ class SmartHusEvCard extends SmartHusCard {
       .ev-fact { display: flex; flex-direction: column; font-size: 12.5px; color: var(--secondary-text-color); }
       .ev-fact b { font-size: 17px; color: var(--primary-text-color); font-variant-numeric: tabular-nums; }
       .ev-fact b.ok { color: ${COLORS.cheap}; }
+      .ev-fact b.wait { color: #C98A12; }
+      .ev-prices { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 6px; margin: 4px 0 8px; }
+      .ev-price { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 12px; background: var(--sh-track); min-width: 0; }
+      .ev-price span { font-size: 11.5px; line-height: 1.25; color: var(--secondary-text-color); }
+      .ev-price b { margin-top: auto; }
+      .ev-price b { font-size: 17px; font-variant-numeric: tabular-nums; }
+      .ev-price.sel { box-shadow: inset 0 0 0 1.5px var(--primary-color); }
+      .ev-price.best b { color: ${COLORS.cheap}; }
+      .ev-price-note { grid-column: 1 / -1; font-size: 11.5px; color: var(--secondary-text-color); }
       .evc .picker { padding: 8px 0; border-bottom: 0; }
       .ev-rows { border-top: 1px solid var(--sh-line); margin-top: 6px; padding-top: 4px; }
       .ev-go { padding: 14px; font-size: 16px; }
