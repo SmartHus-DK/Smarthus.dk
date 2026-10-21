@@ -80,15 +80,17 @@ class ConnectedCarSelect(SmartHusEntity, SelectEntity, RestoreEntity):
 
 
 class ReadyDaySelect(SmartHusEntity, SelectEntity, RestoreEntity):
-    """Hvilken dag skal bilen være klar: næste gang klokken er der, i dag eller i morgen.
+    """Hvornår skal bilen lade: til "klar kl." eller billigst i en periode uden klar-tidspunkt.
 
-    "I dag" og "I morgen" gemmes som en fast dato, så valget ikke flytter sig, når døgnet skifter
-    eller nye priser kommer. Når tidspunktet er passeret, går valget selv tilbage til "næste gang".
+    next: frem til næste "klar kl." · today: resten af i dag · tomorrow: i morgen 00–24 ·
+    both: nu til og med i morgen · horizon: billigste i sigte (alle kendte priser).
+    Dagene gemmes som faste datoer, så perioden ikke flytter sig. Når den er slut, går valget
+    selv tilbage til "next".
     """
 
     _domain = "select"
     _attr_icon = "mdi:calendar-clock"
-    _attr_options = ["next", "today", "tomorrow"]
+    _attr_options = ["next", "today", "tomorrow", "both", "horizon"]
 
     def __init__(self, entry, controller: SmartHusController, cid: str, name: str) -> None:
         key = "ev_ready_day" if cid == "ev" else f"{cid}_ready_day"
@@ -98,30 +100,44 @@ class ReadyDaySelect(SmartHusEntity, SelectEntity, RestoreEntity):
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         last = await self.async_get_last_state()
-        raw = last.attributes.get("ready_date") if last is not None else None
+        if last is None:
+            return
+        mode = last.attributes.get("mode")
+        raw = last.attributes.get("ready_date")
+        day = None
         if raw:
             try:
-                self.controller.ev_ready_date[self.cid] = date.fromisoformat(raw)
+                day = date.fromisoformat(raw)
             except ValueError:
-                pass
+                day = None
+        if mode == "horizon":
+            self.controller.ev_ready_mode[self.cid] = ("horizon", None)
+        elif day is not None:
+            # Ældre version uden tilstand (fast klar-dag) → tilbage til klar kl.
+            if mode in ("today", "tomorrow", "both"):
+                self.controller.ev_ready_mode[self.cid] = (mode, day)
 
     @property
     def current_option(self) -> str:
-        d = self.controller._ready_date(self.cid)
-        if d is None:
-            return "next"
-        today = dt_util.now().date()
-        return "today" if d == today else "tomorrow" if d == today + timedelta(days=1) else "next"
+        mode, d = self.controller.ready_mode(self.cid)
+        if mode in ("next", "horizon") or d is None:
+            return mode if mode in ("next", "horizon") else "next"
+        # Efter midnat er "i morgen" og "begge dage" blevet til "i dag"
+        return "today" if d == dt_util.now().date() else mode
 
     @property
     def extra_state_attributes(self) -> dict:
-        d = self.controller.ev_ready_date.get(self.cid)
-        return {"ready_date": d.isoformat() if d else None,
-                "ready_at": self.controller.ready_at(self.cid).isoformat()}
+        mode, d = self.controller.ready_mode(self.cid)
+        inp = self.controller._ready_input(self.cid)
+        return {"mode": mode, "ready_date": d.isoformat() if d else None,
+                "ready_at": self.controller.ready_at(self.cid).isoformat(),
+                "earliest": inp["earliest"].isoformat() if inp.get("earliest") else None,
+                "uses_ready_hour": mode == "next"}
 
     async def async_select_option(self, option: str) -> None:
         today = dt_util.now().date()
-        day = {"today": today, "tomorrow": today + timedelta(days=1)}.get(option)
-        self.controller.set_ready_day(self.cid, day)
+        day = {"today": today, "tomorrow": today + timedelta(days=1), "both": today + timedelta(days=1)}.get(option)
+        # (perioden slutter ved midnat efter den valgte dag)
+        self.controller.set_ready_mode(self.cid, option if option in self._attr_options else "next", day)
         await self.controller.async_apply(force=True)
         self.async_write_ha_state()

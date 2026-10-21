@@ -164,7 +164,7 @@ class SmartHusController:
         self.heating_outdoor_ok = True     # varmestyringen er aktiv ift. udetemperaturen
         self._heating_paused_applied = False
         self._ev_charged: dict[str, tuple[str, float]] = {}
-        self.ev_ready_date: dict = {}  # bil → fast dato for "klar kl." (None = næste gang)  # bil → (klar-tidspunkt, ladede timer)  # grundtemperaturen er sat for den nuværende pause
+        self.ev_ready_mode: dict = {}  # bil → (tilstand, fast dato) for "klar kl."  # bil → (klar-tidspunkt, ladede timer)  # grundtemperaturen er sat for den nuværende pause
         self._hw_button_on = False
         # Fælles energimåler for varme og varmt vand: fordeles mellem de to
         self._heat_last: float | None = None
@@ -615,7 +615,7 @@ class SmartHusController:
                      soc=self._float_state(car.get("soc")), force=self.ev_force.get(car["id"], False),
                      connected=self.connected.get(car["id"], True),
                      charged_h=self._charged_hours(car["id"]),
-                     ready_date=self._ready_date(car["id"]))
+                     **self._ready_input(car["id"]))
             for car in self.cars
         ]
         self.plan = build_plan(slots, dt_util.utcnow(), self.tz, self.settings, soc=soc, cars=cars)
@@ -638,25 +638,45 @@ class SmartHusController:
         await self.async_apply()
         self._update_savings()
 
+    # --- Hvornår skal bilen lade -------------------------------------------
+    # next: frem til næste "klar kl." · today: resten af i dag · tomorrow: i morgen 00–24 ·
+    # both: nu til og med i morgen · horizon: billigste i sigte (alle kendte priser).
+    # Dagene gemmes som faste datoer, så perioden ikke flytter sig, når døgnet skifter eller nye
+    # priser kommer. Når perioden er slut, går valget selv tilbage til "next".
+    def _midnight(self, d) -> datetime:
+        return datetime(d.year, d.month, d.day, tzinfo=self.tz)
+
+    def ready_mode(self, cid: str) -> tuple[str, object]:
+        mode, d = self.ev_ready_mode.get(cid, ("next", None))
+        if mode in ("today", "tomorrow", "both") and d is not None:
+            if self._midnight(d) + timedelta(days=1) <= dt_util.utcnow():
+                self.ev_ready_mode[cid] = ("next", None)      # perioden er slut: klar kl. igen
+                return "next", None
+        return mode, d
+
+    def _ready_input(self, cid: str) -> dict:
+        mode, d = self.ready_mode(cid)
+        out: dict = {"horizon": mode == "horizon"}
+        if mode in ("today", "tomorrow", "both") and d is not None:
+            out["deadline"] = self._midnight(d) + timedelta(days=1)   # til midnat den sidste dag
+            if mode == "tomorrow":
+                out["earliest"] = self._midnight(d)
+        return out
+
     def ready_at(self, cid: str) -> datetime:
+        inp = self._ready_input(cid)
+        if inp.get("deadline") and inp["deadline"] > dt_util.utcnow():
+            return inp["deadline"]
         return car_ready(dt_util.utcnow(), self.tz, int(car_settings(self.settings, cid)["ready_hour"]),
-                         self.ev_ready_date.get(cid))
+                         None, inp["horizon"], self.coordinator.data or [])
 
-    def _ready_date(self, cid: str):
-        """Den valgte dag – ryddes, når klar-tidspunktet er passeret (så gælder 'næste gang')."""
-        d = self.ev_ready_date.get(cid)
-        if d is not None:
-            hour = int(car_settings(self.settings, cid)["ready_hour"]) % 24
-            if datetime(d.year, d.month, d.day, hour, tzinfo=self.tz) <= dt_util.utcnow():
-                self.ev_ready_date[cid] = None
-                return None
-        return d
-
-    def set_ready_day(self, cid: str, day) -> None:
-        self.ev_ready_date[cid] = day
+    def set_ready_mode(self, cid: str, mode: str, day=None) -> None:
+        self.ev_ready_mode[cid] = (mode, day)
         self.recalculate()
 
     def _ready_key(self, cid: str) -> str:
+        if self.ready_mode(cid)[0] == "horizon":
+            return f"horizon:{dt_util.now().date().isoformat()}"   # uden SoC: nyt døgn, nye timer
         return self.ready_at(cid).isoformat()
 
     def _charged_hours(self, cid: str) -> float:

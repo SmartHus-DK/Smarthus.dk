@@ -645,11 +645,13 @@
         "name": "Tilsluttet bil"
       },
       "ev_ready_day": {
-        "name": "{car}: klar dag",
+        "name": "{car}: lad i",
         "state": {
-          "next": "Næste gang",
+          "next": "Til klar kl.",
           "today": "I dag",
-          "tomorrow": "I morgen"
+          "tomorrow": "I morgen",
+          "both": "Begge dage",
+          "horizon": "Billigste i sigte"
         }
       }
     }

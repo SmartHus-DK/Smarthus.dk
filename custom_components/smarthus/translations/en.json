@@ -633,11 +633,13 @@
         "name": "Connected car"
       },
       "ev_ready_day": {
-        "name": "{car}: ready day",
+        "name": "{car}: charge within",
         "state": {
-          "next": "Next time",
+          "next": "Until ready time",
           "today": "Today",
-          "tomorrow": "Tomorrow"
+          "tomorrow": "Tomorrow",
+          "both": "Both days",
+          "horizon": "Cheapest in sight"
         }
       }
     }

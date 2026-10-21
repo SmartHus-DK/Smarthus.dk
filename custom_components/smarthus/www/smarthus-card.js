@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.21.0";
+const SMARTHUS_CARD_VERSION = "1.22.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -1180,28 +1180,29 @@ class SmartHusCard extends HTMLElement {
       }).join("");
   }
 
-  /** Hvilken dag skal bilen være klar: næste gang, i dag eller i morgen (fast dato). */
+  /** Lad til "klar kl." – eller billigst i en periode uden klar-tidspunkt. */
   _readyDayRow(cid) {
     const st = this._st("select", `${cid}_ready_day`);
     if (!st) return "";
-    const h = this._num("number", `${cid}_ready_hour`);
-    const passed = h != null && new Date().getHours() >= h;
-    const labels = { next: "Næste gang", today: "I dag", tomorrow: "I morgen" };
-    const chips = ["next", "today", "tomorrow"].map((o) => {
-      const off = o === "today" && passed;
-      return `<button class="chip ${st.state === o ? "on" : ""}" data-action="select" data-entity="${st.entity_id}" data-option="${o}"
-        aria-pressed="${st.state === o}" ${off ? "disabled title=\"Klokken er allerede passeret i dag\"" : ""}>${labels[o]}</button>`;
-    }).join("");
-    const at = st.attributes.ready_at ? new Date(st.attributes.ready_at) : null;
-    let when = "";
-    if (at) {
+    const labels = { next: "Til klar kl.", today: "I dag", tomorrow: "I morgen", both: "Begge dage", horizon: "Billigste i sigte" };
+    const chips = Object.keys(labels).map((o) => `<button class="chip ${st.state === o ? "on" : ""}" data-action="select"
+        data-entity="${st.entity_id}" data-option="${o}" aria-pressed="${st.state === o}">${labels[o]}</button>`).join("");
+    const a = st.attributes || {};
+    const at = a.ready_at ? new Date(a.ready_at) : null;
+    const dayTxt = (d) => {
       const d0 = new Date(); d0.setHours(0, 0, 0, 0);
-      const days = Math.round((new Date(at).setHours(0, 0, 0, 0) - d0) / 864e5);
-      const day = days === 0 ? "i dag" : days === 1 ? "i morgen" : at.toLocaleDateString("da-DK", { weekday: "long", day: "numeric", month: "short" });
-      when = `Klar ${day} kl. ${hh(at)}`;
-    }
-    return `<div class="step day-row"><span class="step-lbl">Dag<span class="win-note">${esc(when)}</span></span>
-      <span class="chips day-chips">${chips}</span></div>`;
+      const n = Math.round((new Date(d).setHours(0, 0, 0, 0) - d0) / 864e5);
+      return n === 0 ? "i dag" : n === 1 ? "i morgen" : d.toLocaleDateString("da-DK", { weekday: "long", day: "numeric", month: "short" });
+    };
+    const notes = {
+      next: at ? `Klar ${dayTxt(at)} kl. ${hh(at)}` : "",
+      today: "De billigste timer i resten af i dag",
+      tomorrow: "De billigste timer i morgen (00–24)",
+      both: "De billigste timer fra nu og til og med i morgen",
+      horizon: `De billigste kendte timer${at ? ` (priser til og med ${dayTxt(new Date(at.getTime() - 1))})` : ""} – flytter sig, hvis næste dags priser er billigere`,
+    };
+    return `<div class="day-row"><div class="step-lbl">Lad i<span class="win-note">${esc(notes[st.state] || "")}</span></div>
+      <div class="chips day-chips">${chips}</div></div>`;
   }
 
   _switchRow(it) {
@@ -1396,9 +1397,10 @@ class SmartHusCard extends HTMLElement {
       unit === "kl." ? `kl. ${String(v).padStart(2, "0")}` :
       unit === "h" ? `${trim(v)} t` :
       `${nf(v, dec)} ${esc(unit)}`;
+    const unused = key.endsWith("_ready_hour") && this._st("select", key.replace("_ready_hour", "_ready_day"))?.attributes?.uses_ready_hour === false;
     return `
-      <div class="step">
-        <span class="step-lbl">${esc(this._label(key))}${key === "ev_max_total_power" ? `<span class="win-note">0 = ingen grænse</span>` : key === "hotwater_surplus_kw" ? `<span class="win-note">0 = fra · eksport lige nu ${nf(this._st("binary_sensor", "hotwater_now")?.attributes?.export_kw, 1)} kW</span>` : ""}</span>
+      <div class="step${unused ? " unused" : ""}">
+        <span class="step-lbl">${esc(this._label(key))}${unused ? `<span class="win-note">Bruges ikke – perioden er valgt nedenfor</span>` : ""}${key === "ev_max_total_power" ? `<span class="win-note">0 = ingen grænse</span>` : key === "hotwater_surplus_kw" ? `<span class="win-note">0 = fra · eksport lige nu ${nf(this._st("binary_sensor", "hotwater_now")?.attributes?.export_kw, 1)} kW</span>` : ""}</span>
         <span class="step-ctl">
           <button data-action="step" data-entity="${s.entity_id}" data-dir="-1" aria-label="Mindre ${esc(this._label(key))}">−</button>
           <span class="step-val">${shown}</span>
@@ -1767,7 +1769,9 @@ class SmartHusCard extends HTMLElement {
       .chip { padding: 7px 14px; border-radius: 18px; font-size: 14px; box-shadow: inset 0 0 0 1px var(--sh-line); }
       .chip.on { background: var(--primary-color); color: var(--text-primary-color, #fff); box-shadow: none; }
       .chip[disabled] { opacity: .4; cursor: default; }
-      .day-chips { margin-top: 0; gap: 6px; justify-content: flex-end; }
+      .day-row { padding: 8px 0; }
+      .step.unused .step-ctl, .step.unused > .step-lbl { opacity: .5; }
+      .day-chips { margin-top: 8px; gap: 6px; }
       .day-chips .chip { padding: 6px 11px; font-size: 13px; }
       .hint { font-size: 13px; color: var(--secondary-text-color); }
       .win-note { display: block; font-size: 11px; color: var(--secondary-text-color); }

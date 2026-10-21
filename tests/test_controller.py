@@ -54,7 +54,7 @@ def make(config, states):
     c.heating_outdoor_ok = True
     c._heating_paused_applied = False
     c._ev_charged = {}
-    c.ev_ready_date = {}
+    c.ev_ready_mode = {}
     c._hw_surplus_sec, c._hw_done_date = 0.0, None
     c.flags = {"hotwater_surplus_smart": True}
     c.ev_solar, c._ev_current_sent = {}, {}
@@ -334,6 +334,18 @@ async def main():
     c._last_cmd.clear()
     await c._apply_heating_step(c.plan, False)
     assert c.heating_outdoor_ok and h.services.calls[-1][2]["temperature"] == 21.5, h.services.calls
+    # 20) "Lad i": faste perioder uden klar-tid – og de udløber af sig selv
+    import datetime as _d
+    c, h = make({}, {})
+    today = _dt.datetime.now(ZoneInfo("Europe/Copenhagen")).date()
+    c.ev_ready_mode = {"ev": ("tomorrow", today + _d.timedelta(days=1))}
+    inp = c._ready_input("ev")
+    assert inp["earliest"].date() == today + _d.timedelta(days=1)
+    assert inp["deadline"].date() == today + _d.timedelta(days=2) and inp["deadline"].hour == 0
+    c.ev_ready_mode = {"ev": ("today", today - _d.timedelta(days=1))}   # i går: udløbet
+    assert c.ready_mode("ev") == ("next", None)
+    c.ev_ready_mode = {"ev": ("horizon", None)}
+    assert c._ready_input("ev") == {"horizon": True}
     print("controller OK")
 
 def test_controller_control():

@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.21.0** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
+**Version 1.22.0** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
 
 SmartHus bruger strømmen, når den er billigst, og sparer, når den er dyrest. Den lader elbilen og batteriet i de billige timer, varmer vandet med billig strøm eller solcelleoverskud, skruer lidt op og ned for varmen og stopper salg af solstrøm, når prisen er for lav. Du ser det hele – og hvad du har sparet – på ét kort.
 
@@ -117,7 +117,7 @@ Energimålere (kWh) er valgfrie, men skal vælges, hvis du vil se, hvad du har s
 - **Øverst:** klokken og datoen, elprisen lige nu, hvad SmartHus har sparet, huset med energiflow og vejr, og solcellerne med prognose.
 - **Prisgrafen:** dagens og morgendagens priser (grøn = billig, rød = dyr) og hvornår elbil, batteri, varmt vand og varme kører.
 - **Knapperne** (Elbil, Varmt vand, Varme, Batteri, Solceller): tryk for at se og ændre indstillingerne. **Luk** fører tilbage til overblikket. Den grønne prik betyder, at SmartHus styrer området.
-- **Klar til hvornår:** under Elbil vælger du "Klar kl." og **Dag**: *Næste gang* (den næste gang klokken er der – i dag, hvis den ikke er passeret), *I dag* eller *I morgen*. I dag/i morgen gemmes som en fast dato, så målet ikke flytter sig, når døgnet skifter eller morgendagens priser kommer. Når tidspunktet er passeret, går valget selv tilbage til *Næste gang*.
+- **Lad i:** under Elbil vælger du, hvor de billigste timer skal findes: **Til klar kl.** (standard – frem til næste "Klar kl."), **I dag** (resten af i dag), **I morgen** (00–24), **Begge dage** (nu til og med i morgen) eller **Billigste i sigte** (alle kendte priser – flytter sig, hvis næste dags priser er billigere). Dagene gemmes som faste datoer, så perioden ikke flytter sig, når døgnet skifter eller nye priser kommer. Når perioden er slut, går valget selv tilbage til *Til klar kl.*
 - **Elbil:** Har flere biler samme lader, vælger du den tilsluttede bil i Elbil-menuen. Kun den valgte bil styres og vises i indstillingerne – i energiflowet ses begge biler med batteriniveau, den ikke-valgte lidt gennemsigtig. Med **Lad nu** lader bilen med det samme.
 
 Slår du styringen fra for et område, sættes udstyret tilbage til normal drift.

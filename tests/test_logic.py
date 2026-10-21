@@ -682,3 +682,26 @@ def test_ev_ready_day_fixed():
     # Når tidspunktet er passeret, gælder "næste gang" igen
     now3 = datetime(2026, 10, 22, 22, 30, tzinfo=TZ).astimezone(timezone.utc)
     assert planner.car_ready(now3, TZ, 22, tomorrow) == datetime(2026, 10, 23, 22, 0, tzinfo=TZ)
+
+
+def test_ev_charge_period():
+    # Ingen klar-tid: lad billigst i dag / i morgen / begge dage / alle kendte priser
+    recs = records("2026-10-21", CURVE) + records("2026-10-22", [p * 0.5 for p in CURVE])
+    slots = model().build_slots(recs)
+    s = dict(const.DEFAULT_SETTINGS)
+    s.update({"ev_target_soc": 80, "ev_charge_power": 11, "ev_battery_capacity": 60, "ev_ready_hour": 7})
+    now = datetime(2026, 10, 21, 9, 0, tzinfo=TZ).astimezone(timezone.utc)
+    d21, d22, d23 = (datetime(2026, 10, d, tzinfo=TZ) for d in (21, 22, 23))
+
+    def plan(**kw):
+        return planner.build_plan(slots, now, TZ, s, cars=[planner.CarInput("ev", "Bil", soc=50, **kw)]).evs["ev"]
+
+    today = plan(deadline=d22)
+    assert today.slots and all(now <= x.start and x.end <= d22 for x in today.slots)
+    tomorrow = plan(deadline=d23, earliest=d22)
+    assert tomorrow.slots and all(d22 <= x.start and x.end <= d23 for x in tomorrow.slots)
+    both = plan(deadline=d23)
+    assert all(x.start >= d22 for x in both.slots)          # i morgen er halvt så dyrt → vælges
+    horizon = plan(horizon=True)
+    assert [x.start for x in horizon.slots] == [x.start for x in both.slots]
+    assert not today.short_of_time and not tomorrow.short_of_time
