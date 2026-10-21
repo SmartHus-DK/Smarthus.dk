@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.25.0";
+const SMARTHUS_CARD_VERSION = "1.26.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -626,8 +626,12 @@ class SmartHusCard extends HTMLElement {
     const W = n * 10;
     const H = 100;
     const prices = hours.map((h) => h.price);
-    const max = Math.max(...prices, 0.01);
-    const min = Math.min(...prices, 0);
+    // Y-akse med hele kroner (0,5 kr når priserne er lave, 2 kr når de er meget høje)
+    const rawMax = Math.max(...prices, 0.01), rawMin = Math.min(...prices, 0);
+    const span = rawMax - rawMin;
+    const step = span <= 1.5 ? 0.5 : span > 8 ? 2 : 1;
+    const max = Math.ceil(rawMax / step - 1e-9) * step;
+    const min = rawMin < 0 ? Math.floor(rawMin / step + 1e-9) * step : 0;
     const sorted = [...prices].sort((a, b) => a - b);
     const q = (p) => sorted[Math.floor((sorted.length - 1) * p)];
     const lo = q(0.25), hi = q(0.75);
@@ -649,6 +653,11 @@ class SmartHusCard extends HTMLElement {
           opacity="${past ? 0.3 : sel ? 1 : 0.85}" data-action="bar" data-i="${i}" class="bar${sel ? " sel" : ""}"></rect>`;
       })
       .join("");
+
+    const yTicks = [];
+    for (let v = min; v <= max + 1e-9; v += step) yTicks.push(Math.round(v * 100) / 100);
+    const grid = yTicks.map((v) => `<line x1="0" x2="${W}" y1="${y0 - v * scale}" y2="${y0 - v * scale}" class="${v === 0 ? "zeroline" : "gridline"}"></line>`).join("");
+    const yAxis = yTicks.map((v, i) => `<span style="top:${(16 + ((y0 - v * scale) / H) * 110).toFixed(1)}px">${nf(v, step < 1 ? 1 : 0)}${i === yTicks.length - 1 ? " kr" : ""}</span>`).join("");
 
     const nowX = xOf(now);
     const midnight = hours.find((h, i) => i > 0 && h.start.getHours() === 0);
@@ -707,12 +716,14 @@ class SmartHusCard extends HTMLElement {
         <div class="strip-info">${selInfo}</div>
         <div class="chart">
           <svg class="bars" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Elpris pr. time i dag og i morgen">
+            ${grid}
             ${midX !== null ? `<line x1="${midX}" x2="${midX}" y1="0" y2="${H}" class="midline"></line>` : ""}
             ${bars}
             ${nowX >= 0 && nowX <= W ? `<line x1="${nowX}" x2="${nowX}" y1="0" y2="${H}" class="nowline"></line>` : ""}
           </svg>
           ${midX !== null ? `<div class="daylbl" style="left:${(midX / W) * 100}%">I morgen</div>` : ""}
           <div class="daylbl first">I dag</div>
+          <div class="yaxis" aria-hidden="true">${yAxis}</div>
         </div>
         ${lanes.length ? `<svg class="lanes" viewBox="0 0 ${W} ${lanesHeight}" preserveAspectRatio="none" style="height:${lanesHeight}px" aria-hidden="true">${lanesSvg}${nowX >= 0 && nowX <= W ? `<line x1="${nowX}" x2="${nowX}" y1="0" y2="${lanesHeight}" class="nowline"></line>` : ""}</svg>` : ""}
         <div class="ticks">${ticks}</div>
@@ -1655,6 +1666,12 @@ class SmartHusCard extends HTMLElement {
       .daylbl { position: absolute; top: 0; font-size: 11px; color: var(--secondary-text-color); padding-left: 4px; }
       .daylbl.first { left: 0; padding-left: 0; }
       .lanes { display: block; width: 100%; margin-top: 6px; }
+      .chart, .lanes, .ticks { margin-left: 34px; width: calc(100% - 34px); }
+      .yaxis { position: absolute; left: -34px; top: 0; width: 29px; height: 100%; font-size: 10px; line-height: 1;
+               color: var(--secondary-text-color); font-variant-numeric: tabular-nums; pointer-events: none; }
+      .yaxis span { position: absolute; right: 0; transform: translateY(-50%); white-space: nowrap; }
+      .gridline { stroke: var(--sh-line); stroke-width: 1; opacity: .7; vector-effect: non-scaling-stroke; }
+      .zeroline { stroke: var(--sh-line); stroke-width: 1; vector-effect: non-scaling-stroke; }
       .ticks { position: relative; height: 16px; margin-top: 4px; font-size: 11px; color: var(--secondary-text-color); font-variant-numeric: tabular-nums; }
       .ticks span { position: absolute; transform: translateX(-2px); }
       .legend { display: grid; gap: 4px; margin: 6px 0 8px; }
