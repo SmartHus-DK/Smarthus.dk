@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.24.0";
+const SMARTHUS_CARD_VERSION = "1.24.1";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -613,6 +613,12 @@ class SmartHusCard extends HTMLElement {
       <span class="s-val">${nf(v, 0)} kr</span><span class="s-lbl">${label}</span></button>`;
   }
 
+  /** Sporene under prisgrafen (én pr. elbil + batteri, varmt vand og varme). */
+  _lanes() {
+    const carLanes = this._visibleCars(this._cars()).map((c) => ({ key: `${c.cid}_charge_now`, label: `${c.name} lader`, color: c.color, module: `control_${c.cid}` }));
+    return [...carLanes, ...LANES].filter((l) => this._st("switch", l.module) && this._st("binary_sensor", l.key));
+  }
+
   _renderStrip() {
     const hours = this._hours();
     if (!hours.length) return `<div class="strip empty">Venter på elpriser…</div>`;
@@ -649,8 +655,7 @@ class SmartHusCard extends HTMLElement {
     const midX = midnight ? xOf(midnight.start.getTime()) : null;
 
     // Spor for planlagte handlinger
-    const carLanes = this._visibleCars(this._cars()).map((c) => ({ key: `${c.cid}_charge_now`, label: `${c.name} lader`, color: c.color, module: `control_${c.cid}` }));
-    const lanes = [...carLanes, ...LANES].filter((l) => this._st("switch", l.module) && this._st("binary_sensor", l.key));
+    const lanes = this._lanes();
     const laneH = 7, gap = 4;
     const lanesSvg = lanes
       .map((l, li) => {
@@ -2000,9 +2005,23 @@ class SmartHusEvCard extends SmartHusCard {
 /**
  * Plan-kort: elpris nu, sol, strøm til/fra nettet, hvad der kører lige nu og prisgrafen med planen.
  *   type: custom:smarthus-plan-card
- *   legend: false      # valgfri – skjul forklaringen under grafen
+ *   legend: compact    # standard: én linje med farverne · true: med tidspunkter · false: ingen
  */
 class SmartHusPlanCard extends SmartHusCard {
+  _legendMode() {
+    const l = this._config.legend;
+    return l === true || l === "full" ? "full" : l === false || l === "none" ? "none" : "compact";
+  }
+
+  /** Én linje med farvekoderne (uden tidspunkter). */
+  _compactKeys() {
+    const keys = this._lanes().map((l) => {
+      const off = this._st("switch", l.module)?.state !== "on";
+      return `<span class="pk${off ? " off" : ""}"><i style="background:${l.color}"></i>${l.label}</span>`;
+    }).join("");
+    return keys ? `<div class="pk-row">${keys}</div>` : "";
+  }
+
   static getStubConfig() {
     return {};
   }
@@ -2016,7 +2035,7 @@ class SmartHusPlanCard extends SmartHusCard {
   }
 
   setConfig(config) {
-    super.setConfig({ legend: true, ...(config || {}) });
+    super.setConfig({ legend: "compact", ...(config || {}) });
   }
 
   _render() {
@@ -2063,10 +2082,11 @@ class SmartHusPlanCard extends SmartHusCard {
     const story = parts.map((t) => `<span class="ps" style="--c:${tone(t)}"><i></i>${esc(t)}</span>`).join("");
 
     const html = `
-      <div class="pc ${this._config.legend ? "" : "no-legend"}">
+      <div class="pc ${this._legendMode() === "full" ? "" : "no-legend"}">
         <div class="pt-row">${tiles}</div>
         <div class="ps-row" aria-label="Lige nu">${story}</div>
         ${this._renderStrip()}
+        ${this._legendMode() === "compact" ? this._compactKeys() : ""}
       </div>`;
     this._update(html, this._hass.themes?.darkMode ? "dark" : "");
   }
@@ -2093,6 +2113,10 @@ class SmartHusPlanCard extends SmartHusCard {
       .ps i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
       .pc .strip { border-top: 0; padding: 8px 0 0; }
       .pc.no-legend .legend { display: none; }
+      .pk-row { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 8px 0 2px; font-size: 12px; color: var(--secondary-text-color); }
+      .pk { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+      .pk i { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+      .pk.off { opacity: .45; }
     </style>`);
   }
 }

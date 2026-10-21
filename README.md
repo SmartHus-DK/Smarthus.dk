@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.24.0** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
+**Version 1.24.1** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
 
 SmartHus bruger strømmen, når den er billigst, og sparer, når den er dyrest. Den lader elbilen og batteriet i de billige timer, varmer vandet med billig strøm eller solcelleoverskud, skruer lidt op og ned for varmen og stopper salg af solstrøm, når prisen er for lav. Du ser det hele – og hvad du har sparet – på ét kort.
 
@@ -380,7 +380,7 @@ Et kompakt kort med elprisen lige nu, solproduktion, strøm til/fra nettet og hu
 
 ```yaml
 type: custom:smarthus-plan-card
-legend: false      # valgfri – skjul forklaringen under grafen
+legend: compact    # standard: farverne på én linje · true: med tidspunkter · false: skjul
 ```
 </details>
 
