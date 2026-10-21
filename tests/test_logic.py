@@ -623,3 +623,21 @@ def test_external_vat():
     assert pricing.vat_factor(True, True) == 1.0
     assert pricing.vat_factor(False, True) == 1.25                               # uden moms → læg moms på
     assert abs(pricing.vat_factor(True, False) - 0.8) < 1e-9                     # erhverv uden moms
+
+
+def test_ev_short_of_time():
+    # Kl. 08:57, klar kl. 09, fra 33 % til 80 % – der er kun 3 minutter
+    recs = records("2026-10-21", CURVE) + records("2026-10-22", CURVE)
+    slots = model().build_slots(recs)
+    now = datetime(2026, 10, 21, 8, 57, tzinfo=TZ).astimezone(timezone.utc)
+    s = dict(const.DEFAULT_SETTINGS)
+    s.update({"ev_target_soc": 80, "ev_ready_hour": 9, "ev_charge_power": 10.2, "ev_battery_capacity": 78})
+    p = planner.build_plan(slots, now, TZ, s, cars=[planner.CarInput("ev", "VW", soc=33)])
+    ep = p.evs["ev"]
+    assert ep.short_of_time and ep.on
+    assert 33 < ep.soc_at_ready < 35                   # 3 min × 10,2 kW ≈ 0,5 kWh ≈ +0,6 %
+    assert ep.energy < 1 and ep.cost_now == ep.cost_planned   # ingen misvisende sammenligning
+    # Med god tid er der ingen advarsel
+    now2 = datetime(2026, 10, 21, 20, 0, tzinfo=TZ).astimezone(timezone.utc)
+    p2 = planner.build_plan(slots, now2, TZ, s, cars=[planner.CarInput("ev", "VW", soc=33)])
+    assert not p2.evs["ev"].short_of_time

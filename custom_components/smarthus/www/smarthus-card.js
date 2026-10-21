@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.20.2";
+const SMARTHUS_CARD_VERSION = "1.20.3";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -811,6 +811,7 @@ class SmartHusCard extends HTMLElement {
       if (a.target_reached) return `${prefix}Ladet til ${nf(a.soc, 0)} %`;
       const ca = this._st("binary_sensor", k)?.attributes || {};
       if (ca.connected === false) return `${prefix}Ikke tilsluttet laderen`;
+      if (a.short_of_time) return `${prefix}Ikke tid nok – når ca. ${nf(a.soc_at_ready, 0)} % kl. ${a.ready_at ? hh(new Date(a.ready_at)) : ""}`;
       if (ca.solar_active) return `${prefix}Lader med sol · ${ca.solar_current} A${a.soc != null ? ` · ${nf(a.soc, 0)} %` : ""}`;
       if (isOn(k)) return `${prefix}Lader nu${a.soc != null ? ` · ${nf(a.soc, 0)} %` : ""}`;
       const n = next(k);
@@ -1324,6 +1325,16 @@ class SmartHusCard extends HTMLElement {
     if (a.target_reached) {
       return `<div class="cmp done">Bilen har nået målet på ${nf(a.target_soc, 0)} %. Der lades ikke mere.</div>`;
     }
+    if (a.short_of_time) {
+      const ready = a.ready_at ? new Date(a.ready_at) : null;
+      const mins = ready ? Math.max(0, Math.round((ready.getTime() - Date.now()) / 60000)) : null;
+      const left = mins == null ? "" : mins < 90 ? `${mins} min` : `${nf(mins / 60, 1)} timer`;
+      return `<div class="cmp warn-box">
+        <div class="cmp-title">Ikke tid nok til ${nf(a.target_soc, 0)} %</div>
+        <div class="cmp-result">Der er kun ${left} til kl. ${ready ? hh(ready) : ""}. Bilen når ca. <b>${nf(a.soc_at_ready, 0)} %</b> (fra ${nf(a.soc, 0)} %)${this._st("switch", `control_${cid}`)?.state === "on" ? ", så der lades med det samme" : ""}.</div>
+        <div class="cmp-sub" style="margin-left:0">Ryk "Klar kl." senere, hvis bilen skal nå ${nf(a.target_soc, 0)} % – så vælges de billigste timer igen.</div>
+      </div>`;
+    }
     if (a.cost_now == null || a.cost_planned == null) {
       return `<div class="cmp wait">Prisen for opladningen beregnes, når morgendagens elpriser er kendt (normalt ca. kl. 13).</div>`;
     }
@@ -1651,6 +1662,8 @@ class SmartHusCard extends HTMLElement {
       .cmp-val { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 64px; text-align: right; }
       .cmp-sub { margin: 1px 0 8px 106px; font-size: 11px; color: var(--secondary-text-color); }
       .cmp-result { margin-top: 2px; font-size: 14px; }
+      .cmp.warn-box { box-shadow: inset 3px 0 0 ${COLORS.expensive}; }
+      .cmp.warn-box .cmp-title { color: ${COLORS.expensive}; }
       .cmp-warn { margin-top: 8px; font-size: 12px; color: ${COLORS.expensive}; }
       .cmp-result b { color: ${COLORS.cheap}; font-variant-numeric: tabular-nums; }
       .res-line { font-size: 13px; }

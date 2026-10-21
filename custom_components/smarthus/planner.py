@@ -233,6 +233,9 @@ class EvPlan:
     cost_planned: float | None = None  # kr i de planlagte billigste timer
     limited: bool = False  # plads blev begrænset af maks. samlet ladeeffekt
     connected: bool = True  # False = ikke tilsluttet laderen – planlægges ikke
+    short_of_time: bool = False  # der er ikke tid nok til at nå målet inden klar-tidspunktet
+    soc_at_ready: float | None = None  # forventet batteriniveau ved klar-tidspunktet
+    ready_at: datetime | None = None
 
 
 @dataclass
@@ -400,6 +403,14 @@ def plan_cars(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
             if not ep.target_reached:
                 ep.slots = ev_plan(slots, now, tz, ep.hours_needed, int(cs["ready_hour"]),
                                    from_now=True, available=available)
+                # Er der tid nok til klar-tidspunktet? Ellers lades der hele tiden, og vi
+                # fortæller, hvor langt bilen når
+                ep.ready_at = _next_ready(now, tz, int(cs["ready_hour"]))
+                hours_left = (ep.ready_at - now).total_seconds() / 3600
+                if hours_left + 0.01 < ep.hours_needed:
+                    ep.short_of_time = True
+                    gain = hours_left * kw * CHARGE_EFFICIENCY / max(cs["battery_capacity"], 0.1) * 100
+                    ep.soc_at_ready = round(min(car.soc + gain, cs["target_soc"]), 1)
         if ep.slots and wanted > 0:
             planned_h = sum(s.hours for s in ep.slots)
             ep.limited = available is not None and planned_h + 0.01 < wanted - 0.25
@@ -431,6 +442,9 @@ def _ev_costs(ep: EvPlan, slots: list[Slot], now: datetime, cs: dict) -> None:
         energy = missing * cs["battery_capacity"] / CHARGE_EFFICIENCY
     else:
         energy = cs["hours"] * kw
+    if ep.short_of_time and ep.ready_at is not None:
+        # Kun det, der kan nås inden klar-tidspunktet, sammenlignes – det lades med det samme
+        energy = min(energy, max((ep.ready_at - now).total_seconds() / 3600, 0) * kw)
     ep.energy = round(energy, 2)
     if energy <= 0:
         ep.cost_now = ep.cost_planned = 0.0
@@ -440,6 +454,8 @@ def _ev_costs(ep: EvPlan, slots: list[Slot], now: datetime, cs: dict) -> None:
     real = [find_slot(slots, s.start) for s in ep.slots if s.end > now]
     if real and all(real):
         ep.cost_planned = charge_cost(sorted(real, key=lambda s: s.start), energy, kw)
+        if ep.cost_planned is None and ep.short_of_time:
+            ep.cost_planned = ep.cost_now
         if ep.cost_planned is None:
             # Planen dækker lidt mindre pga. afrunding til 15 min – brug gennemsnitsprisen
             avg_p = sum(s.price for s in real) / len(real)
