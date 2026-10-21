@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.24.1";
+const SMARTHUS_CARD_VERSION = "1.25.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -389,9 +389,9 @@ class SmartHusCard extends HTMLElement {
           </div>
           <div class="title-end">
             ${this._config.clock === false ? "" : `<div class="clock">${this._clockHtml()}</div>`}
-            ${master ? this._toggle(master.entity_id, masterOn, masterOn ? "Styring til" : "Styring fra") : ""}
           </div>
         </div>
+        ${master ? `<div class="mode-row">${this._modeBtn(master.entity_id, masterOn, "Smart styring")}${masterOn ? "" : `<span class="mode-note">Alt kører som normalt</span>`}</div>` : ""}
         <div class="now level-${level}">
           <div class="price"><span class="value">${nf(price)}</span><span class="unit">kr/kWh</span></div>
           <div class="now-meta">
@@ -1434,6 +1434,16 @@ class SmartHusCard extends HTMLElement {
       </div>`;
   }
 
+  /** Tydelig til/fra-knap for den intelligente styring: grøn "Aktiv" eller gul "Fra". */
+  _modeBtn(entity, on, text, label = text) {
+    const icon = on
+      ? `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="4.5" fill="currentColor"/></svg>`
+      : `<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="3.5" width="2.6" height="9" rx="1" fill="currentColor"/><rect x="9.4" y="3.5" width="2.6" height="9" rx="1" fill="currentColor"/></svg>`;
+    return `<button class="mode ${on ? "on" : "off"}" role="switch" aria-checked="${on}"
+      aria-label="${esc(label)}: ${on ? "aktiv" : "slået fra"}" title="Tryk for at slå ${on ? "fra" : "til"}"
+      data-action="toggle" data-entity="${entity}">${icon}<span>${esc(text)} · <b>${on ? "Aktiv" : "Fra"}</b></span></button>`;
+  }
+
   _toggle(entity, on, label) {
     return `<button class="tgl ${on ? "on" : ""}" role="switch" aria-checked="${on}" aria-label="${esc(label)}"
       data-action="toggle" data-entity="${entity}"><span></span></button>`;
@@ -1610,6 +1620,8 @@ class SmartHusCard extends HTMLElement {
       .logo { width: 34px; height: 34px; object-fit: contain; }
       .title { font-size: 15px; font-weight: 600; letter-spacing: .01em; color: var(--secondary-text-color); }
       .now { display: flex; align-items: flex-end; gap: 14px; margin-top: 6px; }
+      .mode-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin-top: 10px; }
+      .mode-note { font-size: 13px; color: var(--secondary-text-color); }
       .title-end { display: flex; align-items: center; gap: 14px; min-width: 0; }
       .clock { display: flex; flex-direction: column; align-items: flex-end; text-align: right; min-width: 0; }
       .clock-time { font-size: 20px; line-height: 1.1; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -1709,6 +1721,18 @@ class SmartHusCard extends HTMLElement {
                   background: var(--card-background-color, #fff); box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: transform .2s; }
       .tgl.on { background: var(--primary-color); box-shadow: none; }
       .tgl.on span { transform: translateX(16px); }
+
+      .mode { --mc: var(--success-color, #2e9d6a); display: inline-flex; align-items: center; gap: 6px; flex: none;
+              height: 32px; padding: 0 12px 0 9px; border-radius: 16px; font: inherit; font-size: 13px; font-weight: 500;
+              white-space: nowrap; cursor: pointer; color: var(--mc);
+              background: color-mix(in srgb, var(--mc) 14%, transparent); border: 1px solid color-mix(in srgb, var(--mc) 45%, transparent); }
+      .mode b { font-weight: 700; }
+      .mode svg { width: 16px; height: 16px; flex: none; }
+      .mode.on svg { animation: mode-pulse 2.4s ease-in-out infinite; }
+      .mode.off { --mc: var(--warning-color, #d48a1c); }
+      .mode:hover { background: color-mix(in srgb, var(--mc) 22%, transparent); }
+      .mode:focus-visible { outline: 2px solid var(--mc); outline-offset: 2px; }
+      @keyframes mode-pulse { 50% { opacity: .45; } }
 
       .cmp { padding: 12px; border-radius: 10px; background: var(--sh-track); margin-bottom: 12px; font-size: 13px; }
       .cmp.done, .cmp.wait { color: var(--secondary-text-color); }
@@ -1824,7 +1848,7 @@ class SmartHusCard extends HTMLElement {
                 padding: 10px; border-radius: 10px; font-weight: 600; box-shadow: inset 0 0 0 1px var(--primary-color); color: var(--primary-color); }
       .action.active { background: var(--primary-color); color: var(--text-primary-color, #fff); }
       .action ha-icon { --mdc-icon-size: 18px; }
-      @media (prefers-reduced-motion: reduce) { .chev, .tgl, .tgl span { transition: none; } }
+      @media (prefers-reduced-motion: reduce) { .chev, .tgl, .tgl span { transition: none; } .mode.on svg { animation: none; } }
     </style>`;
   }
 }
@@ -1949,7 +1973,7 @@ class SmartHusEvCard extends SmartHusCard {
         <div class="ev-top">
           <span class="ev-ic">${this._dockIcon("car")}</span>
           <span class="ev-name">${esc(car.name)}<small>${esc(line)}</small></span>
-          ${sw ? this._toggle(sw.entity_id, on, `Styr ${car.name}`) : ""}
+          ${sw ? this._modeBtn(sw.entity_id, on, "Smart", `Smart opladning af ${car.name}`) : ""}
         </div>
         <div class="ev-main">${ring}<div class="ev-facts">${facts}</div></div>
         ${prices}
@@ -2073,9 +2097,10 @@ class SmartHusPlanCard extends SmartHusCard {
     ].join("");
 
     // Hvad sker der lige nu – som små mærker
-    const master = this._st("switch", "control_master")?.state !== "off";
+    const masterSt = this._st("switch", "control_master");
+    const master = masterSt?.state !== "off";
     const status = this._st("sensor", "status")?.state || "";
-    const parts = !master ? ["SmartHus-styringen er slået fra"] : status.split(" · ").filter(Boolean);
+    const parts = !master ? ["Alt kører som normalt"] : status.split(" · ").filter(Boolean);
     const tone = (t) => /^Lader (batteri|fra)/i.test(t) ? COLORS.battery_charge : /batteri|Sælger|afgiver/i.test(t) ? COLORS.battery_discharge
       : /^Lader/i.test(t) ? COLORS.ev : /vand/i.test(t) ? COLORS.hotwater : /Ekstra varme/i.test(t) ? COLORS.heating_boost
       : /Sparer på varmen/i.test(t) ? COLORS.heating_reduce : COLORS.mid;
@@ -2084,7 +2109,7 @@ class SmartHusPlanCard extends SmartHusCard {
     const html = `
       <div class="pc ${this._legendMode() === "full" ? "" : "no-legend"}">
         <div class="pt-row">${tiles}</div>
-        <div class="ps-row" aria-label="Lige nu">${story}</div>
+        <div class="ps-row" aria-label="Lige nu">${masterSt ? this._modeBtn(masterSt.entity_id, master, "Smart styring") : ""}${story}</div>
         ${this._renderStrip()}
         ${this._legendMode() === "compact" ? this._compactKeys() : ""}
       </div>`;
