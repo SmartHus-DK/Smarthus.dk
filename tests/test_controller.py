@@ -53,6 +53,7 @@ def make(config, states):
     c.hotwater_full, c.hotwater_surplus, c._surplus_count = False, False, 0
     c.heating_outdoor_ok = True
     c._heating_paused_applied = False
+    c._ev_charged = {}
     c._hw_surplus_sec, c._hw_done_date = 0.0, None
     c.flags = {"hotwater_surplus_smart": True}
     c.ev_solar, c._ev_current_sent = {}, {}

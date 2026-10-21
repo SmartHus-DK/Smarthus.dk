@@ -641,3 +641,20 @@ def test_ev_short_of_time():
     now2 = datetime(2026, 10, 21, 20, 0, tzinfo=TZ).astimezone(timezone.utc)
     p2 = planner.build_plan(slots, now2, TZ, s, cars=[planner.CarInput("ev", "VW", soc=33)])
     assert not p2.evs["ev"].short_of_time
+
+
+def test_ev_ready_same_day():
+    # Kl. 14 med morgendagens priser kendt, klar kl. 22 samme dag → lad i dag før 22
+    recs = records("2026-10-21", CURVE) + records("2026-10-22", CURVE)
+    slots = model().build_slots(recs)
+    now = datetime(2026, 10, 21, 14, 0, tzinfo=TZ).astimezone(timezone.utc)
+    ready = datetime(2026, 10, 21, 22, 0, tzinfo=TZ)
+    s = dict(const.DEFAULT_SETTINGS)
+    s.update({"ev_ready_hour": 22, "ev_target_soc": 80, "ev_charge_power": 11, "ev_battery_capacity": 60, "ev_hours": 2})
+    for soc in (50, None):
+        ep = planner.build_plan(slots, now, TZ, s, cars=[planner.CarInput("ev", "Bil", soc=soc)]).evs["ev"]
+        assert ep.slots, soc
+        assert all(now <= x.start and x.end <= ready for x in ep.slots), (soc, ep.slots[0].start)
+    # Uden SoC: allerede ladet 1,5 time frem mod kl. 22 → kun en halv time mere
+    ep = planner.build_plan(slots, now, TZ, s, cars=[planner.CarInput("ev", "Bil", charged_h=1.5)]).evs["ev"]
+    assert sum(x.hours for x in ep.slots) == 0.5

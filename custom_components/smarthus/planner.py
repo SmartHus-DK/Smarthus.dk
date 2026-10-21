@@ -215,6 +215,7 @@ class CarInput:
     soc: float | None = None
     force: bool = False
     connected: bool = True   # False = bilen sidder ikke i laderen
+    charged_h: float = 0.0   # uden SoC: timer der allerede er ladet frem mod dette klar-tidspunkt
 
 
 @dataclass
@@ -394,8 +395,11 @@ def plan_cars(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
         if max_kw > 0:
             available = lambda s, kw=kw: used.get(s.start, 0.0) + kw <= max_kw + 1e-6  # noqa: E731
         if car.soc is None:
-            ep.slots = ev_plan(slots, now, tz, cs["hours"], int(cs["ready_hour"]), available=available)
-            wanted = cs["hours"]
+            # Uden batteriniveau: lad det antal timer, der mangler frem mod det næste klar-tidspunkt
+            # (fra nu – timer der allerede er gået, kan ikke bruges)
+            wanted = max(cs["hours"] - car.charged_h, 0.0)
+            ep.slots = ev_plan(slots, now, tz, wanted, int(cs["ready_hour"]), from_now=True,
+                               available=available) if wanted >= 0.125 else []
         else:
             ep.hours_needed = ev_hours_needed(car.soc, cs)
             ep.target_reached = ep.hours_needed <= 0

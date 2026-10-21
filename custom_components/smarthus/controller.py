@@ -102,7 +102,7 @@ from .const import (
     SIGNAL_TICK,
 )
 from .coordinator import SmartHusPriceCoordinator
-from .planner import CarInput, Plan, build_plan, car_settings, heating_outdoor_ok
+from .planner import CarInput, Plan, _next_ready, build_plan, car_settings, heating_outdoor_ok
 from .profile import (EFFICIENCY, LEARN_DAYS, SUN_END, SUN_START, Profile, Reserve, build_profile, calc_reserve,
                       expected_load, grid_charge_target, solar_surplus)
 from .savings import SavingsCalculator
@@ -162,7 +162,8 @@ class SmartHusController:
         # Varmt vand med temperaturføler: True når øvre grænse er nået
         self.hotwater_full = False
         self.heating_outdoor_ok = True     # varmestyringen er aktiv ift. udetemperaturen
-        self._heating_paused_applied = False  # grundtemperaturen er sat for den nuværende pause
+        self._heating_paused_applied = False
+        self._ev_charged: dict[str, tuple[str, float]] = {}  # bil → (klar-tidspunkt, ladede timer)  # grundtemperaturen er sat for den nuværende pause
         self._hw_button_on = False
         # Fælles energimåler for varme og varmt vand: fordeles mellem de to
         self._heat_last: float | None = None
@@ -611,7 +612,8 @@ class SmartHusController:
         cars = [
             CarInput(car["id"], car.get("name") or "Elbil",
                      soc=self._float_state(car.get("soc")), force=self.ev_force.get(car["id"], False),
-                     connected=self.connected.get(car["id"], True))
+                     connected=self.connected.get(car["id"], True),
+                     charged_h=self._charged_hours(car["id"]))
             for car in self.cars
         ]
         self.plan = build_plan(slots, dt_util.utcnow(), self.tz, self.settings, soc=soc, cars=cars)
@@ -629,9 +631,32 @@ class SmartHusController:
             await self._async_refresh_forecast()
         if self.active(MODULE_HOTWATER):
             self._update_surplus()
+        self._log_ev_charging()
         self.recalculate()
         await self.async_apply()
         self._update_savings()
+
+    def _ready_key(self, cid: str) -> str:
+        return _next_ready(dt_util.utcnow(), self.tz, int(car_settings(self.settings, cid)["ready_hour"])).isoformat()
+
+    def _charged_hours(self, cid: str) -> float:
+        """Timer der er ladet frem mod bilens næste klar-tidspunkt (bruges uden SoC-sensor)."""
+        key, hours = self._ev_charged.get(cid, ("", 0.0))
+        return hours if key == self._ready_key(cid) else 0.0
+
+    def _log_ev_charging(self) -> None:
+        """Tæl ladetid pr. klar-tidspunkt, så en bil uden SoC ikke lades de samme timer to gange."""
+        for car in self.cars:
+            cid = car["id"]
+            key = self._ready_key(cid)
+            last_key, hours = self._ev_charged.get(cid, (key, 0.0))
+            if last_key != key:
+                hours = 0.0
+            ep = self.plan.evs.get(cid)
+            st = self.hass.states.get(car["charger"]) if car.get("charger") else None
+            if ep and ep.on and st is not None and st.state == STATE_ON:
+                hours += TICK_SECONDS / 3600
+            self._ev_charged[cid] = (key, hours)
 
     def _update_savings(self) -> None:
         readings: dict[str, float | None] = {}
