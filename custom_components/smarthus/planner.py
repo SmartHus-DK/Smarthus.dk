@@ -241,6 +241,7 @@ class EvPlan:
     short_of_time: bool = False  # der er ikke tid nok til at nå målet inden klar-tidspunktet
     soc_at_ready: float | None = None  # forventet batteriniveau ved klar-tidspunktet
     ready_at: datetime | None = None
+    done_at: datetime | None = None  # forventet færdig: slutningen af den sidste planlagte ladetime
 
 
 @dataclass
@@ -447,6 +448,8 @@ def plan_cars(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
             ep.limited = available is not None and planned_h + 0.01 < wanted - 0.25
         for s in ep.slots:
             used[s.start] = used.get(s.start, 0.0) + kw
+        if ep.slots and not ep.target_reached:
+            ep.done_at = max(s.end for s in ep.slots)
         _ev_costs(ep, slots, now, cs)
         ep.on = (car.force or any(s.start <= now < s.end for s in ep.slots)) and not ep.target_reached
         result[car.cid] = ep

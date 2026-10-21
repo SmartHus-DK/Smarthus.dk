@@ -705,3 +705,5 @@ def test_ev_charge_period():
     horizon = plan(horizon=True)
     assert [x.start for x in horizon.slots] == [x.start for x in both.slots]
     assert not today.short_of_time and not tomorrow.short_of_time
+    # Forventet klar = slutningen af den sidste valgte ladetime
+    assert tomorrow.done_at == max(x.end for x in tomorrow.slots) and d22 < tomorrow.done_at <= d23

@@ -813,8 +813,10 @@ class SmartHusCard extends HTMLElement {
       if (ca.connected === false) return `${prefix}Ikke tilsluttet laderen`;
       if (a.short_of_time) return `${prefix}Ikke tid nok – når ca. ${nf(a.soc_at_ready, 0)} % kl. ${a.ready_at ? hh(new Date(a.ready_at)) : ""}`;
       if (ca.solar_active) return `${prefix}Lader med sol · ${ca.solar_current} A${a.soc != null ? ` · ${nf(a.soc, 0)} %` : ""}`;
-      if (isOn(k)) return `${prefix}Lader nu${a.soc != null ? ` · ${nf(a.soc, 0)} %` : ""}`;
+      if (isOn(k)) return `${prefix}Lader nu${a.soc != null ? ` · ${nf(a.soc, 0)} %` : ""}${a.done_at ? ` · klar kl. ${hh(new Date(a.done_at))}` : ""}`;
       const n = next(k);
+      const dn = a.done_at ? new Date(a.done_at) : null;
+      if (n && dn) return `${prefix}Lader ${n} · klar kl. ${hh(dn)}${a.soc != null ? ` · ${nf(a.soc, 0)} % af ${nf(a.target_soc, 0)} %` : ""}`;
       return `${prefix}${n ? `Lader ${n}` : "Venter på priser"}${a.soc != null ? ` · ${nf(a.soc, 0)} % af ${nf(a.target_soc, 0)} %` : ""}`;
     }
     switch (m.id) {
@@ -1201,7 +1203,12 @@ class SmartHusCard extends HTMLElement {
       both: "De billigste timer fra nu og til og med i morgen",
       horizon: `De billigste kendte timer${at ? ` (priser til og med ${dayTxt(new Date(at.getTime() - 1))})` : ""} – flytter sig, hvis næste dags priser er billigere`,
     };
-    return `<div class="day-row"><div class="step-lbl">Lad i<span class="win-note">${esc(notes[st.state] || "")}</span></div>
+    // Hvornår er bilen færdig ud fra de valgte billige timer?
+    const sv = this._st("sensor", `${cid}_smart_saving`)?.attributes || {};
+    const done = sv.done_at && !sv.target_reached && !sv.short_of_time ? new Date(sv.done_at) : null;
+    const doneTxt = done ? `Forventet klar ${dayTxt(done)} kl. ${hh(done)}${sv.target_soc != null && sv.soc != null ? ` (${nf(sv.target_soc, 0)} %)` : ""}` : "";
+    return `<div class="day-row"><div class="step-lbl">Lad i<span class="win-note">${esc(notes[st.state] || "")}</span>
+      ${doneTxt ? `<span class="done-note">${esc(doneTxt)}</span>` : ""}</div>
       <div class="chips day-chips">${chips}</div></div>`;
   }
 
@@ -1770,6 +1777,7 @@ class SmartHusCard extends HTMLElement {
       .chip.on { background: var(--primary-color); color: var(--text-primary-color, #fff); box-shadow: none; }
       .chip[disabled] { opacity: .4; cursor: default; }
       .day-row { padding: 8px 0; }
+      .done-note { display: block; margin-top: 2px; font-size: 13px; font-weight: 600; color: ${COLORS.cheap}; }
       .step.unused .step-ctl, .step.unused > .step-lbl { opacity: .5; }
       .day-chips { margin-top: 8px; gap: 6px; }
       .day-chips .chip { padding: 6px 11px; font-size: 13px; }
