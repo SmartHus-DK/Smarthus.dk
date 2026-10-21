@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.23.1** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
+**Version 1.24.0** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
 
 SmartHus bruger strømmen, når den er billigst, og sparer, når den er dyrest. Den lader elbilen og batteriet i de billige timer, varmer vandet med billig strøm eller solcelleoverskud, skruer lidt op og ned for varmen og stopper salg af solstrøm, når prisen er for lav. Du ser det hele – og hvad du har sparet – på ét kort.
 
@@ -372,6 +372,16 @@ details: false     # valgfri – skjul "Mere" (pris-sammenligning og bilens inds
 ```
 
 Kortet viser batteriniveauet som en stor ring med målet, prisen for opladningen (lad nu · det valgte · billigste i sigte), om bilen lader (kW), hvornår den er klar, hvad der spares, valget af tilsluttet bil, "Lad til", "Klar kl.", "Lad i" og en stor **Lad nu**-knap.
+</details>
+
+<details><summary><b>Plan-kort: elpris, sol og hvad der kører lige nu</b></summary>
+
+Et kompakt kort med elprisen lige nu, solproduktion, strøm til/fra nettet og husets forbrug, små mærker med det, der kører lige nu (fx "Lader Audi", "Sparer på varmen", "Opvarmer varmt vand") og prisgrafen med planen. Installeres automatisk med SmartHus.
+
+```yaml
+type: custom:smarthus-plan-card
+legend: false      # valgfri – skjul forklaringen under grafen
+```
 </details>
 
 <details><summary><b>Kortets indstillinger</b></summary>

@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.23.1";
+const SMARTHUS_CARD_VERSION = "1.24.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -1997,6 +1997,106 @@ class SmartHusEvCard extends SmartHusCard {
   }
 }
 
+/**
+ * Plan-kort: elpris nu, sol, strøm til/fra nettet, hvad der kører lige nu og prisgrafen med planen.
+ *   type: custom:smarthus-plan-card
+ *   legend: false      # valgfri – skjul forklaringen under grafen
+ */
+class SmartHusPlanCard extends SmartHusCard {
+  static getStubConfig() {
+    return {};
+  }
+
+  getCardSize() {
+    return 5;
+  }
+
+  getGridOptions() {
+    return { columns: 12, min_columns: 6 };
+  }
+
+  setConfig(config) {
+    super.setConfig({ legend: true, ...(config || {}) });
+  }
+
+  _render() {
+    if (!this._hass || !this._config) return;
+    if (!this._st("sensor", "current_price")) {
+      this._update(`<div class="empty">Kunne ikke finde SmartHus-integrationen.</div>`, "");
+      return;
+    }
+    const price = this._num("sensor", "current_price");
+    const sale = this._num("sensor", "sale_price");
+    const cheap = this._st("binary_sensor", "cheap_now")?.state === "on";
+    const dear = this._st("binary_sensor", "expensive_now")?.state === "on";
+    const level = cheap ? "cheap" : dear ? "expensive" : "mid";
+    const levelTxt = cheap ? "Billig strøm" : dear ? "Dyr strøm" : "Normal pris";
+    const f = this._st("sensor", "energy_flow")?.attributes || {};
+    const grid = f.grid_kw;                       // positiv = køb fra nettet
+    const kw = (v) => `${nf(Math.abs(v || 0), Math.abs(v || 0) < 10 ? 2 : 1)}`;
+    const tile = (cls, icon, label, value, unit, sub, entity) => `
+      <button class="pt ${cls}" ${entity ? `data-action="more" data-entity="${entity}"` : ""}>
+        <span class="pt-ic">${icon}</span>
+        <span class="pt-txt"><span class="pt-val">${value}<small>${unit}</small></span><span class="pt-lbl">${esc(label)}${sub ? ` · ${esc(sub)}` : ""}</span></span>
+      </button>`;
+    const I = {
+      bolt: `<svg viewBox="0 0 24 24"><path d="M13 2 5 14h6l-1 8 8-12h-6Z" fill="currentColor"/></svg>`,
+      sun: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4" fill="currentColor"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>`,
+      grid: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 22 12 3l4 19M6 8h12M5 13h14M10 13l-3 9M14 13l3 9"/></svg>`,
+      home: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 11 12 4l9 7v9H3Z"/><path d="M13 9l-3 5h3l-2 4" stroke-linecap="round"/></svg>`,
+    };
+    const tiles = [
+      tile(`lvl-${level}`, I.bolt, "Elpris", nf(price), " kr", levelTxt, this._id("sensor", "current_price")),
+      f.has_solar ? tile("sol", I.sun, "Sol", kw(f.solar_kw), " kW", "", null) : "",
+      grid != null ? tile(grid < -0.05 ? "sell" : "buy", I.grid, grid < -0.05 ? "Sælger" : "Køber", kw(grid), " kW",
+        grid < -0.05 && sale != null ? `${nf(sale)} kr` : "", null) : "",
+      f.house_kw != null ? tile("house", I.home, "Huset bruger", kw(f.house_kw), " kW", "", null) : "",
+    ].join("");
+
+    // Hvad sker der lige nu – som små mærker
+    const master = this._st("switch", "control_master")?.state !== "off";
+    const status = this._st("sensor", "status")?.state || "";
+    const parts = !master ? ["SmartHus-styringen er slået fra"] : status.split(" · ").filter(Boolean);
+    const tone = (t) => /^Lader (batteri|fra)/i.test(t) ? COLORS.battery_charge : /batteri|Sælger|afgiver/i.test(t) ? COLORS.battery_discharge
+      : /^Lader/i.test(t) ? COLORS.ev : /vand/i.test(t) ? COLORS.hotwater : /Ekstra varme/i.test(t) ? COLORS.heating_boost
+      : /Sparer på varmen/i.test(t) ? COLORS.heating_reduce : COLORS.mid;
+    const story = parts.map((t) => `<span class="ps" style="--c:${tone(t)}"><i></i>${esc(t)}</span>`).join("");
+
+    const html = `
+      <div class="pc ${this._config.legend ? "" : "no-legend"}">
+        <div class="pt-row">${tiles}</div>
+        <div class="ps-row" aria-label="Lige nu">${story}</div>
+        ${this._renderStrip()}
+      </div>`;
+    this._update(html, this._hass.themes?.darkMode ? "dark" : "");
+  }
+
+  _css() {
+    return super._css().replace("</style>", `
+      .pc { padding: 0 14px 4px; }
+      .pt-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+      @container (min-width: 620px) { .pt-row { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+      .pt { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; background: var(--sh-track); text-align: left; min-width: 0; }
+      .pt-ic { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; flex: none;
+               background: color-mix(in srgb, var(--pt-c, #8C97A4) 18%, transparent); color: var(--pt-c, #8C97A4); }
+      .pt-ic svg { width: 20px; height: 20px; }
+      .pt-txt { display: flex; flex-direction: column; min-width: 0; }
+      .pt-val { font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; white-space: nowrap; }
+      .pt-val small { font-size: 12px; font-weight: 500; color: var(--secondary-text-color); }
+      .pt-lbl { font-size: 12px; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .pt.lvl-cheap { --pt-c: ${COLORS.cheap}; } .pt.lvl-expensive { --pt-c: ${COLORS.expensive}; } .pt.lvl-mid { --pt-c: #E0A21B; }
+      .pt.lvl-cheap .pt-val { color: ${COLORS.cheap}; } .pt.lvl-expensive .pt-val { color: ${COLORS.expensive}; }
+      .pt.sol { --pt-c: #E0A21B; } .pt.sell { --pt-c: ${COLORS.cheap}; } .pt.buy { --pt-c: #6F7F91; } .pt.house { --pt-c: #1E9E5C; }
+      .ps-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 2px; }
+      .ps { display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px; border-radius: 16px; font-size: 13px; font-weight: 600;
+            background: color-mix(in srgb, var(--c) 14%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 35%, transparent); }
+      .ps i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+      .pc .strip { border-top: 0; padding: 8px 0 0; }
+      .pc.no-legend .legend { display: none; }
+    </style>`);
+  }
+}
+
 if (!customElements.get("smarthus-card")) {
   customElements.define("smarthus-card", SmartHusCard);
   window.customCards = window.customCards || [];
@@ -2012,6 +2112,14 @@ if (!customElements.get("smarthus-card")) {
     type: "smarthus-ev-card",
     name: "SmartHus Elbil",
     description: "Kompakt kort til én elbil: batteriniveau, klar-tid, billigste timer og 'Lad nu' – fx til en vægskærm i garagen.",
+    preview: false,
+    documentationURL: "https://github.com/SmartHus-DK/Smarthus.dk",
+  });
+  customElements.define("smarthus-plan-card", SmartHusPlanCard);
+  window.customCards.push({
+    type: "smarthus-plan-card",
+    name: "SmartHus Plan",
+    description: "Elpris nu, sol, strøm til/fra nettet, hvad der kører lige nu og prisgrafen med planen – kompakt.",
     preview: false,
     documentationURL: "https://github.com/SmartHus-DK/Smarthus.dk",
   });
