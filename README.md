@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.22.0** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
+**Version 1.23.0** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
 
 SmartHus bruger strømmen, når den er billigst, og sparer, når den er dyrest. Den lader elbilen og batteriet i de billige timer, varmer vandet med billig strøm eller solcelleoverskud, skruer lidt op og ned for varmen og stopper salg af solstrøm, når prisen er for lav. Du ser det hele – og hvad du har sparet – på ét kort.
 
@@ -359,6 +359,19 @@ Har ladeboksens integration en **number**-entitet for ladestrøm (fx Zaptec "Ava
 - **Varmestyring:** kun aktiv under **Aktiv under udetemperatur** (standard 10 °C, start igen 1 °C under). Sæt 30 °C for altid aktiv.
 - **Varmt vand via knap** (fx varmepumpens "Charge"): SmartHus trykker én gang, når den billige periode (eller solcelleoverskuddet) starter, og varmepumpen stopper selv, når vandet er varmt.
 - **Varmt vand med føler:** slukker ved maks. temperatur og tænder igen i den billige periode, når vandet er kølet 3 °C af.
+</details>
+
+<details><summary><b>Elbil-kort til en lille skærm (fx Shelly Wall Display i garagen)</b></summary>
+
+Integrationen har også et kompakt kort kun til elbilen. Det installeres automatisk sammen med SmartHus.
+
+```yaml
+type: custom:smarthus-ev-card
+car: ev_tesla      # valgfri – ellers vises den bil, der sidder i laderen
+details: false     # valgfri – skjul "Mere" (pris-sammenligning og bilens indstillinger)
+```
+
+Kortet viser batteriniveauet som en stor ring med målet, om bilen lader (kW), hvornår den er klar, hvad der spares, valget af tilsluttet bil, "Lad til", "Klar kl.", "Lad i" og en stor **Lad nu**-knap.
 </details>
 
 <details><summary><b>Kortets indstillinger</b></summary>

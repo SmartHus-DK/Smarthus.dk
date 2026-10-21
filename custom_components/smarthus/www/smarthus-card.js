@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.22.0";
+const SMARTHUS_CARD_VERSION = "1.23.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -1805,6 +1805,156 @@ class SmartHusCard extends HTMLElement {
   }
 }
 
+/**
+ * Elbil-kort: et kompakt kort til én elbil – fx på en lille vægskærm i garagen.
+ *   type: custom:smarthus-ev-card
+ *   car: ev_tesla      # valgfri – ellers den bil, der sidder i laderen
+ *   details: false     # valgfri – skjul "lad nu vs. billigste timer" og indstillingerne under "Mere"
+ */
+class SmartHusEvCard extends SmartHusCard {
+  static getStubConfig() {
+    return {};
+  }
+
+  getCardSize() {
+    return 6;
+  }
+
+  getGridOptions() {
+    return { columns: 6, min_columns: 4 };
+  }
+
+  setConfig(config) {
+    super.setConfig({ details: true, ...(config || {}) });
+    this._evMore = false;
+  }
+
+  _evCar() {
+    const cars = this._cars();
+    if (this._config.car) return cars.find((c) => c.cid === this._config.car) || null;
+    return this._visibleCars(cars)[0] || null;
+  }
+
+  _onClick(ev) {
+    const el = ev.composedPath().find((n) => n.dataset && n.dataset.action);
+    if (el && el.dataset.action === "ev-more") {
+      this._evMore = !this._evMore;
+      this._render();
+      return;
+    }
+    super._onClick(ev);
+  }
+
+  _render() {
+    if (!this._hass || !this._config) return;
+    const car = this._evCar();
+    if (!car) {
+      this._update(`<div class="empty">Ingen elbil fundet i SmartHus. Tilføj en under Konfigurer → Elbiler${this._config.car ? `, eller ret <code>car: ${esc(this._config.car)}</code>` : ""}.</div>`, "");
+      return;
+    }
+    const cid = car.cid;
+    const m = carModule(cid, car.name, cid === this._cars()[0]?.cid);
+    const sw = this._st("switch", m.sw);
+    const on = sw?.state === "on";
+    const a = this._st("sensor", `${cid}_smart_saving`)?.attributes || {};
+    const flow = this._st("sensor", "energy_flow")?.attributes || {};
+    const fc = (flow.cars || []).find((c) => c.id === cid) || {};
+    const soc = a.soc ?? fc.soc;
+    const target = a.target_soc;
+    const kw = fc.kw;
+    const connected = a.connected !== false && fc.connected !== false;
+    const charging = (kw ?? 0) > 0.05 || this._st("binary_sensor", `${cid}_charge_now`)?.state === "on";
+
+    // Stor ring med batteriniveau og mål
+    const R = 52, C = 2 * Math.PI * R;
+    const pct = soc == null ? 0 : Math.max(0, Math.min(100, soc));
+    const col = pct < 20 ? COLORS.expensive : pct < 50 ? "#E0A21B" : "#1E9E5C";
+    const tgt = target == null ? null : Math.max(0, Math.min(100, target));
+    const tx = tgt == null ? 0 : 60 + R * Math.sin((tgt / 100) * 2 * Math.PI), ty = tgt == null ? 0 : 60 - R * Math.cos((tgt / 100) * 2 * Math.PI);
+    const ring = `<svg viewBox="0 0 120 120" class="ev-ring${charging ? " charging" : ""}" role="img" aria-label="Batteri ${soc == null ? "ukendt" : `${nf(soc, 0)} procent`}">
+        <circle cx="60" cy="60" r="${R}" class="ev-ring-track"/>
+        <circle cx="60" cy="60" r="${R}" fill="none" stroke="${col}" stroke-width="10" stroke-linecap="round"
+          stroke-dasharray="${((pct / 100) * C).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 60 60)"/>
+        ${tgt != null ? `<circle cx="${tx.toFixed(1)}" cy="${ty.toFixed(1)}" r="5" class="ev-ring-target"/>` : ""}
+        <text x="60" y="${soc == null ? 66 : 62}" text-anchor="middle" class="ev-ring-val">${soc == null ? "–" : `${nf(soc, 0)}%`}</text>
+        ${tgt != null ? `<text x="60" y="80" text-anchor="middle" class="ev-ring-sub">mål ${nf(tgt, 0)} %</text>` : ""}
+      </svg>`;
+
+    const line = this._moduleLine(m, on);
+    const done = a.done_at && !a.target_reached && !a.short_of_time ? new Date(a.done_at) : null;
+    const dayTxt = (d) => {
+      const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+      const n = Math.round((new Date(d).setHours(0, 0, 0, 0) - d0) / 864e5);
+      return n === 0 ? "i dag" : n === 1 ? "i morgen" : d.toLocaleDateString("da-DK", { weekday: "short", day: "numeric", month: "short" });
+    };
+    const facts = [
+      !connected ? `<div class="ev-fact"><b>Ikke tilsluttet</b></div>` : "",
+      connected && charging && kw != null ? `<div class="ev-fact"><span>Lader nu</span><b>${nf(kw, 1)} kW</b></div>` : "",
+      done ? `<div class="ev-fact"><span>Klar</span><b>${dayTxt(done)} kl. ${hh(done)}</b></div>` : "",
+      a.target_reached ? `<div class="ev-fact"><b>Opladet til ${nf(target, 0)} %</b></div>` : "",
+      a.cost_now != null && a.cost_planned != null && a.cost_now - a.cost_planned > 0.5 && !a.short_of_time
+        ? `<div class="ev-fact"><span>Sparer</span><b class="ok">${nf(a.cost_now - a.cost_planned, 0)} kr</b></div>` : "",
+    ].join("");
+
+    const force = this._st("switch", this._forceKey(cid));
+    const fon = force?.state === "on";
+    const action = force ? `<button class="action ev-go ${fon ? "active" : ""}" data-action="toggle" data-entity="${force.entity_id}">
+        <ha-icon icon="mdi:lightning-bolt"></ha-icon>${fon ? "Stop opladning nu" : "Lad nu"}</button>` : "";
+    const step = (k) => (this._st("number", k) ? this._stepper(k) : "");
+    const warn = a.short_of_time ? this._evCompare(cid) : "";
+    const more = this._config.details ? `
+      <button class="ev-morebtn" data-action="ev-more" aria-expanded="${this._evMore}">${this._evMore ? "Skjul" : "Mere"}<ha-icon class="chev${this._evMore ? " up" : ""}" icon="mdi:chevron-down"></ha-icon></button>
+      ${this._evMore ? `<div class="ev-more">${a.short_of_time ? "" : this._evCompare(cid)}
+        ${step(`${cid}_battery_capacity`)}${step(`${cid}_charge_power`)}${this._st("switch", `${cid}_solar`) ? this._switchRow({ sw: `${cid}_solar`, label: "Lad med solcelleoverskud" }) : ""}</div>` : ""}` : "";
+
+    const html = `
+      <div class="evc">
+        <div class="ev-top">
+          <span class="ev-ic">${this._dockIcon("car")}</span>
+          <span class="ev-name">${esc(car.name)}<small>${esc(line)}</small></span>
+          ${sw ? this._toggle(sw.entity_id, on, `Styr ${car.name}`) : ""}
+        </div>
+        <div class="ev-main">${ring}<div class="ev-facts">${facts}</div></div>
+        ${this._config.car ? "" : this._connectedPicker()}
+        ${warn}
+        <div class="ev-rows">${step(`${cid}_target_soc`)}${this._st("select", `${cid}_ready_day`)?.attributes?.uses_ready_hour === false ? "" : step(`${cid}_ready_hour`)}${this._readyDayRow(cid)}</div>
+        ${action}
+        ${more}
+      </div>`;
+    this._update(html, this._hass.themes?.darkMode ? "dark" : "");
+  }
+
+  _css() {
+    return super._css().replace("</style>", `
+      .evc { padding: 2px 14px 8px; }
+      .ev-top { display: flex; align-items: center; gap: 10px; }
+      .ev-ic { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: #1E9E5C; --sh-ic: #fff; flex: none; }
+      .ev-ic svg { width: 26px; height: 26px; }
+      .ev-name { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 17px; font-weight: 700; }
+      .ev-name small { font-size: 12.5px; font-weight: 400; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .ev-main { display: flex; align-items: center; gap: 16px; margin: 12px 0 6px; }
+      .ev-ring { width: 128px; height: 128px; flex: none; }
+      .ev-ring-track { fill: none; stroke: var(--sh-track); stroke-width: 10; }
+      .ev-ring-target { fill: var(--card-background-color, #fff); stroke: var(--primary-text-color); stroke-width: 2; }
+      .ev-ring-val { font-size: 26px; font-weight: 700; fill: var(--primary-text-color); font-variant-numeric: tabular-nums; }
+      .ev-ring-sub { font-size: 10.5px; fill: var(--secondary-text-color); }
+      .ev-ring.charging circle:nth-child(2) { animation: sh-evpulse 2.4s ease-in-out infinite; }
+      @keyframes sh-evpulse { 50% { opacity: .55; } }
+      @media (prefers-reduced-motion: reduce) { .ev-ring.charging circle:nth-child(2) { animation: none; } }
+      .ev-facts { display: grid; gap: 8px; min-width: 0; }
+      .ev-fact { display: flex; flex-direction: column; font-size: 12.5px; color: var(--secondary-text-color); }
+      .ev-fact b { font-size: 17px; color: var(--primary-text-color); font-variant-numeric: tabular-nums; }
+      .ev-fact b.ok { color: ${COLORS.cheap}; }
+      .evc .picker { padding: 8px 0; border-bottom: 0; }
+      .ev-rows { border-top: 1px solid var(--sh-line); margin-top: 6px; padding-top: 4px; }
+      .ev-go { padding: 14px; font-size: 16px; }
+      .ev-morebtn { display: flex; align-items: center; gap: 4px; margin: 10px auto 0; font-size: 13px; color: var(--secondary-text-color); }
+      .ev-morebtn .chev.up { transform: rotate(180deg); }
+      .ev-more { margin-top: 8px; }
+    </style>`);
+  }
+}
+
 if (!customElements.get("smarthus-card")) {
   customElements.define("smarthus-card", SmartHusCard);
   window.customCards = window.customCards || [];
@@ -1812,6 +1962,14 @@ if (!customElements.get("smarthus-card")) {
     type: "smarthus-card",
     name: "SmartHus",
     description: "Elpris, plan, besparelser og styring af batteri, elbil, varmt vand og varme.",
+    preview: false,
+    documentationURL: "https://github.com/SmartHus-DK/Smarthus.dk",
+  });
+  customElements.define("smarthus-ev-card", SmartHusEvCard);
+  window.customCards.push({
+    type: "smarthus-ev-card",
+    name: "SmartHus Elbil",
+    description: "Kompakt kort til én elbil: batteriniveau, klar-tid, billigste timer og 'Lad nu' – fx til en vægskærm i garagen.",
     preview: false,
     documentationURL: "https://github.com/SmartHus-DK/Smarthus.dk",
   });
