@@ -7,6 +7,7 @@ ud fra langtidsstatistikken og timens faktiske elpris.
 
 from __future__ import annotations
 
+import re
 from calendar import monthrange
 from datetime import date, datetime, timedelta
 
@@ -59,7 +60,7 @@ def layout_from_energy_prefs(prefs: dict | None, names: dict[str, str] | None = 
         stat = d.get("stat_consumption")
         if not stat or d.get("included_in_stat"):
             continue  # underenheder tælles allerede med i deres "forælder"
-        name = d.get("name") or names.get(stat) or stat
+        name = d.get("name") or clean_name(names.get(stat) or stat)
         devices.append({"id": f"d{len(devices) + 1}", "name": name, "stat": stat, "kind": device_kind(name)})
     layout = {"source": "energy", "import": list(dict.fromkeys(imp)), "export": list(dict.fromkeys(exp)),
               "solar": solar, "battery_in": bat_in, "battery_out": bat_out, "devices": devices}
@@ -86,18 +87,31 @@ def add_devices(layout: dict, extra: list[tuple[str, str | None, str]], known: s
     så intet tælles to gange.
     """
     seen = set(known) | {d["stat"] for d in layout.get("devices") or []}
+    kinds = {d.get("kind") for d in layout.get("devices") or []}
     for name, stat, kind in extra:
+        if kind == "ev" and "ev" in kinds:
+            continue  # Energi-dashboardet har allerede en lader – den samme strøm skal ikke tælles to gange
         if stat and stat not in seen:
             seen.add(stat)
             layout["devices"].append({"id": f"d{len(layout['devices']) + 1}", "name": name, "stat": stat, "kind": kind})
     return layout
 
 
+_SUFFIX = re.compile(r"[\s\-·:]*\b(lifetime|total|accumulated|samlet)?\s*(energy|energi|forbrug|consumption)\s*$", re.I)
+
+
+def clean_name(name: str) -> str:
+    """'Enkehøj 25 - Easee Lifetime energy' → 'Enkehøj 25 - Easee'."""
+    out = _SUFFIX.sub("", name or "").strip(" -·:")
+    return out or name
+
+
 def device_kind(name: str) -> str:
     n = (name or "").lower()
-    if any(w in n for w in ("bil", "lader", "ladeboks", "charger", "easee", "zaptec", "wallbox", "ev")):
+    if re.search(r"\b(ev|elbil|bil|lader|ladeboks|ladestander|charger)\b", n) or any(
+            w in n for w in ("easee", "zaptec", "wallbox", "elbil", "ladeboks", "charger")):
         return "ev"
-    if "varmepumpe" in n or "heat pump" in n or "heatpump" in n:
+    if any(w in n for w in ("varmepumpe", "heat pump", "heatpump", "jordvarme", "luft til vand", "luft/vand")):
         return "heatpump"
     if "vand" in n or "water" in n or "vvb" in n:
         return "hotwater"
@@ -115,7 +129,7 @@ def layout_stats(layout: dict) -> set[str]:
 def layout_signature(layout: dict | None) -> str:
     if not layout:
         return ""
-    parts = [",".join(sorted(layout.get(k) or [])) for k in ("import", "export", "solar", "battery_in", "battery_out")]
+    parts = ["v2"] + [",".join(sorted(layout.get(k) or [])) for k in ("import", "export", "solar", "battery_in", "battery_out")]
     parts += [d["stat"] for d in layout.get("devices") or []]
     return "|".join(parts)
 

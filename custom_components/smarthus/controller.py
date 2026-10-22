@@ -445,6 +445,13 @@ class SmartHusController:
                         t = datetime.fromtimestamp(st, self.tz) if isinstance(st, (int, float)) else dt_util.as_local(st)
                         rows_by_hour.setdefault(t, {})[sid] = float(r["change"])
                 chunk = stop
+            if rebuild:
+                # Regnskabet starter, når nettets (ellers solcellernes) måler har historik. Enheder med
+                # længere historik ville ellers få mere forbrug end hele huset.
+                base = set(layout.get("import") or layout.get("solar") or [])
+                begin = min((t for t, kwh in rows_by_hour.items() if base & kwh.keys()), default=None)
+                if begin is not None:
+                    rows_by_hour = {t: v for t, v in rows_by_hour.items() if t >= begin}
             prices = await self._async_hour_prices(sorted(rows_by_hour))
             rows = [{"start": t, "kwh": kwh, "price": prices.get(t, (None, None))[0], "sale": prices.get(t, (None, None))[1]}
                     for t, kwh in rows_by_hour.items()]

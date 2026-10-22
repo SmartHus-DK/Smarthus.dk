@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.27.1";
+const SMARTHUS_CARD_VERSION = "1.27.2";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -2255,38 +2255,41 @@ class SmartHusEnergyCard extends SmartHusCard {
     const kwh = (v) => `${nf(v || 0, (v || 0) >= 100 ? 0 : 1)} kWh`;
     const kr = (v) => `${nf(v || 0, 0)} kr`;
 
-    // Rækker
-    const rows = [];
+    // Rækker: først hvad strømmen blev brugt til (summeres til totalen), derefter hvor den kom fra
     const row = (key, color, icon, name, sub, v1, v2, cls = "") =>
       this._hidden(key) ? "" : `<div class="en-row ${cls}"><span class="en-ic" style="--c:${color}"><ha-icon icon="${icon}"></ha-icon></span>
         <span class="en-name">${esc(name)}${sub ? `<small>${sub}</small>` : ""}</span>
         <span class="en-kwh">${v1}</span><span class="en-kr">${v2}</span></div>`;
-    const share = (v) => (p.house > 0.05 ? ` · ${Math.round(((v || 0) / p.house) * 100)} % af huset` : "");
+    const share = (v) => (p.house > 0.05 ? `${Math.round(((v || 0) / p.house) * 100)} % af huset` : "");
+    const use = [];
+    for (const d of devs) {
+      const icon = { ev: "mdi:ev-station", heatpump: "mdi:heat-pump-outline", hotwater: "mdi:water-boiler" }[d.kind] || "mdi:power-plug-outline";
+      use.push(row(d.id, d.color, icon, d.name, share(p[d.id]), kwh(p[d.id]), kr(p[`${d.id}_kr`])));
+    }
+    if (devs.length && p.other != null) {
+      use.push(row("other", OTHER_COLOR, "mdi:dots-horizontal-circle-outline", "Andet", `Resten af huset · ${share(p.other)}`, kwh(p.other), kr(p.other_kr)));
+    }
+    if (p.house != null) {
+      use.push(row("house", "#1E9E5C", "mdi:home-outline", "Total energi til huset", devs.length ? "Summen af ovenstående" : "Strøm fra nettet, solceller og batteri",
+        kwh(p.house), kr(p.house_kr), "total"));
+    }
+    const src = [];
     if (has.solar) {
-      rows.push(row("solar", COLORS.solar_sold, "mdi:solar-power-variant", "Solceller",
+      src.push(row("solar", COLORS.solar_sold, "mdi:solar-power-variant", "Solceller",
         `Brugt selv ${kwh(p.solar_self)}${has.export ? ` · solgt ${kwh(p.solar_export)}` : ""}`, kwh(p.solar), `+${kr(p.solar_kr)}<small>sparet + solgt</small>`, "plus"));
     }
     if (has.battery_in || has.battery_out) {
       const net = (p.bat_out_kr || 0) - (p.bat_in_kr || 0);
-      rows.push(row("battery", COLORS.battery_discharge, "mdi:home-battery-outline", "Batteri",
+      src.push(row("battery", COLORS.battery_discharge, "mdi:home-battery-outline", "Batteri",
         `Opladet ${kwh(p.bat_in)} for ${kr(p.bat_in_kr)} · afladet ${kwh(p.bat_out)}`, kwh(p.bat_out),
         `${net >= 0 ? "+" : "−"}${nf(Math.abs(net), 0)} kr<small>gevinst</small>`, net >= 0 ? "plus" : ""));
     }
-    for (const d of devs) {
-      const icon = { ev: "mdi:ev-station", heatpump: "mdi:heat-pump-outline", hotwater: "mdi:water-boiler" }[d.kind] || "mdi:power-plug-outline";
-      rows.push(row(d.id, d.color, icon, d.name, `Forbrug${share(p[d.id])}`, kwh(p[d.id]), kr(p[`${d.id}_kr`])));
-    }
-    if (devs.length && p.other != null) {
-      rows.push(row("other", OTHER_COLOR, "mdi:dots-horizontal-circle-outline", "Andet", `Resten af huset${share(p.other)}`, kwh(p.other), kr(p.other_kr)));
-    }
     if (has.import || has.export) {
-      rows.push(row("grid", "#6F7F91", "mdi:transmission-tower", "Nettet",
+      src.push(row("grid", "#6F7F91", "mdi:transmission-tower", "Nettet",
         `Købt ${kwh(p.grid_in)} for ${kr(p.grid_in_kr)}${has.export ? ` · solgt ${kwh(p.grid_out)} for ${kr(p.grid_out_kr)}` : ""}`,
         kwh(p.grid_in), `${kr(p.bill)}<small>netto</small>`));
     }
-    const houseRow = p.house != null
-      ? row("house", "#1E9E5C", "mdi:home-outline", "Total energi til huset", "Strøm fra nettet, solceller og batteri", kwh(p.house), kr(p.house_kr), "total")
-      : "";
+    const group = (title, items) => (items.join("") ? `<div class="en-group"><div class="en-gtitle">${title}</div>${items.join("")}</div>` : "");
 
     const updated = a.updated ? new Date(a.updated) : null;
     const foot = `<div class="en-foot">${updated ? `Opdateret kl. ${hh(updated)} · ` : ""}${a.source === "energy" ? "Målere fra Energi-dashboardet" : "Målere fra SmartHus-opsætningen"} · kr efter timens elpris</div>`;
@@ -2299,7 +2302,7 @@ class SmartHusEnergyCard extends SmartHusCard {
               <span class="big-lbl">brugt i huset · ${kr(p.house_kr)}</span></div>
             ${this._energyChart(tab, a, devs)}
           </div>
-          <div class="en-list">${rows.join("")}${houseRow}</div>
+          <div class="en-list">${group("Forbrug i huset", use)}${group("Produktion og nettet", src)}</div>
         </div>
         ${foot}
       </div>`;
@@ -2367,8 +2370,10 @@ class SmartHusEnergyCard extends SmartHusCard {
       .en-list { display: grid; margin-top: 12px; }
       .en-row { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto auto; align-items: center; gap: 0 10px; padding: 8px 0;
                 border-top: 1px solid var(--sh-line); }
-      .en-row:first-child { border-top: 0; }
-      .en-row.total { border-top: 2px solid var(--sh-line); font-weight: 600; }
+      .en-gtitle + .en-row { border-top: 0; }
+      .en-group + .en-group { margin-top: 14px; }
+      .en-gtitle { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--secondary-text-color); padding: 4px 0 2px; }
+      .en-row.total { border-top: 2px solid var(--secondary-text-color); font-weight: 600; }
       .en-ic { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; color: var(--c);
                background: color-mix(in srgb, var(--c) 16%, transparent); }
       .en-ic ha-icon { --mdc-icon-size: 18px; }

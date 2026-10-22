@@ -785,3 +785,13 @@ def test_energy_adds_smarthus_charger():
     assert lay["devices"][0]["kind"] == "heatpump"
     energy.add_devices(lay, [("Lader · Audi", "ev", "ev"), ("Lader · Kia", "sub", "ev"), ("Lader · Tesla", None, "ev")], {"vp", "sub"})
     assert [(d["name"], d["kind"]) for d in lay["devices"]] == [("Varmepumpe 1", "heatpump"), ("Lader · Audi", "ev")]
+
+
+def test_energy_charger_not_twice_and_clean_names():
+    lay = energy.layout_from_energy_prefs({"energy_sources": [{"type": "grid", "flow_from": [{"stat_energy_from": "i"}]}],
+                                           "device_consumption": [{"stat_consumption": "easee"}, {"stat_consumption": "jv"}]},
+                                          {"easee": "Enkehøj 25 - Easee Lifetime energy", "jv": "Jordvarme"})
+    assert [(d["name"], d["kind"]) for d in lay["devices"]] == [("Enkehøj 25 - Easee", "ev"), ("Jordvarme", "heatpump")]
+    energy.add_devices(lay, [("Lader · Audi", "audi_energy", "ev")], {"easee", "jv"})
+    assert len(lay["devices"]) == 2          # laderen står allerede i Energi-dashboardet
+    assert energy.device_kind("Elevator level") == "device"
