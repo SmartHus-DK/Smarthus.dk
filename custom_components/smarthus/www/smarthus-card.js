@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.29.0";
+const SMARTHUS_CARD_VERSION = "1.29.1";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -385,7 +385,7 @@ class SmartHusCard extends HTMLElement {
       <div class="head">
         <div class="title-row">
           <div class="brand">
-            ${this._config.logo ? `<img class="logo" src="${esc(this._config.logo)}" alt="" onerror="this.remove()">` : ""}
+            ${this._logoImg()}
             <div class="title">${esc(this._config.title)}</div>
           </div>
           <div class="title-end">
@@ -1461,6 +1461,11 @@ class SmartHusCard extends HTMLElement {
       data-action="toggle" data-entity="${entity}">${icon}<span>${esc(text)} · <b>${on ? "Aktiv" : "Fra"}</b></span></button>`;
   }
 
+  /** SmartHus-logoet (kan ændres eller slås fra med "logo:" i kortets opsætning). */
+  _logoImg(cls = "logo") {
+    return this._config.logo ? `<img class="${cls}" src="${esc(this._config.logo)}" alt="SmartHus" onerror="this.remove()">` : "";
+  }
+
   _toggle(entity, on, label) {
     return `<button class="tgl ${on ? "on" : ""}" role="switch" aria-checked="${on}" aria-label="${esc(label)}"
       data-action="toggle" data-entity="${entity}"><span></span></button>`;
@@ -1994,7 +1999,7 @@ class SmartHusEvCard extends SmartHusCard {
     const html = `
       <div class="evc">
         <div class="ev-top">
-          <span class="ev-ic">${this._dockIcon("car")}</span>
+          ${this._config.logo ? this._logoImg("ev-logo") : `<span class="ev-ic">${this._dockIcon("car")}</span>`}
           <span class="ev-name">${esc(car.name)}<small>${esc(line)}</small></span>
           ${sw ? this._modeBtn(sw.entity_id, on, "Smart", `Smart opladning af ${car.name}`) : ""}
         </div>
@@ -2015,6 +2020,7 @@ class SmartHusEvCard extends SmartHusCard {
       .ev-top { display: flex; align-items: center; gap: 10px; }
       .ev-ic { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: #1E9E5C; --sh-ic: #fff; flex: none; }
       .ev-ic svg { width: 26px; height: 26px; }
+      .ev-logo { width: 40px; height: 40px; object-fit: contain; flex: none; }
       .ev-name { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 17px; font-weight: 700; }
       .ev-name small { font-size: 12.5px; font-weight: 400; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .ev-main { display: flex; align-items: center; gap: 16px; margin: 12px 0 6px; }
@@ -2132,7 +2138,7 @@ class SmartHusPlanCard extends SmartHusCard {
     const html = `
       <div class="pc ${this._legendMode() === "full" ? "" : "no-legend"}">
         <div class="pt-row">${tiles}</div>
-        <div class="ps-row" aria-label="Lige nu">${masterSt ? this._modeBtn(masterSt.entity_id, master, "Smart styring") : ""}${story}</div>
+        <div class="ps-row" aria-label="Lige nu">${this._logoImg("pc-logo")}${masterSt ? this._modeBtn(masterSt.entity_id, master, "Smart styring") : ""}${story}</div>
         ${this._renderStrip()}
         ${this._legendMode() === "compact" ? this._compactKeys() : ""}
       </div>`;
@@ -2155,7 +2161,8 @@ class SmartHusPlanCard extends SmartHusCard {
       .pt.lvl-cheap { --pt-c: ${COLORS.cheap}; } .pt.lvl-expensive { --pt-c: ${COLORS.expensive}; } .pt.lvl-mid { --pt-c: #E0A21B; }
       .pt.lvl-cheap .pt-val { color: ${COLORS.cheap}; } .pt.lvl-expensive .pt-val { color: ${COLORS.expensive}; }
       .pt.sol { --pt-c: #E0A21B; } .pt.sell { --pt-c: ${COLORS.cheap}; } .pt.buy { --pt-c: #6F7F91; } .pt.house { --pt-c: #1E9E5C; }
-      .ps-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 2px; }
+      .ps-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 10px 0 2px; }
+      .pc-logo { width: 30px; height: 30px; object-fit: contain; margin-right: 2px; }
       .ps { display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px; border-radius: 16px; font-size: 13px; font-weight: 600;
             background: color-mix(in srgb, var(--c) 14%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 35%, transparent); }
       .ps i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
@@ -2256,7 +2263,7 @@ class SmartHusEnergyCard extends SmartHusCard {
     const dark = this._hass.themes?.darkMode ? "dark" : "";
     const tab = ENERGY_TABS.some((t) => t.id === this._enTab) ? this._enTab : "month";
     const tabs = ENERGY_TABS.map((t) => `<button class="tab ${t.id === tab ? "on" : ""}" data-action="en-tab" data-tab="${t.id}" aria-pressed="${t.id === tab}">${t.label}</button>`).join("");
-    const head = `<div class="en-head"><div class="en-title"><ha-icon icon="mdi:home-lightning-bolt-outline"></ha-icon>${esc(this._config.title)}</div>
+    const head = `<div class="en-head"><div class="en-title">${this._config.logo ? this._logoImg("en-logo") : `<ha-icon icon="mdi:home-lightning-bolt-outline"></ha-icon>`}${esc(this._config.title)}</div>
       <div class="tabs" role="group" aria-label="Periode">${tabs}</div></div>`;
     if (!a.periods) {
       const msg = a.error || "Energioverblikket bygges ud fra historikken – det tager typisk et par minutter efter opstart.";
@@ -2397,6 +2404,7 @@ class SmartHusEnergyCard extends SmartHusCard {
       .en { padding: 0 16px 10px; }
       .en-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 12px; }
       .en-title { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 15px; font-weight: 600; }
+      .en-logo { width: 30px; height: 30px; object-fit: contain; }
       .en-title ha-icon { --mdc-icon-size: 20px; color: var(--secondary-text-color); }
       .en-big { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 6px; margin-top: 12px; }
       .en-big .value { font-size: 34px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
