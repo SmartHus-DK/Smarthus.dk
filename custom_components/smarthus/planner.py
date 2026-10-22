@@ -68,10 +68,14 @@ def cheapest(slots: list[Slot], hours: float, *, contiguous: bool = False,
 
 HEAT_MIN_BLOCK_H = 2   # en periode med ekstra eller mindre varme varer mindst 2 timer
 HEAT_MAX_BLOCKS = 2    # højst to perioder pr. døgn – så setpunktet ikke svinger op og ned
+PREHEAT_WINDOW_H = 5   # forvarmning ligger i timerne op til den dyre periode
+PREHEAT_MIN_SPREAD = 0.3  # kr/kWh – forvarm kun, hvis det er tydeligt billigere end den dyre periode
+PREHEAT_DISTANCE = 0.03   # kr/kWh pr. time før den dyre periode (varmen siver ud af huset)
 
 
 def heating_blocks(slots: list[Slot], hours: float, tz: tzinfo, *, most_expensive: bool = False,
-                   exclude: list[Slot] | None = None) -> list[Slot]:
+                   exclude: list[Slot] | None = None, max_blocks: int = HEAT_MAX_BLOCKS,
+                   bias: dict | None = None) -> list[Slot]:
     """Vælg hele, sammenhængende timer til varmen – højst to perioder pr. døgn, hver mindst 2 timer.
 
     En varmepumpe skal ikke skifte setpunkt hvert kvarter. Derfor regnes der i hele klokketimer
@@ -92,7 +96,7 @@ def heating_blocks(slots: list[Slot], hours: float, tz: tzinfo, *, most_expensiv
         return []
     n = min(n, len(hrs))
     sign = -1 if most_expensive else 1
-    price = [sign * sum(x.price for x in q) / len(q) for _, q in hrs]
+    price = [sign * sum(x.price for x in q) / len(q) + (bias or {}).get(h, 0.0) for h, q in hrs]
 
     def runs_ok(i: int, length: int) -> bool:
         """Timerne i..i+length-1 ligger lige efter hinanden (ingen huller)."""
@@ -110,7 +114,7 @@ def heating_blocks(slots: list[Slot], hours: float, tz: tzinfo, *, most_expensiv
             if best is None or v < best[0] - 1e-9:
                 best = (v, [(i, n)])
     # To blokke med mindst én times mellemrum
-    if HEAT_MAX_BLOCKS >= 2 and n >= 2 * min_len:
+    if max_blocks >= 2 and n >= 2 * min_len:
         for a in range(min_len, n - min_len + 1):
             b = n - a
             for i in range(len(hrs) - a + 1):
@@ -298,6 +302,44 @@ class Plan:
         return self._first().cost_planned
 
 
+def heating_with_preheat(slots: list[Slot], hours: float, tz: tzinfo, reduce: list[Slot]) -> list[Slot]:
+    """Ekstra varme: en del lige op til den dyreste spareperiode (forvarmning), resten i de billigste timer.
+
+    Varme gemt i huset holder kun nogle timer. Derfor lægges op til halvdelen af timerne (mindst 2)
+    i de billigste timer inden for 5 timer før den dyre periode – tæt på perioden foretrækkes. Det
+    sker kun, når de timer er tydeligt billigere end sparetimerne; ellers bruges de billigste timer.
+    """
+    n = int(round(hours))
+    if n <= 0:
+        return []
+    pre: list[Slot] = []
+    if reduce:
+        # Den dyreste sammenhængende spareperiode
+        blocks: list[list[Slot]] = []
+        for s in sorted(reduce, key=lambda x: x.start):
+            if blocks and s.start == blocks[-1][-1].end:
+                blocks[-1].append(s)
+            else:
+                blocks.append([s])
+        main = max(blocks, key=lambda b: sum(x.price for x in b) / len(b))
+        start = main[0].start
+        cand = [s for s in slots if start - timedelta(hours=PREHEAT_WINDOW_H) <= s.start < start and s not in reduce]
+        n_pre = min(n, max(HEAT_MIN_BLOCK_H, n // 2))
+        bias = {}
+        for s in cand:
+            h = s.start.astimezone(tz).replace(minute=0, second=0, microsecond=0)
+            bias[h] = (start - h).total_seconds() / 3600 * PREHEAT_DISTANCE
+        pre = heating_blocks(cand, n_pre, tz, max_blocks=1, bias=bias)
+        main_avg = sum(x.price for x in main) / len(main)
+        if pre and sum(x.price for x in pre) / len(pre) > main_avg - PREHEAT_MIN_SPREAD:
+            pre = []
+    rest_h = n
+    if pre:
+        rest_h = n - round(sum((x.end - x.start).total_seconds() for x in pre) / 3600)
+    rest = heating_blocks(slots, rest_h, tz, exclude=pre + reduce, max_blocks=1 if pre else HEAT_MAX_BLOCKS) if rest_h > 0 else []
+    return sorted(pre + rest, key=lambda s: s.start)
+
+
 def _percentile(values: list[float], q: float) -> float:
     vals = sorted(values)
     if not vals:
@@ -345,13 +387,13 @@ def build_plan(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
             plan.battery_discharge += dis
         # Varmt vand: sammenhængende billigste blok
         plan.hotwater_slots += cheapest(win("hotwater"), settings["hotwater_hours"], contiguous=True)
-        # Varme: hæv i billigste timer, sænk i dyreste timer
-        # i hele, sammenhængende timer, så varmepumpens setpunkt ikke svinger
-        boost = heating_blocks(win("heating_boost"), settings["heating_boost_hours"], tz)
+        # Varme: sænk i dyreste timer, hæv i billigste – og forvarm huset op til den dyre periode.
+        # Altid hele, sammenhængende timer, så varmepumpens setpunkt ikke svinger.
+        reduce = heating_blocks(win("heating_reduce"), settings["heating_reduce_hours"], tz,
+                                most_expensive=True) if settings["heating_reduce_degrees"] > 0 else []
+        boost = heating_with_preheat(win("heating_boost"), settings["heating_boost_hours"], tz, reduce)
+        plan.heating_reduce += reduce
         plan.heating_boost += boost
-        if settings["heating_reduce_degrees"] > 0:
-            plan.heating_reduce += heating_blocks(win("heating_reduce"), settings["heating_reduce_hours"], tz,
-                                                  most_expensive=True, exclude=boost)
 
     plan.evs = plan_cars(slots, now, tz, settings, cars)
 

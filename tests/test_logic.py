@@ -796,3 +796,25 @@ def test_energy_charger_not_twice_and_clean_names():
     energy.add_devices(lay, [("Lader · Audi", "audi_energy", "ev")], {"easee", "jv"})
     assert len(lay["devices"]) == 2          # laderen står allerede i Energi-dashboardet
     assert energy.device_kind("Elevator level") == "device"
+
+
+def test_heating_preheats_before_expensive_period():
+    # Som en almindelig dag: billig nat, billig middag, meget dyrt 17–20
+    curve = [0.55, 0.5, 0.45, 0.4, 0.4, 0.45, 0.6, 0.75, 0.8, 0.7, 0.55, 0.4,
+             0.35, 0.4, 0.5, 0.6, 0.8, 1.6, 1.7, 1.6, 1.0, 0.8, 0.7, 0.6]
+    slots = model().build_slots(records("2026-10-22", curve))
+    s = dict(const.DEFAULT_SETTINGS)
+    s.update({"heating_boost_hours": 4, "heating_reduce_hours": 3, "heating_reduce_degrees": 1})
+    p = planner.build_plan(slots, slots[0].start, TZ, s)
+    blocks = [(a.astimezone(TZ).hour, h) for a, h in _blocks(p.heating_boost)]
+    reduce = [(a.astimezone(TZ).hour, h) for a, h in _blocks(p.heating_reduce)]
+    assert reduce == [(17, 3.0)]
+    assert sum(h for _, h in blocks) == 4 and len(blocks) <= 2
+    # 2 timer forvarmning inden for 5 timer før kl. 17 – og 2 timer i nattens billigste timer
+    assert any(12 <= start and start + h <= 17 for start, h in blocks), blocks
+    assert any(start < 7 for start, _ in blocks), blocks
+    # Ingen forvarmning, når timerne før ikke er billigere end sparetimerne
+    flat = [1.0] * 24
+    flat[3] = 0.2
+    p = planner.build_plan(model().build_slots(records("2026-10-22", flat)), slots[0].start, TZ, s)
+    assert all(a.astimezone(TZ).hour < 17 for a, _ in _blocks(p.heating_boost))

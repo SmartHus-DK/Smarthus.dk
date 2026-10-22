@@ -15,7 +15,7 @@ EDS_DAYAHEAD_FROM: Final = date(2025, 10, 1)
 
 STATIC_URL: Final = "/smarthus_static"
 CARD_URL: Final = f"{STATIC_URL}/smarthus-card.js"
-CARD_VERSION: Final = "1.28.0"
+CARD_VERSION: Final = "1.29.0"
 
 PLATFORMS: Final = ["sensor", "binary_sensor", "switch", "number", "select"]
 
