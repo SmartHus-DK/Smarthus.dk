@@ -242,6 +242,7 @@ class EnergyBook:
             "today": [{"p": f"{h:02d}", **hrs.get(f"{h:02d}", {})} for h in range(24)],
             "week": [{"p": d, **days.get(d, {})} for d in week_days],
             "month": [{"p": d, **days.get(d, {})} for d in month_days],
+            "year": [{"p": f"{today.year}-{m:02d}", **months.get(f"{today.year}-{m:02d}", {})} for m in range(1, 13)],
             "total": [{"p": y, **_rnd(v)} for y, v in sorted(years.items())],
         }
         return {
@@ -249,6 +250,7 @@ class EnergyBook:
                 "today": total([days.get(today.isoformat(), {})]),
                 "week": total(days.get(d, {}) for d in week_days),
                 "month": total([months.get(ym, {})]),
+                "year": total(v for k, v in months.items() if k.startswith(f"{today.year}-")),
                 "total": total(months.values()),
             },
             "series": series,

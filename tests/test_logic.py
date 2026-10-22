@@ -768,6 +768,7 @@ def test_energy_book_hours_periods_and_years():
     assert ov["periods"]["today"]["house"] == 2 and ov["periods"]["week"]["house"] == 3
     assert ov["periods"]["month"]["house"] == 3 and ov["periods"]["total"]["house"] == 4
     assert [y["p"] for y in ov["series"]["total"]] == ["2025", "2026"]
+    assert ov["periods"]["year"]["house"] == 3 and len(ov["series"]["year"]) == 12 and ov["series"]["year"][9]["house"] == 3
     assert ov["series"]["today"][7]["house"] == 1 and len(ov["series"]["month"]) == 31 and ov["series"]["week"][0]["p"] == "2026-10-19"
     # Løbende opdatering fra starten af måneden: ældre måneder bevares, oktober erstattes (ikke dobbelt)
     book.apply(lay, rows[1:], datetime(2026, 10, 1, tzinfo=TZ), False, now)

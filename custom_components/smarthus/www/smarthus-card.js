@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.27.2";
+const SMARTHUS_CARD_VERSION = "1.28.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -43,6 +43,7 @@ const SOLAR_TABS = [
   { id: "total", label: "I alt" },
 ];
 
+const MONTHS_LONG = ["januar", "februar", "marts", "april", "maj", "juni", "juli", "august", "september", "oktober", "november", "december"];
 const MONTHS = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "okt", "nov", "dec"];
 
 const LANES = [
@@ -2180,6 +2181,7 @@ const ENERGY_TABS = [
   { id: "today", label: "I dag" },
   { id: "week", label: "Uge" },
   { id: "month", label: "Måned" },
+  { id: "year", label: "I år" },
   { id: "total", label: "I alt" },
 ];
 const WEEKDAYS = ["man", "tir", "ons", "tor", "fre", "lør", "søn"];
@@ -2249,7 +2251,9 @@ class SmartHusEnergyCard extends SmartHusCard {
       this._update(`<div class="en">${head}<div class="en-empty">${esc(msg)}</div></div>`, dark);
       return;
     }
-    const p = a.periods[tab] || {};
+    // En valgt søjle (fx en måned under "I år") viser tallene for netop den periode
+    const picked = ((a.series || {})[tab] || []).find((r) => r.p === this._enSel);
+    const p = picked || a.periods[tab] || {};
     const devs = this._devices(a);
     const has = a.has || {};
     const kwh = (v) => `${nf(v || 0, (v || 0) >= 100 ? 0 : 1)} kWh`;
@@ -2299,7 +2303,7 @@ class SmartHusEnergyCard extends SmartHusCard {
         <div class="en-body">
           <div class="en-left">
             <div class="en-big"><span class="value">${nf(p.house ?? 0, (p.house ?? 0) >= 100 ? 0 : 1)}</span><span class="unit">kWh</span>
-              <span class="big-lbl">brugt i huset · ${kr(p.house_kr)}</span></div>
+              <span class="big-lbl">brugt i huset${picked ? ` ${esc(this._enLabel(tab, picked, true))}` : ""} · ${kr(p.house_kr)}</span></div>
             ${this._energyChart(tab, a, devs)}
           </div>
           <div class="en-list">${group("Forbrug i huset", use)}${group("Produktion og nettet", src)}</div>
@@ -2307,6 +2311,14 @@ class SmartHusEnergyCard extends SmartHusCard {
         ${foot}
       </div>`;
     this._update(html, dark);
+  }
+
+  _enLabel(tab, r, long = false) {
+    if (tab === "today") return `kl. ${r.p}–${String((+r.p + 1) % 24).padStart(2, "0")}`;
+    if (tab === "total") return long ? `i ${r.p}` : r.p;
+    if (tab === "year") { const m = MONTHS_LONG[+r.p.slice(5) - 1]; return long ? `i ${m}` : m; }
+    const d = new Date(`${r.p}T12:00:00`);
+    return long ? `den ${d.getDate()}/${d.getMonth() + 1}` : `${WEEKDAYS[(d.getDay() + 6) % 7]} ${d.getDate()}/${d.getMonth() + 1}`;
   }
 
   /** Stablede søjler: husets forbrug delt på enhederne (og "Andet"). */
@@ -2317,16 +2329,12 @@ class SmartHusEnergyCard extends SmartHusCard {
     else parts.push({ key: "house", color: "#1E9E5C", name: "Huset" });
     const total = (r) => parts.reduce((s, x) => s + Math.max(r[x.key] || 0, 0), 0);
     if (!list.some((r) => total(r) > 0)) return `<div class="en-empty small">Ingen målinger i perioden endnu.</div>`;
-    const label = (r) => {
-      if (tab === "today") return `kl. ${r.p}–${String((+r.p + 1) % 24).padStart(2, "0")}`;
-      if (tab === "total") return r.p;
-      const d = new Date(`${r.p}T12:00:00`);
-      return `${WEEKDAYS[(d.getDay() + 6) % 7]} ${d.getDate()}/${d.getMonth() + 1}`;
-    };
+    const label = (r) => this._enLabel(tab, r);
     const tick = (r, i) => {
       if (tab === "today") return +r.p % 6 === 0 ? r.p : "";
       if (tab === "week") return WEEKDAYS[i];
       if (tab === "month") { const day = +r.p.slice(8); return day === 1 || day % 7 === 1 ? String(day) : ""; }
+      if (tab === "year") return MONTHS[+r.p.slice(5) - 1];
       return r.p;
     };
     const slots = Math.max(list.length, tab === "total" ? 8 : list.length), off = ((slots - list.length) / 2) * 10;
@@ -2344,14 +2352,13 @@ class SmartHusEnergyCard extends SmartHusCard {
     }).join("");
     const picked = list.find((r) => r.p === this._enSel);
     const info = picked
-      ? `${label(picked)}: <b>${nf(total(picked), 1)} kWh</b>${picked.house_kr != null ? ` · <b>${nf(picked.house_kr, 0)} kr</b>` : ""}`
-        + parts.filter((pt) => picked[pt.key] > 0.005).map((pt) => ` · ${esc(pt.name)} ${nf(picked[pt.key], 1)}`).join("")
+      ? `Viser <b>${esc(label(picked))}</b> <span class="muted">· tryk igen for hele perioden</span>`
       : parts.map((pt) => `<span class="lg-dot" style="background:${pt.color}"></span>${esc(pt.name)}`).join(" ") + ` <span class="muted">· tryk på en søjle</span>`;
     const ticks = list.map((r, i) => { const t = tick(r, i); return t ? `<span style="left:${((off + i * 10 + 5) / W) * 100}%">${t}</span>` : ""; }).join("");
     return `
       <div class="schart">
         <div class="strip-info">${info}</div>
-        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Husets forbrug pr. ${tab === "today" ? "time" : tab === "total" ? "år" : "dag"}">${bars}</svg>
+        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Husets forbrug pr. ${tab === "today" ? "time" : tab === "total" ? "år" : tab === "year" ? "måned" : "dag"}">${bars}</svg>
         <div class="ticks c">${ticks}</div>
       </div>`;
   }
