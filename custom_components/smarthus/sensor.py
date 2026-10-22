@@ -37,7 +37,7 @@ from .const import (
 from .savings import import_price, roi
 from .controller import SmartHusController
 from .entity import SmartHusEntity
-from .energy import DEVICE_COLORS
+from .energy import DEVICE_COLORS, EV_COLOR
 from .planner import EvPlan, Slot, car_settings, cheapest, local_days
 
 PRICE_UNIT = "kr/kWh"
@@ -365,7 +365,8 @@ def _energy_attrs(c: SmartHusController) -> dict:
     out = {
         "source": layout.get("source"),
         "has": {k: bool(layout.get(k)) for k in ("import", "export", "solar", "battery_in", "battery_out")},
-        "devices": [{"id": d["id"], "name": d["name"], "color": DEVICE_COLORS[i % len(DEVICE_COLORS)]}
+        "devices": [{"id": d["id"], "name": d["name"], "kind": d.get("kind", "device"),
+                     "color": EV_COLOR if d.get("kind") == "ev" else DEVICE_COLORS[i % len(DEVICE_COLORS)]}
                     for i, d in enumerate(layout.get("devices") or [])],
         "updated": book.data.get("updated"),
         "first": book.data.get("first"),

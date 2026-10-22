@@ -776,3 +776,12 @@ def test_energy_book_hours_periods_and_years():
     lay2 = {**lay, "devices": lay["devices"][:1]}
     book.apply(lay2, rows[2:], datetime(2026, 10, 1, tzinfo=TZ), False, now)
     assert book.overview(now)["periods"]["total"]["house"] == 2
+
+
+def test_energy_adds_smarthus_charger():
+    lay = energy.layout_from_energy_prefs({"energy_sources": [{"type": "grid", "flow_from": [{"stat_energy_from": "i"}]}],
+                                           "device_consumption": [{"stat_consumption": "vp"}, {"stat_consumption": "sub", "included_in_stat": "vp"}]},
+                                          {"vp": "Varmepumpe 1"})
+    assert lay["devices"][0]["kind"] == "heatpump"
+    energy.add_devices(lay, [("Lader · Audi", "ev", "ev"), ("Lader · Kia", "sub", "ev"), ("Lader · Tesla", None, "ev")], {"vp", "sub"})
+    assert [(d["name"], d["kind"]) for d in lay["devices"]] == [("Varmepumpe 1", "heatpump"), ("Lader · Audi", "ev")]

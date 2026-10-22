@@ -13,7 +13,8 @@ from datetime import date, datetime, timedelta
 KEEP_DAYS = 62
 
 # Farver til enhederne (samme stil som resten af kortene)
-DEVICE_COLORS = ("#e07b39", "#c9a227", "#8e6bd1", "#3aa0c8", "#d1557a", "#5d9c59", "#7b8794")
+DEVICE_COLORS = ("#e07b39", "#c9a227", "#3aa0c8", "#d1557a", "#5d9c59", "#a0785a", "#7b8794")
+EV_COLOR = "#3E6FD8"  # samme blå som elbilen på de andre kort
 
 
 def _ids(*vals) -> list[str]:
@@ -58,23 +59,49 @@ def layout_from_energy_prefs(prefs: dict | None, names: dict[str, str] | None = 
         stat = d.get("stat_consumption")
         if not stat or d.get("included_in_stat"):
             continue  # underenheder tælles allerede med i deres "forælder"
-        devices.append({"id": f"d{len(devices) + 1}", "name": d.get("name") or names.get(stat) or stat, "stat": stat})
+        name = d.get("name") or names.get(stat) or stat
+        devices.append({"id": f"d{len(devices) + 1}", "name": name, "stat": stat, "kind": device_kind(name)})
     layout = {"source": "energy", "import": list(dict.fromkeys(imp)), "export": list(dict.fromkeys(exp)),
               "solar": solar, "battery_in": bat_in, "battery_out": bat_out, "devices": devices}
     return layout if any(layout[k] for k in ("import", "export", "solar", "battery_in", "devices")) else None
 
 
-def layout_from_config(meters: dict[str, str | None], devices: list[tuple[str, str]]) -> dict | None:
-    """SmartHus' egne målere: import, export, solar, battery_in, battery_out + enheder [(navn, måler)]."""
+def layout_from_config(meters: dict[str, str | None], devices: list[tuple]) -> dict | None:
+    """SmartHus' egne målere: import, export, solar, battery_in, battery_out + enheder [(navn, måler[, slags])]."""
     seen: set[str] = set()
     devs = []
-    for name, stat in devices:
+    for name, stat, *kind in devices:
         if stat and stat not in seen:
             seen.add(stat)
-            devs.append({"id": f"d{len(devs) + 1}", "name": name, "stat": stat})
+            devs.append({"id": f"d{len(devs) + 1}", "name": name, "stat": stat, "kind": kind[0] if kind else device_kind(name)})
     layout = {"source": "smarthus", **{k: _ids(meters.get(k)) for k in ("import", "export", "solar", "battery_in", "battery_out")},
               "devices": devs}
     return layout if any(layout[k] for k in ("import", "export", "solar", "battery_in", "devices")) else None
+
+
+def add_devices(layout: dict, extra: list[tuple[str, str | None, str]], known: set[str]) -> dict:
+    """Tilføj SmartHus' egne enheder (fx elbilens lader), som ikke står i Energi-dashboardet.
+
+    extra: [(navn, måler, slags)]. known: alle målere i Energi-dashboardet (også underenheder),
+    så intet tælles to gange.
+    """
+    seen = set(known) | {d["stat"] for d in layout.get("devices") or []}
+    for name, stat, kind in extra:
+        if stat and stat not in seen:
+            seen.add(stat)
+            layout["devices"].append({"id": f"d{len(layout['devices']) + 1}", "name": name, "stat": stat, "kind": kind})
+    return layout
+
+
+def device_kind(name: str) -> str:
+    n = (name or "").lower()
+    if any(w in n for w in ("bil", "lader", "ladeboks", "charger", "easee", "zaptec", "wallbox", "ev")):
+        return "ev"
+    if "varmepumpe" in n or "heat pump" in n or "heatpump" in n:
+        return "heatpump"
+    if "vand" in n or "water" in n or "vvb" in n:
+        return "hotwater"
+    return "device"
 
 
 def layout_stats(layout: dict) -> set[str]:

@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.27.0";
+const SMARTHUS_CARD_VERSION = "1.27.1";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -2264,16 +2264,17 @@ class SmartHusEnergyCard extends SmartHusCard {
     const share = (v) => (p.house > 0.05 ? ` · ${Math.round(((v || 0) / p.house) * 100)} % af huset` : "");
     if (has.solar) {
       rows.push(row("solar", COLORS.solar_sold, "mdi:solar-power-variant", "Solceller",
-        `Brugt selv ${kwh(p.solar_self)}${has.export ? ` · solgt ${kwh(p.solar_export)}` : ""}`, kwh(p.solar), `${kr(p.solar_kr)}<small>værdi</small>`));
+        `Brugt selv ${kwh(p.solar_self)}${has.export ? ` · solgt ${kwh(p.solar_export)}` : ""}`, kwh(p.solar), `+${kr(p.solar_kr)}<small>sparet + solgt</small>`, "plus"));
     }
     if (has.battery_in || has.battery_out) {
       const net = (p.bat_out_kr || 0) - (p.bat_in_kr || 0);
       rows.push(row("battery", COLORS.battery_discharge, "mdi:home-battery-outline", "Batteri",
         `Opladet ${kwh(p.bat_in)} for ${kr(p.bat_in_kr)} · afladet ${kwh(p.bat_out)}`, kwh(p.bat_out),
-        `${net >= 0 ? "+" : "−"}${nf(Math.abs(net), 0)} kr<small>gevinst</small>`));
+        `${net >= 0 ? "+" : "−"}${nf(Math.abs(net), 0)} kr<small>gevinst</small>`, net >= 0 ? "plus" : ""));
     }
     for (const d of devs) {
-      rows.push(row(d.id, d.color, "mdi:power-plug-outline", d.name, `Forbrug${share(p[d.id])}`, kwh(p[d.id]), kr(p[`${d.id}_kr`])));
+      const icon = { ev: "mdi:ev-station", heatpump: "mdi:heat-pump-outline", hotwater: "mdi:water-boiler" }[d.kind] || "mdi:power-plug-outline";
+      rows.push(row(d.id, d.color, icon, d.name, `Forbrug${share(p[d.id])}`, kwh(p[d.id]), kr(p[`${d.id}_kr`])));
     }
     if (devs.length && p.other != null) {
       rows.push(row("other", OTHER_COLOR, "mdi:dots-horizontal-circle-outline", "Andet", `Resten af huset${share(p.other)}`, kwh(p.other), kr(p.other_kr)));
@@ -2376,6 +2377,7 @@ class SmartHusEnergyCard extends SmartHusCard {
       .en-kwh, .en-kr { text-align: right; font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
       .en-kwh { color: var(--secondary-text-color); }
       .en-kr { min-width: 64px; font-weight: 600; }
+      .en-row.plus .en-kr { color: ${COLORS.cheap}; }
       .en-kr small { display: block; font-size: 11px; font-weight: 400; color: var(--secondary-text-color); }
       .en-empty { padding: 16px 0; color: var(--secondary-text-color); font-size: 14px; }
       .en-empty.small { padding: 18px 0 8px; font-size: 13px; }

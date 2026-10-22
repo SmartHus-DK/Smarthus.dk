@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.27.0** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
+**Version 1.27.1** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
 
 SmartHus bruger strømmen, når den er billigst, og sparer, når den er dyrest. Den lader elbilen og batteriet i de billige timer, varmer vandet med billig strøm eller solcelleoverskud, skruer lidt op og ned for varmen og stopper salg af solstrøm, når prisen er for lav. Du ser det hele – og hvad du har sparet – på ét kort.
 
@@ -388,7 +388,7 @@ legend: compact    # standard: farverne på én linje · true: med tidspunkter �
 
 Viser kWh og kr for solceller, batteri, hver enhed (fx Varmepumpe 1 og 2), "Andet" (resten af huset), nettet (køb/salg) og den samlede energi til huset – i dag, denne uge, denne måned og i alt (søjler pr. år). Kronebeløbene regnes time for time med timens faktiske elpris.
 
-Målerne findes automatisk i Home Assistants **Energi-dashboard** (Indstillinger → Dashboards → Energi): net, solpaneler, batteri og *Individuelle enheder*. Tilføj fx dine varmepumper under *Individuelle enheder*, så kommer de med på kortet. Er Energi-dashboardet ikke sat op, bruges de målere, der er valgt i SmartHus.
+Målerne findes automatisk i Home Assistants **Energi-dashboard** (Indstillinger → Dashboards → Energi): net, solpaneler, batteri og *Individuelle enheder*. Tilføj fx dine varmepumper under *Individuelle enheder*, så kommer de med på kortet. Elbilens lader fra SmartHus kommer automatisk med, hvis den ikke står i Energi-dashboardet. Er Energi-dashboardet ikke sat op, bruges de målere, der er valgt i SmartHus.
 
 Overblikket bygges fra hele historikken kort efter opstart og opdateres hver time. Tallene for den igangværende time kommer med, når timen er gået. Det kan bygges forfra med handlingen `smarthus.rebuild_energy_overview`.
 

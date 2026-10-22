@@ -106,7 +106,7 @@ from .planner import CarInput, Plan, build_plan, car_ready, car_settings, heatin
 from .profile import (EFFICIENCY, LEARN_DAYS, SUN_END, SUN_START, Profile, Reserve, build_profile, calc_reserve,
                       expected_load, grid_charge_target, solar_surplus)
 from .savings import SavingsCalculator
-from .energy import EnergyBook, layout_from_config, layout_from_energy_prefs, layout_signature, layout_stats
+from .energy import EnergyBook, add_devices, layout_from_config, layout_from_energy_prefs, layout_signature, layout_stats
 from .flow import energy_flow, to_kw
 from .pricing import has_vat, vat_factor
 from .plug import pick_connected, plug_state
@@ -376,12 +376,15 @@ class SmartHusController:
             st = self.hass.states.get(d.get("stat_consumption") or "")
             if st:
                 names[st.entity_id] = st.name
+        g = self.config.get
+        cars = [(f"Lader · {c.get('name') or 'Elbil'}", c.get("energy"), "ev") for c in self.cars]
         layout = layout_from_energy_prefs(prefs, names)
         if layout:
-            return layout
-        g = self.config.get
-        devices = [("Varmepumpe", g(CONF_HEATPUMP_ENERGY)), ("Varmt vand", g(CONF_HOTWATER_ENERGY))]
-        devices += [(c.get("name") or "Elbil", c.get("energy")) for c in self.cars]
+            # Elbilens lader fra SmartHus kommer med, hvis den ikke står i Energi-dashboardet
+            known = {d.get("stat_consumption") for d in (prefs or {}).get("device_consumption") or []}
+            return add_devices(layout, cars, known)
+        devices = [("Varmepumpe", g(CONF_HEATPUMP_ENERGY), "heatpump"), ("Varmt vand", g(CONF_HOTWATER_ENERGY), "hotwater")]
+        devices += cars
         return layout_from_config({"import": g(CONF_IMPORT_ENERGY), "export": g(CONF_EXPORT_ENERGY),
                                    "solar": g(CONF_SOLAR_ENERGY), "battery_in": g(CONF_BATTERY_CHARGE_ENERGY),
                                    "battery_out": g(CONF_BATTERY_DISCHARGE_ENERGY)}, devices)
