@@ -129,7 +129,7 @@ def layout_stats(layout: dict) -> set[str]:
 def layout_signature(layout: dict | None) -> str:
     if not layout:
         return ""
-    parts = ["v2"] + [",".join(sorted(layout.get(k) or [])) for k in ("import", "export", "solar", "battery_in", "battery_out")]
+    parts = ["v3"] + [",".join(sorted(layout.get(k) or [])) for k in ("import", "export", "solar", "battery_in", "battery_out")]
     parts += [d["stat"] for d in layout.get("devices") or []]
     return "|".join(parts)
 
@@ -146,7 +146,8 @@ def hour_fields(layout: dict, kwh: dict[str, float], price: float | None, sale: 
     if layout.get("solar"):
         sol_exp = min(exp, sol)
         own = max(sol - sol_exp, 0.0)
-        f.update(solar=sol, solar_self=own, solar_export=sol_exp, solar_kr=own * p + sol_exp * sp)
+        f.update(solar=sol, solar_self=own, solar_export=sol_exp, solar_self_kr=own * p, solar_export_kr=sol_exp * sp,
+                 solar_kr=own * p + sol_exp * sp)
     if layout.get("battery_in") or layout.get("battery_out"):
         f.update(bat_in=b_in, bat_in_kr=b_in * p, bat_out=b_out, bat_out_kr=b_out * p)
     dev_sum = 0.0

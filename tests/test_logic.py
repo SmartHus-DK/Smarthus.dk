@@ -756,6 +756,7 @@ def test_energy_book_hours_periods_and_years():
     f = energy.hour_fields(lay, {"i": 2, "e": 1, "s": 3, "bi": 0.5, "bo": 0.5, "v1": 1, "v2": 0.5}, 2.0, 0.5)
     assert f["house"] == 4.0 and f["other"] == 2.5          # 2 + 3 − 1 + 0,5 − 0,5 = 4 kWh; 4 − 1,5 = 2,5
     assert f["solar_self"] == 2.0 and f["solar_kr"] == 2.0 * 2 + 1 * 0.5
+    assert f["solar_self_kr"] == 4.0 and f["solar_export_kr"] == 0.5
     assert f["grid_in_kr"] == 4.0 and f["grid_out_kr"] == 0.5 and f["bill"] == 3.5 and f["d1_kr"] == 2.0
     now = datetime(2026, 10, 22, 9, 30, tzinfo=TZ)
     rows = []

@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.29.1";
+const SMARTHUS_CARD_VERSION = "1.30.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -2299,8 +2299,19 @@ class SmartHusEnergyCard extends SmartHusCard {
     }
     const src = [];
     if (has.solar) {
-      src.push(row("solar", COLORS.solar_sold, "mdi:solar-power-variant", "Solceller",
-        `Brugt selv ${kwh(p.solar_self)}${has.export ? ` · solgt ${kwh(p.solar_export)}` : ""}`, kwh(p.solar), `+${kr(p.solar_kr)}<small>sparet + solgt</small>`, "plus"));
+      src.push(row("solar", COLORS.solar_sold, "mdi:solar-power-variant", "Solceller", "Produceret i alt", kwh(p.solar),
+        `+${kr(p.solar_kr)}<small>sparet + solgt</small>`, "plus"));
+      // Delt op: hvad egetforbruget sparede, og hvad salget gav
+      const selfKr = p.solar_self_kr ?? null, expKr = p.solar_export_kr ?? null;
+      const avgKr = (v, k) => (v > 0.05 && k != null ? ` · snit ${nf(k / v, 2)} kr/kWh` : "");
+      if (!this._hidden("solar")) {
+        src.push(row("solar_self", COLORS.solar_self, "mdi:home-import-outline", "Sparet – brugt selv",
+          `Strøm du ikke skulle købe${avgKr(p.solar_self, selfKr)}`, kwh(p.solar_self), selfKr == null ? "–" : `+${kr(selfKr)}`, "plus sub"));
+        if (has.export) {
+          src.push(row("solar_export", COLORS.solar_sold, "mdi:transmission-tower-export", "Solgt til nettet",
+            `Salg af overskud${avgKr(p.solar_export, expKr)}`, kwh(p.solar_export), expKr == null ? "–" : `+${kr(expKr)}`, "plus sub"));
+        }
+      }
     }
     if (has.battery_in || has.battery_out) {
       const net = (p.bat_out_kr || 0) - (p.bat_in_kr || 0);
@@ -2427,6 +2438,11 @@ class SmartHusEnergyCard extends SmartHusCard {
       .en-kwh { color: var(--secondary-text-color); }
       .en-kr { min-width: 64px; font-weight: 600; }
       .en-row.plus .en-kr { color: ${COLORS.cheap}; }
+      .en-row.sub { border-top-style: dashed; }
+      .en-row.sub .en-ic { width: 26px; height: 26px; border-radius: 8px; margin-left: 6px; }
+      .en-row.sub .en-ic ha-icon { --mdc-icon-size: 15px; }
+      .en-row.sub .en-name { font-size: 13px; }
+      .en-row.sub .en-kr { font-weight: 500; }
       .en-kr small { display: block; font-size: 11px; font-weight: 400; color: var(--secondary-text-color); }
       .en-empty { padding: 16px 0; color: var(--secondary-text-color); font-size: 14px; }
       .en-empty.small { padding: 18px 0 8px; font-size: 13px; }
