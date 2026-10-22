@@ -61,6 +61,15 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         schema=vol.Schema({vol.Optional("start_date"): cv.date}),
         supports_response=SupportsResponse.OPTIONAL,
     )
+
+    async def _rebuild_energy(call: ServiceCall) -> None:
+        """Byg energioverblikket forfra (alle SmartHus-opsætninger)."""
+        for entry in hass.config_entries.async_entries(DOMAIN):
+            data = getattr(entry, "runtime_data", None)
+            if data is not None:
+                await data.controller.async_refresh_energy(full=True)
+
+    hass.services.async_register(DOMAIN, "rebuild_energy_overview", _rebuild_energy)
     return True
 
 

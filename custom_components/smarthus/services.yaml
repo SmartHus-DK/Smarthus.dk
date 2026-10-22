@@ -5,3 +5,5 @@ import_solar_history:
       example: "2024-01-01"
       selector:
         date:
+
+rebuild_energy_overview:

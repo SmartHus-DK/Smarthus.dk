@@ -455,6 +455,9 @@
       },
       "solar_roi": {
         "name": "Solar: paid back"
+      },
+      "energy_overview": {
+        "name": "Energy overview"
       }
     },
     "binary_sensor": {
@@ -654,6 +657,10 @@
           "description": "First day to include. Empty = as far back as history goes."
         }
       }
+    },
+    "rebuild_energy_overview": {
+      "name": "Rebuild energy overview",
+      "description": "Rebuilds the energy overview (consumption, purchase and sale per device) from scratch using Home Assistant's long-term statistics and the actual price for each hour."
     }
   }
 }

@@ -106,6 +106,7 @@ from .planner import CarInput, Plan, build_plan, car_ready, car_settings, heatin
 from .profile import (EFFICIENCY, LEARN_DAYS, SUN_END, SUN_START, Profile, Reserve, build_profile, calc_reserve,
                       expected_load, grid_charge_target, solar_surplus)
 from .savings import SavingsCalculator
+from .energy import EnergyBook, layout_from_config, layout_from_energy_prefs, layout_signature, layout_stats
 from .flow import energy_flow, to_kw
 from .pricing import has_vat, vat_factor
 from .plug import pick_connected, plug_state
@@ -155,6 +156,13 @@ class SmartHusController:
         self.grid_charge: dict | None = None  # hvor meget der lades fra nettet, når solen kan fylde resten
         self._unsub_learn = None
         self._unsub_learn_first = None
+        self._unsub_energy = None
+        self._unsub_energy_first = None
+        self._energy_store: Store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}.energy")
+        self.energy = EnergyBook()
+        self.energy_error: str | None = None
+        self._energy_busy = False
+        self._price_cache: dict[datetime, tuple[float | None, float | None]] = {}
         self._store: Store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}.savings")
         self._last_cmd: dict[str, float] = {}
         # Sidste tilstand der er sendt via script (scripts køres kun ved skift)
@@ -192,6 +200,10 @@ class SmartHusController:
     async def async_load_savings(self) -> None:
         """Hent gemte besparelser – før sensorerne oprettes, så de ikke kortvarigt viser 0."""
         self.savings = SavingsCalculator(await self._store.async_load())
+        try:
+            self.energy = EnergyBook(await self._energy_store.async_load())
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("SmartHus: kunne ikke hente energioverblikket: %s", err)
         self._savings_loaded = True
 
     async def async_start(self) -> None:
@@ -208,6 +220,9 @@ class SmartHusController:
             # Lær forbrugsmønsteret hver nat og kort efter opstart (når historikken er klar)
             self._unsub_learn = async_track_time_change(self.hass, self.async_learn, hour=0, minute=20, second=30)
             self._unsub_learn_first = async_call_later(self.hass, 60, self.async_learn)
+        # Energioverblik: bygges kort efter opstart og opdateres hver time (når timens statistik er klar)
+        self._unsub_energy = async_track_time_change(self.hass, self.async_refresh_energy, minute=14, second=10)
+        self._unsub_energy_first = async_call_later(self.hass, 90, self.async_refresh_energy)
         self.recalculate()
 
     async def async_import_solar_history(self, start_date=None) -> dict:
@@ -246,15 +261,6 @@ class SmartHusController:
             statistics_during_period, self.hass, start, end, set(meters.values()), "hour",
             {"energy": "kWh"}, {"change", "state"},
         )
-        price_ids = set()
-        sl_price = sl_spot = None
-        if self.coordinator.uses_stromligning:
-            sl_price, sl_spot = self.coordinator.sl_entities[0], self.coordinator.sl_spot
-            price_ids = {e for e in (sl_price, sl_spot) if e}
-        pstats = await rec.async_add_executor_job(
-            statistics_during_period, self.hass, start, end, price_ids, "hour", None, {"mean", "state"},
-        ) if price_ids else {}
-
         def ts(row) -> datetime:
             st = row.get("start")
             return datetime.fromtimestamp(st, self.tz) if isinstance(st, (int, float)) else dt_util.as_local(st)
@@ -282,14 +288,53 @@ class SmartHusController:
             begin = max(firsts)
             hours = {t: v for t, v in hours.items() if t >= begin}
 
+        prices = await self._async_hour_prices(sorted(hours))
+        rows = []
+        for t, v in hours.items():
+            price, sale = prices.get(t, (None, None))
+            rows.append({"start": t, "produced": v.get("solar"), "export": v.get("export"),
+                         "import": v.get("import"), "price": price, "sale": sale})
+        summary = self.savings.rebuild_solar(rows, dt_util.now(), last)
+        await self._store.async_save(self.savings.data)
+        async_dispatcher_send(self.hass, SIGNAL_TICK.format(entry_id=self.entry.entry_id))
+        _LOGGER.info("SmartHus: solcellehistorik genberegnet: %s", summary)
+        return summary
+
+    async def _async_hour_prices(self, hours: list[datetime]) -> dict[datetime, tuple[float | None, float | None]]:
+        """Købs- og salgspris (kr/kWh) for hver time: Strømlignings historik, ellers spotpris + prismodel.
+
+        Afsluttede timer gemmes i hukommelsen, så de ikke hentes igen ved næste opdatering.
+        """
+        from homeassistant.components.recorder import get_instance
+        from homeassistant.components.recorder.statistics import statistics_during_period
+
+        out = {t: self._price_cache[t] for t in hours if t in self._price_cache}
+        todo = sorted(t for t in hours if t not in out)
+        if not todo:
+            return out
+        start, end = todo[0], todo[-1] + timedelta(hours=1)
+
+        def ts(row) -> datetime:
+            st = row.get("start")
+            return datetime.fromtimestamp(st, self.tz) if isinstance(st, (int, float)) else dt_util.as_local(st)
+
+        sl_price = sl_spot = None
+        price_ids: set[str] = set()
+        if self.coordinator.uses_stromligning:
+            sl_price, sl_spot = self.coordinator.sl_entities[0], self.coordinator.sl_spot
+            price_ids = {e for e in (sl_price, sl_spot) if e}
+        pstats = await get_instance(self.hass).async_add_executor_job(
+            statistics_during_period, self.hass, start, end, price_ids, "hour", None, {"mean", "state"},
+        ) if price_ids else {}
+
         def means(entity_id) -> dict[datetime, float]:
             # Pris-sensorer med state_class "total" har ingen middelværdi – brug så timens pris
-            out = {}
-            for r in pstats.get(entity_id, []):
+            res = {}
+            for r in pstats.get(entity_id, []) if entity_id else []:
                 v = r.get("mean") if r.get("mean") is not None else r.get("state")
                 if v is not None:
-                    out[ts(r)] = float(v)
-            return out
+                    res[ts(r)] = float(v)
+            return res
 
         buy, spot = means(sl_price), means(sl_spot)
         # Samme momsvalg som de løbende priser (inkl./ekskl. moms i opsætningen)
@@ -298,11 +343,10 @@ class SmartHusController:
         buy = {t: p * f for t, p in buy.items()}
         spot_vat = has_vat(self.config.get(CONF_SL_SPOT_VAT), sl_spot)
         fee = float(self.config.get(CONF_SALE_FEE, DEFAULT_PRICES[CONF_SALE_FEE]))
-        missing = sorted(t for t in hours if t not in buy or t not in spot)
+        missing = [t for t in todo if t not in buy or t not in spot]
         eds = await self._async_eds_hourly_spot(missing[0], missing[-1]) if missing else {}
-
-        rows = []
-        for t, v in hours.items():
+        settled = dt_util.now() - timedelta(hours=2)
+        for t in todo:
             s_eds = eds.get(t)
             price = buy.get(t)
             if price is None and s_eds is not None:
@@ -313,13 +357,105 @@ class SmartHusController:
                 sale = self.coordinator.model.sale_price(s_eds)
             else:
                 sale = None
-            rows.append({"start": t, "produced": v.get("solar"), "export": v.get("export"),
-                         "import": v.get("import"), "price": price, "sale": sale})
-        summary = self.savings.rebuild_solar(rows, dt_util.now(), last)
-        await self._store.async_save(self.savings.data)
-        async_dispatcher_send(self.hass, SIGNAL_TICK.format(entry_id=self.entry.entry_id))
-        _LOGGER.info("SmartHus: solcellehistorik genberegnet: %s", summary)
-        return summary
+            out[t] = (price, sale)
+            if price is not None and sale is not None and t < settled:
+                self._price_cache[t] = (price, sale)
+        return out
+
+    async def _async_energy_layout(self) -> dict | None:
+        """Målerne til energioverblikket: Home Assistants Energi-dashboard, ellers SmartHus' egne målere."""
+        prefs = None
+        try:
+            from homeassistant.components.energy.data import async_get_manager
+            manager = await async_get_manager(self.hass)
+            prefs = manager.data
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("SmartHus: Energi-dashboardet kunne ikke læses: %s", err)
+        names = {}
+        for d in (prefs or {}).get("device_consumption") or []:
+            st = self.hass.states.get(d.get("stat_consumption") or "")
+            if st:
+                names[st.entity_id] = st.name
+        layout = layout_from_energy_prefs(prefs, names)
+        if layout:
+            return layout
+        g = self.config.get
+        devices = [("Varmepumpe", g(CONF_HEATPUMP_ENERGY)), ("Varmt vand", g(CONF_HOTWATER_ENERGY))]
+        devices += [(c.get("name") or "Elbil", c.get("energy")) for c in self.cars]
+        return layout_from_config({"import": g(CONF_IMPORT_ENERGY), "export": g(CONF_EXPORT_ENERGY),
+                                   "solar": g(CONF_SOLAR_ENERGY), "battery_in": g(CONF_BATTERY_CHARGE_ENERGY),
+                                   "battery_out": g(CONF_BATTERY_DISCHARGE_ENERGY)}, devices)
+
+    async def async_refresh_energy(self, *_args, full: bool = False) -> None:
+        """Opdatér energioverblikket ud fra langtidsstatistikken.
+
+        Første gang (eller når målerne ændres) bygges hele historikken. Derefter genberegnes kun
+        perioden fra starten af den måned, hvor ugen begynder – så uge og måned altid er hele.
+        """
+        if self._energy_busy:
+            return
+        self._energy_busy = True
+        try:
+            from homeassistant.components.recorder import get_instance
+            from homeassistant.components.recorder.statistics import statistics_during_period
+
+            layout = await self._async_energy_layout()
+            if not layout:
+                self.energy_error = "Ingen energimålere fundet – sæt Energi-dashboardet op i Home Assistant"
+                return
+            ids = layout_stats(layout)
+            rec = get_instance(self.hass)
+            now = dt_util.now()
+            end = now.replace(minute=0, second=0, microsecond=0)
+            rebuild = full or self.energy.data.get("sig") != layout_signature(layout) or not self.energy.data.get("months")
+            if rebuild:
+                monthly = await rec.async_add_executor_job(
+                    statistics_during_period, self.hass, datetime(2000, 1, 1, tzinfo=dt_util.UTC), end,
+                    ids, "month", {"energy": "kWh"}, {"change"},
+                )
+                firsts = []
+                for rows in monthly.values():
+                    if rows:
+                        st = rows[0].get("start")
+                        firsts.append(datetime.fromtimestamp(st, self.tz) if isinstance(st, (int, float)) else dt_util.as_local(st))
+                if not firsts:
+                    self.energy_error = "Ingen historik for energimålerne endnu"
+                    return
+                first = min(firsts)
+                start = first.astimezone(self.tz).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            else:
+                monday = (now - timedelta(days=now.weekday())).date()
+                start = dt_util.start_of_local_day(min(monday, now.date().replace(day=1)).replace(day=1))
+            # Hent i bidder på ca. et kvartal, så store historikker ikke belaster databasen på én gang
+            rows_by_hour: dict[datetime, dict[str, float]] = {}
+            chunk = start
+            while chunk < end:
+                stop = min(chunk + timedelta(days=92), end)
+                stats = await rec.async_add_executor_job(
+                    statistics_during_period, self.hass, chunk, stop, ids, "hour", {"energy": "kWh"}, {"change"},
+                )
+                for sid, rows in stats.items():
+                    for r in rows:
+                        if r.get("change") is None:
+                            continue
+                        st = r.get("start")
+                        t = datetime.fromtimestamp(st, self.tz) if isinstance(st, (int, float)) else dt_util.as_local(st)
+                        rows_by_hour.setdefault(t, {})[sid] = float(r["change"])
+                chunk = stop
+            prices = await self._async_hour_prices(sorted(rows_by_hour))
+            rows = [{"start": t, "kwh": kwh, "price": prices.get(t, (None, None))[0], "sale": prices.get(t, (None, None))[1]}
+                    for t, kwh in rows_by_hour.items()]
+            self.energy.apply(layout, rows, start, rebuild, now)
+            self.energy_error = None
+            await self._energy_store.async_save(self.energy.data)
+            async_dispatcher_send(self.hass, SIGNAL_TICK.format(entry_id=self.entry.entry_id))
+            if rebuild:
+                _LOGGER.info("SmartHus: energioverblik bygget fra %s (%s timer)", start.date(), len(rows))
+        except Exception as err:  # noqa: BLE001
+            self.energy_error = f"Energioverblikket kunne ikke opdateres: {err}"
+            _LOGGER.warning("SmartHus: %s", self.energy_error)
+        finally:
+            self._energy_busy = False
 
     async def _async_eds_hourly_spot(self, first: datetime, last: datetime) -> dict[datetime, float]:
         """Spotpris pr. time (kr/kWh, uden moms) fra Energi Data Service for en periode."""
@@ -531,7 +667,7 @@ class SmartHusController:
             p.battery_action = ACTION_SELL_SOLAR
 
     async def async_stop(self) -> None:
-        for name in ("_unsub_learn", "_unsub_learn_first"):
+        for name in ("_unsub_learn", "_unsub_learn_first", "_unsub_energy", "_unsub_energy_first"):
             unsub = getattr(self, name, None)
             if unsub:
                 unsub()

@@ -721,3 +721,58 @@ def test_ev_waiting_and_horizon_cost():
     ep = planner.build_plan(slots_today, now, TZ, s, cars=[planner.CarInput("ev", "Bil", soc=50)]).evs["ev"]
     assert ep.ready_at == d22 and ep.slots and not ep.waiting_for_prices
     assert ep.cost_horizon is not None and ep.cost_horizon <= ep.cost_planned + 0.01 <= ep.cost_now + 0.02
+
+
+energy = _load("energy")
+
+
+def test_energy_layout_from_energy_dashboard():
+    prefs = {
+        "energy_sources": [
+            {"type": "grid", "flow_from": [{"stat_energy_from": "sensor.imp"}], "flow_to": [{"stat_energy_to": "sensor.exp"}]},
+            {"type": "solar", "stat_energy_from": "sensor.pv"},
+            {"type": "battery", "stat_energy_from": "sensor.bat_out", "stat_energy_to": "sensor.bat_in"},
+        ],
+        "device_consumption": [
+            {"stat_consumption": "sensor.vp1"},
+            {"stat_consumption": "sensor.vp2", "name": "Varmepumpe 2"},
+            {"stat_consumption": "sensor.vp2_pumpe", "included_in_stat": "sensor.vp2"},  # underenhed – tælles ikke ekstra
+        ],
+    }
+    lay = energy.layout_from_energy_prefs(prefs, {"sensor.vp1": "Varmepumpe 1"})
+    assert lay["import"] == ["sensor.imp"] and lay["export"] == ["sensor.exp"] and lay["solar"] == ["sensor.pv"]
+    assert lay["battery_in"] == ["sensor.bat_in"] and lay["battery_out"] == ["sensor.bat_out"]
+    assert [d["name"] for d in lay["devices"]] == ["Varmepumpe 1", "Varmepumpe 2"]
+    assert energy.layout_from_energy_prefs({"energy_sources": [], "device_consumption": []}) is None
+    # Uden Energi-dashboard: SmartHus' egne målere, samme måler kun én gang
+    cfg = energy.layout_from_config({"import": "sensor.imp", "solar": None},
+                                    [("Varmepumpe", "sensor.vp"), ("Varmt vand", "sensor.vp"), ("Bil", None)])
+    assert cfg["import"] == ["sensor.imp"] and cfg["solar"] == [] and [d["name"] for d in cfg["devices"]] == ["Varmepumpe"]
+
+
+def test_energy_book_hours_periods_and_years():
+    lay = {"import": ["i"], "export": ["e"], "solar": ["s"], "battery_in": ["bi"], "battery_out": ["bo"],
+           "devices": [{"id": "d1", "name": "VP1", "stat": "v1"}, {"id": "d2", "name": "VP2", "stat": "v2"}]}
+    f = energy.hour_fields(lay, {"i": 2, "e": 1, "s": 3, "bi": 0.5, "bo": 0.5, "v1": 1, "v2": 0.5}, 2.0, 0.5)
+    assert f["house"] == 4.0 and f["other"] == 2.5          # 2 + 3 − 1 + 0,5 − 0,5 = 4 kWh; 4 − 1,5 = 2,5
+    assert f["solar_self"] == 2.0 and f["solar_kr"] == 2.0 * 2 + 1 * 0.5
+    assert f["grid_in_kr"] == 4.0 and f["grid_out_kr"] == 0.5 and f["bill"] == 3.5 and f["d1_kr"] == 2.0
+    now = datetime(2026, 10, 22, 9, 30, tzinfo=TZ)
+    rows = []
+    for t in (datetime(2025, 6, 1, 12, tzinfo=TZ), datetime(2026, 10, 19, 8, tzinfo=TZ),
+              datetime(2026, 10, 22, 7, tzinfo=TZ), datetime(2026, 10, 22, 8, tzinfo=TZ)):
+        rows.append({"start": t, "kwh": {"i": 1, "v1": 0.4}, "price": 2.0, "sale": 0.5})
+    book = energy.EnergyBook()
+    book.apply(lay, rows, datetime(2025, 6, 1, tzinfo=TZ), True, now)
+    ov = book.overview(now)
+    assert ov["periods"]["today"]["house"] == 2 and ov["periods"]["week"]["house"] == 3
+    assert ov["periods"]["month"]["house"] == 3 and ov["periods"]["total"]["house"] == 4
+    assert [y["p"] for y in ov["series"]["total"]] == ["2025", "2026"]
+    assert ov["series"]["today"][7]["house"] == 1 and len(ov["series"]["month"]) == 31 and ov["series"]["week"][0]["p"] == "2026-10-19"
+    # Løbende opdatering fra starten af måneden: ældre måneder bevares, oktober erstattes (ikke dobbelt)
+    book.apply(lay, rows[1:], datetime(2026, 10, 1, tzinfo=TZ), False, now)
+    assert book.overview(now)["periods"]["total"]["house"] == 4
+    # Andre målere → bygges forfra
+    lay2 = {**lay, "devices": lay["devices"][:1]}
+    book.apply(lay2, rows[2:], datetime(2026, 10, 1, tzinfo=TZ), False, now)
+    assert book.overview(now)["periods"]["total"]["house"] == 2

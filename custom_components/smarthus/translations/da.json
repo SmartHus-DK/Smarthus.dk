@@ -467,6 +467,9 @@
       },
       "solar_roi": {
         "name": "Solceller: tilbagebetalt"
+      },
+      "energy_overview": {
+        "name": "Energioverblik"
       }
     },
     "binary_sensor": {
@@ -666,6 +669,10 @@
           "description": "Første dag der regnes fra. Tom = så langt tilbage som der er historik."
         }
       }
+    },
+    "rebuild_energy_overview": {
+      "name": "Genberegn energioverblik",
+      "description": "Genberegner energioverblikket (forbrug, køb og salg pr. enhed) forfra ud fra Home Assistants historik og den faktiske elpris i hver time."
     }
   }
 }

@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.26.0";
+const SMARTHUS_CARD_VERSION = "1.27.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -572,38 +572,43 @@ class SmartHusCard extends HTMLElement {
         return { k, label: `${m} ${now.getFullYear()}`, tick: m, ...(map.get(k) || {}) };
       });
     } else {
-      const list = hist.months || [];
-      const step = Math.ceil(list.length / 12);
-      rows = list.map((d, i) => {
-        const [y, m] = d.period.split("-");
-        const show = i === 0 || m === "01" || i % step === 0;
-        return { k: d.period, label: `${MONTHS[+m - 1]} ${y}`, tick: show ? (i === 0 || m === "01" ? `${MONTHS[+m - 1]} ${y.slice(2)}` : MONTHS[+m - 1]) : "", ...d };
-      });
+      // I alt: én søjle pr. år
+      const years = new Map();
+      for (const d of hist.months || []) {
+        const y = d.period.slice(0, 4);
+        const acc = years.get(y) || { k: y, label: y, tick: y };
+        for (const [f, v] of Object.entries(d)) if (typeof v === "number") acc[f] = (acc[f] || 0) + v;
+        years.set(y, acc);
+      }
+      rows = [...years.values()].sort((a, b) => a.k.localeCompare(b.k));
     }
     if (!rows.length || !rows.some((r) => r.produced)) {
-      return `<div class="solar-empty">Historikken bygges op fra nu af – her kommer et søjlediagram over ${tab === "year" || tab === "total" ? "månederne" : "dagene"}.</div>`;
+      return `<div class="solar-empty">Historikken bygges op fra nu af – her kommer et søjlediagram over ${tab === "year" ? "månederne" : tab === "total" ? "årene" : "dagene"}.</div>`;
     }
-    const W = rows.length * 10, H = 70;
+    // Få søjler (fx år) holdes smalle og centreret
+    const slots = Math.max(rows.length, 8), off = ((slots - rows.length) / 2) * 10;
+    const W = slots * 10, H = 70;
     const max = Math.max(...rows.map((r) => (r.self_value || 0) + Math.max(r.export_income || 0, 0)), 0.01);
     const bars = rows.map((r, i) => {
       const a = Math.max(r.self_value || 0, 0) / max * H;
       const b = Math.max(r.export_income || 0, 0) / max * H;
       const sel = this._solarSel === r.k;
+      const x = off + i * 10;
       return `<g data-action="solar-bar" data-k="${r.k}" class="sbar${sel ? " sel" : ""}">
-        <rect x="${i * 10}" y="0" width="10" height="${H}" fill="transparent"></rect>
-        <rect x="${i * 10 + 1.5}" y="${H - a}" width="7" height="${a}" fill="${COLORS.solar_self}"></rect>
-        <rect x="${i * 10 + 1.5}" y="${H - a - b}" width="7" height="${b}" fill="${COLORS.solar_sold}"></rect>
+        <rect x="${x}" y="0" width="10" height="${H}" fill="transparent"></rect>
+        <rect x="${x + 1.5}" y="${H - a}" width="7" height="${a}" fill="${COLORS.solar_self}"></rect>
+        <rect x="${x + 1.5}" y="${H - a - b}" width="7" height="${b}" fill="${COLORS.solar_sold}"></rect>
       </g>`;
     }).join("");
     const picked = rows.find((r) => r.k === this._solarSel);
     const info = picked
       ? `${picked.label}: <b>${nf(picked.produced, 1)} kWh</b> · sparet <b>${nf(picked.self_value)} kr</b> · solgt <b>${nf(picked.export_income)} kr</b>`
       : `<span class="lg-dot" style="background:${COLORS.solar_self}"></span>Sparet <span class="lg-dot" style="background:${COLORS.solar_sold}"></span>Solgt <span class="muted">· tryk på en søjle</span>`;
-    const ticks = rows.map((r, i) => (r.tick ? `<span style="left:${((i * 10 + 5) / W) * 100}%">${r.tick}</span>` : "")).join("");
+    const ticks = rows.map((r, i) => (r.tick ? `<span style="left:${((off + i * 10 + 5) / W) * 100}%">${r.tick}</span>` : "")).join("");
     return `
       <div class="schart">
         <div class="strip-info">${info}</div>
-        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Solcellernes værdi pr. ${tab === "year" || tab === "total" ? "måned" : "dag"}">${bars}</svg>
+        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Solcellernes værdi pr. ${tab === "year" ? "måned" : tab === "total" ? "år" : "dag"}">${bars}</svg>
         <div class="ticks c">${ticks}</div>
       </div>`;
   }
@@ -1666,7 +1671,7 @@ class SmartHusCard extends HTMLElement {
       .daylbl { position: absolute; top: 0; font-size: 11px; color: var(--secondary-text-color); padding-left: 4px; }
       .daylbl.first { left: 0; padding-left: 0; }
       .lanes { display: block; width: 100%; margin-top: 6px; }
-      .chart, .lanes, .ticks { margin-left: 34px; width: calc(100% - 34px); }
+      .strip .chart, .strip .lanes, .strip .ticks { margin-left: 34px; width: calc(100% - 34px); }
       .yaxis { position: absolute; left: -34px; top: 0; width: 29px; height: 100%; font-size: 10px; line-height: 1;
                color: var(--secondary-text-color); font-variant-numeric: tabular-nums; pointer-events: none; }
       .yaxis span { position: absolute; right: 0; transform: translateY(-50%); white-space: nowrap; }
@@ -2163,6 +2168,226 @@ class SmartHusPlanCard extends SmartHusCard {
   }
 }
 
+/**
+ * Energi-kort: forbrug, køb og salg i kWh og kr pr. enhed – i dag, uge, måned og i alt (år).
+ * Målerne findes automatisk i Home Assistants Energi-dashboard.
+ *   type: custom:smarthus-energy-card
+ *   title: Energi          # valgfri
+ *   names: { d1: Varmepumpe 1 }   # valgfri – omdøb enheder (id'erne står i sensorens egenskaber)
+ *   hide: [battery]        # valgfri – skjul rækker: solar, battery, grid, other, eller enheds-id
+ */
+const ENERGY_TABS = [
+  { id: "today", label: "I dag" },
+  { id: "week", label: "Uge" },
+  { id: "month", label: "Måned" },
+  { id: "total", label: "I alt" },
+];
+const WEEKDAYS = ["man", "tir", "ons", "tor", "fre", "lør", "søn"];
+const OTHER_COLOR = "#8C97A4";
+
+class SmartHusEnergyCard extends SmartHusCard {
+  static getStubConfig() {
+    return {};
+  }
+
+  getCardSize() {
+    return 7;
+  }
+
+  getGridOptions() {
+    return { columns: 12, min_columns: 6 };
+  }
+
+  setConfig(config) {
+    super.setConfig({ title: "Energi", ...(config || {}) });
+    if (!this._enTab) {
+      try { this._enTab = localStorage.getItem("smarthus-energy-tab") || "month"; } catch (e) { this._enTab = "month"; }
+    }
+  }
+
+  _onClick(ev) {
+    const el = ev.composedPath().find((n) => n.dataset && n.dataset.action);
+    if (el?.dataset.action === "en-tab") {
+      this._enTab = el.dataset.tab;
+      this._enSel = null;
+      try { localStorage.setItem("smarthus-energy-tab", this._enTab); } catch (e) { /* ingen lagring */ }
+      this._render();
+      return;
+    }
+    if (el?.dataset.action === "en-bar") {
+      this._enSel = this._enSel === el.dataset.k ? null : el.dataset.k;
+      this._render();
+      return;
+    }
+    super._onClick(ev);
+  }
+
+  _devices(a) {
+    const names = this._config.names || {};
+    return (a.devices || []).map((d) => ({ ...d, name: names[d.id] || d.name }));
+  }
+
+  _hidden(key) {
+    return (this._config.hide || []).includes(key);
+  }
+
+  _render() {
+    if (!this._hass || !this._config) return;
+    const st = this._st("sensor", "energy_overview");
+    if (!st) {
+      this._update(`<div class="empty">Opdatér SmartHus-integrationen for at bruge energikortet.</div>`, "");
+      return;
+    }
+    const a = st.attributes || {};
+    const dark = this._hass.themes?.darkMode ? "dark" : "";
+    const tab = ENERGY_TABS.some((t) => t.id === this._enTab) ? this._enTab : "month";
+    const tabs = ENERGY_TABS.map((t) => `<button class="tab ${t.id === tab ? "on" : ""}" data-action="en-tab" data-tab="${t.id}" aria-pressed="${t.id === tab}">${t.label}</button>`).join("");
+    const head = `<div class="en-head"><div class="en-title"><ha-icon icon="mdi:home-lightning-bolt-outline"></ha-icon>${esc(this._config.title)}</div>
+      <div class="tabs" role="group" aria-label="Periode">${tabs}</div></div>`;
+    if (!a.periods) {
+      const msg = a.error || "Energioverblikket bygges ud fra historikken – det tager typisk et par minutter efter opstart.";
+      this._update(`<div class="en">${head}<div class="en-empty">${esc(msg)}</div></div>`, dark);
+      return;
+    }
+    const p = a.periods[tab] || {};
+    const devs = this._devices(a);
+    const has = a.has || {};
+    const kwh = (v) => `${nf(v || 0, (v || 0) >= 100 ? 0 : 1)} kWh`;
+    const kr = (v) => `${nf(v || 0, 0)} kr`;
+
+    // Rækker
+    const rows = [];
+    const row = (key, color, icon, name, sub, v1, v2, cls = "") =>
+      this._hidden(key) ? "" : `<div class="en-row ${cls}"><span class="en-ic" style="--c:${color}"><ha-icon icon="${icon}"></ha-icon></span>
+        <span class="en-name">${esc(name)}${sub ? `<small>${sub}</small>` : ""}</span>
+        <span class="en-kwh">${v1}</span><span class="en-kr">${v2}</span></div>`;
+    const share = (v) => (p.house > 0.05 ? ` · ${Math.round(((v || 0) / p.house) * 100)} % af huset` : "");
+    if (has.solar) {
+      rows.push(row("solar", COLORS.solar_sold, "mdi:solar-power-variant", "Solceller",
+        `Brugt selv ${kwh(p.solar_self)}${has.export ? ` · solgt ${kwh(p.solar_export)}` : ""}`, kwh(p.solar), `${kr(p.solar_kr)}<small>værdi</small>`));
+    }
+    if (has.battery_in || has.battery_out) {
+      const net = (p.bat_out_kr || 0) - (p.bat_in_kr || 0);
+      rows.push(row("battery", COLORS.battery_discharge, "mdi:home-battery-outline", "Batteri",
+        `Opladet ${kwh(p.bat_in)} for ${kr(p.bat_in_kr)} · afladet ${kwh(p.bat_out)}`, kwh(p.bat_out),
+        `${net >= 0 ? "+" : "−"}${nf(Math.abs(net), 0)} kr<small>gevinst</small>`));
+    }
+    for (const d of devs) {
+      rows.push(row(d.id, d.color, "mdi:power-plug-outline", d.name, `Forbrug${share(p[d.id])}`, kwh(p[d.id]), kr(p[`${d.id}_kr`])));
+    }
+    if (devs.length && p.other != null) {
+      rows.push(row("other", OTHER_COLOR, "mdi:dots-horizontal-circle-outline", "Andet", `Resten af huset${share(p.other)}`, kwh(p.other), kr(p.other_kr)));
+    }
+    if (has.import || has.export) {
+      rows.push(row("grid", "#6F7F91", "mdi:transmission-tower", "Nettet",
+        `Købt ${kwh(p.grid_in)} for ${kr(p.grid_in_kr)}${has.export ? ` · solgt ${kwh(p.grid_out)} for ${kr(p.grid_out_kr)}` : ""}`,
+        kwh(p.grid_in), `${kr(p.bill)}<small>netto</small>`));
+    }
+    const houseRow = p.house != null
+      ? row("house", "#1E9E5C", "mdi:home-outline", "Total energi til huset", "Strøm fra nettet, solceller og batteri", kwh(p.house), kr(p.house_kr), "total")
+      : "";
+
+    const updated = a.updated ? new Date(a.updated) : null;
+    const foot = `<div class="en-foot">${updated ? `Opdateret kl. ${hh(updated)} · ` : ""}${a.source === "energy" ? "Målere fra Energi-dashboardet" : "Målere fra SmartHus-opsætningen"} · kr efter timens elpris</div>`;
+    const html = `
+      <div class="en">
+        ${head}
+        <div class="en-body">
+          <div class="en-left">
+            <div class="en-big"><span class="value">${nf(p.house ?? 0, (p.house ?? 0) >= 100 ? 0 : 1)}</span><span class="unit">kWh</span>
+              <span class="big-lbl">brugt i huset · ${kr(p.house_kr)}</span></div>
+            ${this._energyChart(tab, a, devs)}
+          </div>
+          <div class="en-list">${rows.join("")}${houseRow}</div>
+        </div>
+        ${foot}
+      </div>`;
+    this._update(html, dark);
+  }
+
+  /** Stablede søjler: husets forbrug delt på enhederne (og "Andet"). */
+  _energyChart(tab, a, devs) {
+    const list = (a.series || {})[tab] || [];
+    const parts = devs.filter((d) => !this._hidden(d.id)).map((d) => ({ key: d.id, color: d.color, name: d.name }));
+    if (parts.length) parts.push({ key: "other", color: OTHER_COLOR, name: "Andet" });
+    else parts.push({ key: "house", color: "#1E9E5C", name: "Huset" });
+    const total = (r) => parts.reduce((s, x) => s + Math.max(r[x.key] || 0, 0), 0);
+    if (!list.some((r) => total(r) > 0)) return `<div class="en-empty small">Ingen målinger i perioden endnu.</div>`;
+    const label = (r) => {
+      if (tab === "today") return `kl. ${r.p}–${String((+r.p + 1) % 24).padStart(2, "0")}`;
+      if (tab === "total") return r.p;
+      const d = new Date(`${r.p}T12:00:00`);
+      return `${WEEKDAYS[(d.getDay() + 6) % 7]} ${d.getDate()}/${d.getMonth() + 1}`;
+    };
+    const tick = (r, i) => {
+      if (tab === "today") return +r.p % 6 === 0 ? r.p : "";
+      if (tab === "week") return WEEKDAYS[i];
+      if (tab === "month") { const day = +r.p.slice(8); return day === 1 || day % 7 === 1 ? String(day) : ""; }
+      return r.p;
+    };
+    const slots = Math.max(list.length, tab === "total" ? 8 : list.length), off = ((slots - list.length) / 2) * 10;
+    const W = slots * 10, H = 80;
+    const max = Math.max(...list.map(total), 0.01);
+    const bars = list.map((r, i) => {
+      let y = H;
+      const x = off + i * 10;
+      const segs = parts.map((pt) => {
+        const h = (Math.max(r[pt.key] || 0, 0) / max) * H;
+        y -= h;
+        return h > 0 ? `<rect x="${x + 1.5}" y="${y}" width="7" height="${h}" fill="${pt.color}"></rect>` : "";
+      }).join("");
+      return `<g data-action="en-bar" data-k="${r.p}" class="sbar${this._enSel === r.p ? " sel" : ""}"><rect x="${x}" y="0" width="10" height="${H}" fill="transparent"></rect>${segs}</g>`;
+    }).join("");
+    const picked = list.find((r) => r.p === this._enSel);
+    const info = picked
+      ? `${label(picked)}: <b>${nf(total(picked), 1)} kWh</b>${picked.house_kr != null ? ` · <b>${nf(picked.house_kr, 0)} kr</b>` : ""}`
+        + parts.filter((pt) => picked[pt.key] > 0.005).map((pt) => ` · ${esc(pt.name)} ${nf(picked[pt.key], 1)}`).join("")
+      : parts.map((pt) => `<span class="lg-dot" style="background:${pt.color}"></span>${esc(pt.name)}`).join(" ") + ` <span class="muted">· tryk på en søjle</span>`;
+    const ticks = list.map((r, i) => { const t = tick(r, i); return t ? `<span style="left:${((off + i * 10 + 5) / W) * 100}%">${t}</span>` : ""; }).join("");
+    return `
+      <div class="schart">
+        <div class="strip-info">${info}</div>
+        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Husets forbrug pr. ${tab === "today" ? "time" : tab === "total" ? "år" : "dag"}">${bars}</svg>
+        <div class="ticks c">${ticks}</div>
+      </div>`;
+  }
+
+  _css() {
+    return super._css().replace("</style>", `
+      .en { padding: 0 16px 10px; }
+      .en-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 12px; }
+      .en-title { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 15px; font-weight: 600; }
+      .en-title ha-icon { --mdc-icon-size: 20px; color: var(--secondary-text-color); }
+      .en-big { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 6px; margin-top: 12px; }
+      .en-big .value { font-size: 34px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+      .en-big .unit { font-size: 15px; color: var(--secondary-text-color); }
+      .en-big .big-lbl { flex-basis: 100%; font-size: 13px; color: var(--secondary-text-color); }
+      .en .schart svg { height: 96px; }
+      .en-list { display: grid; margin-top: 12px; }
+      .en-row { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto auto; align-items: center; gap: 0 10px; padding: 8px 0;
+                border-top: 1px solid var(--sh-line); }
+      .en-row:first-child { border-top: 0; }
+      .en-row.total { border-top: 2px solid var(--sh-line); font-weight: 600; }
+      .en-ic { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; color: var(--c);
+               background: color-mix(in srgb, var(--c) 16%, transparent); }
+      .en-ic ha-icon { --mdc-icon-size: 18px; }
+      .en-name { min-width: 0; font-size: 14px; }
+      .en-name small { display: block; font-size: 12px; font-weight: 400; color: var(--secondary-text-color); line-height: 1.35; }
+      .en-kwh, .en-kr { text-align: right; font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+      .en-kwh { color: var(--secondary-text-color); }
+      .en-kr { min-width: 64px; font-weight: 600; }
+      .en-kr small { display: block; font-size: 11px; font-weight: 400; color: var(--secondary-text-color); }
+      .en-empty { padding: 16px 0; color: var(--secondary-text-color); font-size: 14px; }
+      .en-empty.small { padding: 18px 0 8px; font-size: 13px; }
+      .en-foot { margin-top: 8px; font-size: 11px; color: var(--secondary-text-color); }
+      @container (min-width: 760px) {
+        .en-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 28px; align-items: start; }
+        .en-list { margin-top: 14px; }
+      }
+    </style>`);
+  }
+}
+
 if (!customElements.get("smarthus-card")) {
   customElements.define("smarthus-card", SmartHusCard);
   window.customCards = window.customCards || [];
@@ -2186,6 +2411,14 @@ if (!customElements.get("smarthus-card")) {
     type: "smarthus-plan-card",
     name: "SmartHus Plan",
     description: "Elpris nu, sol, strøm til/fra nettet, hvad der kører lige nu og prisgrafen med planen – kompakt.",
+    preview: false,
+    documentationURL: "https://github.com/SmartHus-DK/Smarthus.dk",
+  });
+  customElements.define("smarthus-energy-card", SmartHusEnergyCard);
+  window.customCards.push({
+    type: "smarthus-energy-card",
+    name: "SmartHus Energi",
+    description: "Forbrug, køb og salg i kWh og kr for solceller, batteri, varmepumper og resten af huset – i dag, uge, måned og i alt.",
     preview: false,
     documentationURL: "https://github.com/SmartHus-DK/Smarthus.dk",
   });

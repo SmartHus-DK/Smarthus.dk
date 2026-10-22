@@ -14,7 +14,7 @@ MAX_DELTA_KWH = 5.0
 SOLAR_BUCKETS = ("today", "month", "year", "total")
 SOLAR_FIELDS = ("produced", "self_kwh", "export_kwh", "self_value", "export_income", "import_kwh", "import_cost")
 KEEP_DAYS = 35
-KEEP_MONTHS = 25
+KEEP_MONTHS = 1200  # alle måneder gemmes (bruges til år i "I alt")
 
 
 def _zero_cat() -> dict:

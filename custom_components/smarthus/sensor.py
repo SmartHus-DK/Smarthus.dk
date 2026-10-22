@@ -37,6 +37,7 @@ from .const import (
 from .savings import import_price, roi
 from .controller import SmartHusController
 from .entity import SmartHusEntity
+from .energy import DEVICE_COLORS
 from .planner import EvPlan, Slot, car_settings, cheapest, local_days
 
 PRICE_UNIT = "kr/kWh"
@@ -358,10 +359,36 @@ FORECAST_SENSOR = SmartHusSensorDescription(
     value_fn=lambda c: c.solar_forecast.get("remaining_kwh"), attrs_fn=lambda c: c.solar_forecast)
 
 
+def _energy_attrs(c: SmartHusController) -> dict:
+    book = c.energy
+    layout = book.data.get("layout") or {}
+    out = {
+        "source": layout.get("source"),
+        "has": {k: bool(layout.get(k)) for k in ("import", "export", "solar", "battery_in", "battery_out")},
+        "devices": [{"id": d["id"], "name": d["name"], "color": DEVICE_COLORS[i % len(DEVICE_COLORS)]}
+                    for i, d in enumerate(layout.get("devices") or [])],
+        "updated": book.data.get("updated"),
+        "first": book.data.get("first"),
+        "error": c.energy_error,
+    }
+    if layout:
+        out.update(book.overview(dt_util.now()))
+    return out
+
+
+ENERGY_SENSOR = SmartHusSensorDescription(
+    key="energy_overview", icon="mdi:home-analytics", device_class=SensorDeviceClass.ENERGY,
+    native_unit_of_measurement="kWh", suggested_display_precision=1,
+    value_fn=lambda c: (c.energy.overview(dt_util.now())["periods"]["today"].get("house")
+                        if c.energy.data.get("layout") else None),
+    attrs_fn=_energy_attrs)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
                             async_add_entities: AddEntitiesCallback) -> None:
     controller = entry.runtime_data.controller
     entities: list[SensorEntity] = [SmartHusSensor(entry, controller, d) for d in SENSORS]
+    entities.append(SmartHusSensor(entry, controller, ENERGY_SENSOR))
     if controller.has(CONF_BATTERY_DISCHARGE_ENERGY) and controller.has(CONF_BATTERY_CHARGE_ENERGY):
         entities += [SmartHusSensor(entry, controller, d) for d in TRADE_SENSORS]
     if controller.has(CONF_HOUSE_ENERGY):
@@ -383,7 +410,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
 class SmartHusSensor(SmartHusEntity, SensorEntity):
     _domain = "sensor"
     entity_description: SmartHusSensorDescription
-    _unrecorded_attributes = frozenset({"today", "tomorrow", "days", "months", "hours"})
+    _unrecorded_attributes = frozenset({"today", "tomorrow", "days", "months", "hours", "periods", "series", "devices", "has"})
 
     def __init__(self, entry, controller, description: SmartHusSensorDescription) -> None:
         super().__init__(entry, controller, description.key)
