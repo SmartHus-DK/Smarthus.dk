@@ -386,7 +386,7 @@ legend: compact    # standard: farverne på én linje · true: med tidspunkter �
 
 <details><summary><b>Energi-kort: forbrug, køb og salg pr. enhed</b></summary>
 
-Viser kWh og kr for solceller, batteri, hver enhed (fx Varmepumpe 1 og 2), "Andet" (resten af huset), nettet (køb/salg) og den samlede energi til huset – i dag, denne uge, denne måned, i år (søjler pr. måned) og i alt (søjler pr. år). Tryk på en søjle, fx en måned under "I år", så viser kortet tallene for netop den periode. Kronebeløbene regnes time for time med timens faktiske elpris.
+Viser kWh og kr for solceller, batteri, hver enhed (fx Varmepumpe 1 og 2), "Andet" (resten af huset), nettet (køb/salg) og den samlede energi til huset – i dag, denne uge, denne måned, i år (søjler pr. måned) og i alt (søjler pr. år). Tryk på en søjle, fx en måned under "I år", så viser kortet tallene for netop den periode. Under "I alt" åbner et tryk på et år det års måneder. Kronebeløbene regnes time for time med timens faktiske elpris.
 
 Målerne findes automatisk i Home Assistants **Energi-dashboard** (Indstillinger → Dashboards → Energi): net, solpaneler, batteri og *Individuelle enheder*. Tilføj fx dine varmepumper under *Individuelle enheder*, så kommer de med på kortet. Elbilens lader fra SmartHus kommer automatisk med, hvis den ikke står i Energi-dashboardet. Er Energi-dashboardet ikke sat op, bruges de målere, der er valgt i SmartHus.
 

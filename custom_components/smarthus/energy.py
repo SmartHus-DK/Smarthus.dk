@@ -244,6 +244,7 @@ class EnergyBook:
             "month": [{"p": d, **days.get(d, {})} for d in month_days],
             "year": [{"p": f"{today.year}-{m:02d}", **months.get(f"{today.year}-{m:02d}", {})} for m in range(1, 13)],
             "total": [{"p": y, **_rnd(v)} for y, v in sorted(years.items())],
+            "months": [{"p": k, **v} for k, v in sorted(months.items())],  # alle måneder – til et valgt år
         }
         return {
             "periods": {

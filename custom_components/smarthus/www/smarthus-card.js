@@ -2212,12 +2212,24 @@ class SmartHusEnergyCard extends SmartHusCard {
     if (el?.dataset.action === "en-tab") {
       this._enTab = el.dataset.tab;
       this._enSel = null;
+      this._enYear = null;
       try { localStorage.setItem("smarthus-energy-tab", this._enTab); } catch (e) { /* ingen lagring */ }
       this._render();
       return;
     }
     if (el?.dataset.action === "en-bar") {
-      this._enSel = this._enSel === el.dataset.k ? null : el.dataset.k;
+      if (this._enTab === "total" && !this._enYear) {
+        this._enYear = el.dataset.k;          // et år under "I alt" → vis årets måneder
+        this._enSel = null;
+      } else {
+        this._enSel = this._enSel === el.dataset.k ? null : el.dataset.k;
+      }
+      this._render();
+      return;
+    }
+    if (el?.dataset.action === "en-up") {
+      this._enYear = null;
+      this._enSel = null;
       this._render();
       return;
     }
@@ -2252,8 +2264,9 @@ class SmartHusEnergyCard extends SmartHusCard {
       return;
     }
     // En valgt søjle (fx en måned under "I år") viser tallene for netop den periode
-    const picked = ((a.series || {})[tab] || []).find((r) => r.p === this._enSel);
-    const p = picked || a.periods[tab] || {};
+    const view = this._enView(a, tab);
+    const picked = view.list.find((r) => r.p === this._enSel);
+    const p = picked || view.total;
     const devs = this._devices(a);
     const has = a.has || {};
     const kwh = (v) => `${nf(v || 0, (v || 0) >= 100 ? 0 : 1)} kWh`;
@@ -2303,14 +2316,26 @@ class SmartHusEnergyCard extends SmartHusCard {
         <div class="en-body">
           <div class="en-left">
             <div class="en-big"><span class="value">${nf(p.house ?? 0, (p.house ?? 0) >= 100 ? 0 : 1)}</span><span class="unit">kWh</span>
-              <span class="big-lbl">brugt i huset${picked ? ` ${esc(this._enLabel(tab, picked, true))}` : ""} · ${kr(p.house_kr)}</span></div>
-            ${this._energyChart(tab, a, devs)}
+              <span class="big-lbl">brugt i huset${picked ? ` ${esc(this._enLabel(view.kind, picked, true))}${view.year ? ` ${view.year}` : ""}` : view.year ? ` i ${view.year}` : ""} · ${kr(p.house_kr)}</span></div>
+            ${this._energyChart(view, devs)}
           </div>
           <div class="en-list">${group("Forbrug i huset", use)}${group("Produktion og nettet", src)}</div>
         </div>
         ${foot}
       </div>`;
     this._update(html, dark);
+  }
+
+  /** Hvad grafen og tabellen viser: fanen, eller et valgt års måneder under "I alt". */
+  _enView(a, tab) {
+    const series = a.series || {};
+    if (tab === "total" && this._enYear) {
+      const y = this._enYear;
+      const byKey = new Map((series.months || []).map((m) => [m.p, m]));
+      const list = MONTHS.map((_, i) => { const k = `${y}-${String(i + 1).padStart(2, "0")}`; return { p: k, ...(byKey.get(k) || {}) }; });
+      return { kind: "year", list, total: (series.total || []).find((r) => r.p === y) || {}, year: y };
+    }
+    return { kind: tab, list: series[tab] || [], total: (a.periods || {})[tab] || {}, year: null };
   }
 
   _enLabel(tab, r, long = false) {
@@ -2322,13 +2347,14 @@ class SmartHusEnergyCard extends SmartHusCard {
   }
 
   /** Stablede søjler: husets forbrug delt på enhederne (og "Andet"). */
-  _energyChart(tab, a, devs) {
-    const list = (a.series || {})[tab] || [];
+  _energyChart(view, devs) {
+    const tab = view.kind, list = view.list;
     const parts = devs.filter((d) => !this._hidden(d.id)).map((d) => ({ key: d.id, color: d.color, name: d.name }));
     if (parts.length) parts.push({ key: "other", color: OTHER_COLOR, name: "Andet" });
     else parts.push({ key: "house", color: "#1E9E5C", name: "Huset" });
     const total = (r) => parts.reduce((s, x) => s + Math.max(r[x.key] || 0, 0), 0);
-    if (!list.some((r) => total(r) > 0)) return `<div class="en-empty small">Ingen målinger i perioden endnu.</div>`;
+    const up = view.year ? `<button class="en-up" data-action="en-up"><ha-icon icon="mdi:chevron-left"></ha-icon>Alle år</button>` : "";
+    if (!list.some((r) => total(r) > 0)) return `${up ? `<div class="strip-info">${up}</div>` : ""}<div class="en-empty small">Ingen målinger i perioden endnu.</div>`;
     const label = (r) => this._enLabel(tab, r);
     const tick = (r, i) => {
       if (tab === "today") return +r.p % 6 === 0 ? r.p : "";
@@ -2351,9 +2377,12 @@ class SmartHusEnergyCard extends SmartHusCard {
       return `<g data-action="en-bar" data-k="${r.p}" class="sbar${this._enSel === r.p ? " sel" : ""}"><rect x="${x}" y="0" width="10" height="${H}" fill="transparent"></rect>${segs}</g>`;
     }).join("");
     const picked = list.find((r) => r.p === this._enSel);
-    const info = picked
-      ? `Viser <b>${esc(label(picked))}</b> <span class="muted">· tryk igen for hele perioden</span>`
-      : parts.map((pt) => `<span class="lg-dot" style="background:${pt.color}"></span>${esc(pt.name)}`).join(" ") + ` <span class="muted">· tryk på en søjle</span>`;
+    const info = up + (picked
+      ? `Viser <b>${esc(label(picked))}${view.year ? ` ${view.year}` : ""}</b> <span class="muted">· tryk igen for hele ${view.year ? "året" : "perioden"}</span>`
+      : view.year
+        ? `<b>${view.year}</b> <span class="muted">· tryk på en måned</span>`
+        : parts.map((pt) => `<span class="lg-dot" style="background:${pt.color}"></span>${esc(pt.name)}`).join(" ")
+          + ` <span class="muted">· ${tab === "total" ? "tryk på et år for at se månederne" : "tryk på en søjle"}</span>`);
     const ticks = list.map((r, i) => { const t = tick(r, i); return t ? `<span style="left:${((off + i * 10 + 5) / W) * 100}%">${t}</span>` : ""; }).join("");
     return `
       <div class="schart">
@@ -2393,6 +2422,9 @@ class SmartHusEnergyCard extends SmartHusCard {
       .en-kr small { display: block; font-size: 11px; font-weight: 400; color: var(--secondary-text-color); }
       .en-empty { padding: 16px 0; color: var(--secondary-text-color); font-size: 14px; }
       .en-empty.small { padding: 18px 0 8px; font-size: 13px; }
+      .en-up { display: inline-flex; align-items: center; gap: 2px; margin-right: 8px; padding: 2px 10px 2px 4px; border-radius: 999px;
+               background: var(--sh-track); color: var(--primary-text-color); font-size: 12px; font-weight: 600; vertical-align: middle; }
+      .en-up ha-icon { --mdc-icon-size: 16px; }
       .en-foot { margin-top: 8px; font-size: 11px; color: var(--secondary-text-color); }
       @container (min-width: 760px) {
         .en-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 28px; align-items: start; }
