@@ -1489,6 +1489,9 @@ class SmartHusController:
     def hotwater_min_temp(self) -> float:
         """Laveste temperatur: varmepumpens eget setpunkt, hvis det er valgt – ellers indstillingen."""
         entity_id = self.config.get(CONF_HOTWATER_MIN_ENTITY)
+        if entity_id and entity_id == self.config.get(CONF_HOTWATER_ENTITY):
+            # SmartHus styrer selv dette setpunkt (hæver det under opvarmning) – brug den normale temperatur
+            return float(self.settings.get(S_HOTWATER_NORMAL_TEMP, 45.0))
         val = self._setpoint_value(entity_id) if entity_id else None
         return val if val is not None else float(self.settings.get(S_HOTWATER_MIN_TEMP, 42.0))
 
