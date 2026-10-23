@@ -518,6 +518,9 @@
       },
       "hotwater_surplus_smart": {
         "name": "Hot water: surplus only when worth it"
+      },
+      "heating_auto": {
+        "name": "Heating: automatic plan"
       }
     },
     "number": {

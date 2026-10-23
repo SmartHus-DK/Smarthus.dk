@@ -15,6 +15,8 @@ from .const import (
     CONF_HOTWATER_ENTITY,
     CONF_GRID_POWER,
     F_HOTWATER_SURPLUS_SMART,
+    F_HEATING_AUTO,
+    CONF_HEATING_CLIMATE,
     CONF_SOLAR_CURTAIL,
     MODULE_BATTERY,
     MODULE_HEATING,
@@ -51,6 +53,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
                                        translation_key="ev_solar", car_name=name, default=False))
     if controller.has(CONF_HOTWATER_ENTITY) and controller.has(CONF_GRID_POWER):
         entities.append(FlagSwitch(entry, controller, F_HOTWATER_SURPLUS_SMART, "mdi:cash-sync", default=True))
+    if controller.has(CONF_HEATING_CLIMATE):
+        entities.append(FlagSwitch(entry, controller, F_HEATING_AUTO, "mdi:auto-mode", default=False))
     async_add_entities(entities)
 
 

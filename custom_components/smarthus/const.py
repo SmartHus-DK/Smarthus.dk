@@ -136,6 +136,7 @@ SURPLUS_CONFIRM_TICKS: Final = 4     # betingelsen skal holde i 4 × 30 s (undg�
 TICK_SECONDS: Final = 30
 CONF_SOLAR_POWER: Final = "solar_power_sensor"
 F_HOTWATER_SURPLUS_SMART: Final = "hotwater_surplus_smart"
+F_HEATING_AUTO: Final = "heating_auto"   # varmeplanen vælges automatisk ud fra dagens priser
 HOTWATER_HYSTERESIS: Final = 3.0  # °C – start igen når vandet er kølet så meget af
 # Varme / varmepumpe
 CONF_HEATING_CLIMATE: Final = "heating_climate_entity"

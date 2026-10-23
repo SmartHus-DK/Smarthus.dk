@@ -77,6 +77,7 @@ from .const import (
     TICK_SECONDS,
     CONF_SOLAR_POWER,
     F_HOTWATER_SURPLUS_SMART,
+    F_HEATING_AUTO,
     SURPLUS_STOP_IMPORT_KW,
     HOTWATER_HYSTERESIS,
     CONF_HOUSE_ENERGY,
@@ -789,7 +790,8 @@ class SmartHusController:
                      **self._ready_input(car["id"]))
             for car in self.cars
         ]
-        self.plan = build_plan(slots, dt_util.utcnow(), self.tz, self.settings, soc=soc, cars=cars)
+        settings = {**self.settings, "heating_auto": bool(self.flags.get(F_HEATING_AUTO, False))}
+        self.plan = build_plan(slots, dt_util.utcnow(), self.tz, settings, soc=soc, cars=cars)
         self._update_hotwater_demand()
         for cid, ep in self.plan.evs.items():
             if self.ev_force.get(cid) and ep.target_reached:

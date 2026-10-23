@@ -530,6 +530,9 @@
       },
       "hotwater_surplus_smart": {
         "name": "Varmt vand: kun overskud når det betaler sig"
+      },
+      "heating_auto": {
+        "name": "Varme: automatisk plan"
       }
     },
     "number": {

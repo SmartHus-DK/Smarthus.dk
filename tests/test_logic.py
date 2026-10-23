@@ -867,3 +867,22 @@ def test_heating_two_peaks_preheat_before_both():
     boost = blocks(p.heating_boost)
     assert len(boost) == 2 and sum(h for _, h in boost) == 6
     assert any(2 <= a and a + h <= 7 for a, h in boost) and any(12 <= a and a + h <= 17 for a, h in boost), boost
+
+
+def test_heating_auto_plan_from_prices():
+    prices = [1.85, 1.75, 1.72, 1.72, 1.68, 1.72, 2.03, 2.25, 2.38, 2.13, 1.83, 1.66,
+              1.48, 1.45, 1.48, 1.52, 1.58, 2.13, 2.13, 2.12, 1.75, 1.15, 1.22, 1.1]
+    d0 = datetime(2026, 10, 23, tzinfo=TZ)
+    mk = lambda ps: [planner.Slot(d0 + timedelta(minutes=15 * i), d0 + timedelta(minutes=15 * (i + 1)), p * 0.4, p, p * 0.3)  # noqa: E731
+                     for i, p in enumerate(x for x in ps for _ in range(4))]
+    s = dict(const.DEFAULT_SETTINGS)
+    s.update({"heating_auto": True, "heating_reduce_degrees": 1, "heating_boost_hours": 1, "heating_reduce_hours": 1})
+    p = planner.build_plan(mk(prices), d0, TZ, s)
+    blocks = lambda xs: [(a.astimezone(TZ).hour, h) for a, h in _blocks(xs)]  # noqa: E731
+    # Toppene kl. 06–10 og 17–20 bliver sparetimer (timeindstillingerne bruges ikke)
+    assert blocks(p.heating_reduce) == [(6, 4.0), (17, 3.0)]
+    # Forvarmning før hver top – lige så mange timer som toppen
+    assert blocks(p.heating_boost) == [(2, 4.0), (13, 3.0)]
+    # En flad dag: ingen plan
+    p = planner.build_plan(mk([1.5] * 24), d0, TZ, s)
+    assert not p.heating_reduce and not p.heating_boost

@@ -79,6 +79,8 @@ const MODULES = [
     id: "heating", name: "Varme", icon: "mdi:heat-pump", sw: "control_heating",
     groups: [
       { title: null, items: ["heating_base_temp", "heating_max_outdoor"] },
+      { title: "Plan", items: [{ sw: "heating_auto", label: "Automatisk plan",
+        note: "Vælger selv sparetimer i dagens dyre toppe og forvarmer i de billigste timer før dem" }] },
       { title: "Ekstra varme i billige timer", items: ["heating_boost_degrees", "heating_boost_hours", ["heating_boost_from", "heating_boost_to"]] },
       { title: "Spar i dyre timer", items: ["heating_reduce_degrees", "heating_reduce_hours", ["heating_reduce_from", "heating_reduce_to"]] },
     ],
@@ -1465,10 +1467,11 @@ class SmartHusCard extends HTMLElement {
       unit === "kl." ? `kl. ${String(v).padStart(2, "0")}` :
       unit === "h" ? `${trim(v)} t` :
       `${nf(v, dec)} ${esc(unit)}`;
-    const unused = key.endsWith("_ready_hour") && this._st("select", key.replace("_ready_hour", "_ready_day"))?.attributes?.uses_ready_hour === false;
+    const autoHeat = (key === "heating_boost_hours" || key === "heating_reduce_hours") && this._st("switch", "heating_auto")?.state === "on";
+    const unused = autoHeat || (key.endsWith("_ready_hour") && this._st("select", key.replace("_ready_hour", "_ready_day"))?.attributes?.uses_ready_hour === false);
     return `
       <div class="step${unused ? " unused" : ""}">
-        <span class="step-lbl">${esc(this._label(key))}${unused ? `<span class="win-note">Bruges ikke – perioden er valgt nedenfor</span>` : ""}${key === "ev_max_total_power" ? `<span class="win-note">0 = ingen grænse</span>` : key === "hotwater_surplus_kw" ? `<span class="win-note">0 = fra · eksport lige nu ${nf(this._st("binary_sensor", "hotwater_now")?.attributes?.export_kw, 1)} kW</span>` : key === "hotwater_watch_temp" ? `<span class="win-note">0 = fra · varm op i en billig time, før vandet når den laveste temperatur</span>` : key === "hotwater_min_temp" ? `<span class="win-note">Varm op, før vandet når hertil – fx varmepumpens egen grænse</span>` : ""}</span>
+        <span class="step-lbl">${esc(this._label(key))}${autoHeat ? `<span class="win-note">Vælges automatisk ud fra dagens priser</span>` : unused ? `<span class="win-note">Bruges ikke – perioden er valgt nedenfor</span>` : ""}${key === "ev_max_total_power" ? `<span class="win-note">0 = ingen grænse</span>` : key === "hotwater_surplus_kw" ? `<span class="win-note">0 = fra · eksport lige nu ${nf(this._st("binary_sensor", "hotwater_now")?.attributes?.export_kw, 1)} kW</span>` : key === "hotwater_watch_temp" ? `<span class="win-note">0 = fra · varm op i en billig time, før vandet når den laveste temperatur</span>` : key === "hotwater_min_temp" ? `<span class="win-note">Varm op, før vandet når hertil – fx varmepumpens egen grænse</span>` : ""}</span>
         <span class="step-ctl">
           <button data-action="step" data-entity="${s.entity_id}" data-dir="-1" aria-label="Mindre ${esc(this._label(key))}">−</button>
           <span class="step-val">${shown}</span>

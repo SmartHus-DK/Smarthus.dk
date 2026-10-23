@@ -369,6 +369,58 @@ def heating_with_preheat(slots: list[Slot], hours: float, tz: tzinfo, reduce: li
     return sorted(pre + rest, key=lambda s: s.start)
 
 
+AUTO_PEAK_ABS = 0.25     # kr/kWh – en dyr top ligger mindst så meget over dagens gennemsnit …
+AUTO_PEAK_REL = 0.15     # … eller 15 % over (det største af de to)
+AUTO_MAX_BLOCK_H = 4     # højst 4 sparetimer i træk – så huset ikke bliver for koldt
+
+
+def auto_heating(reduce_slots: list[Slot], boost_slots: list[Slot], tz: tzinfo) -> tuple[list[Slot], list[Slot]]:
+    """Automatisk varmeplan ud fra dagens priser: (ekstra varme, sparetimer).
+
+    Dyre toppe (timer et godt stykke over dagens gennemsnit) bliver sparetimer – højst to toppe og
+    højst 4 timer hver. Før hver top forvarmes i lige så mange af de billigste timer, hvis det er
+    tydeligt billigere. En dag uden tydelige toppe giver ingen plan – så er der intet at flytte.
+    """
+    by_hour: dict[datetime, list[Slot]] = {}
+    for s in sorted(reduce_slots, key=lambda x: x.start):
+        by_hour.setdefault(s.start.astimezone(tz).replace(minute=0, second=0, microsecond=0), []).append(s)
+    hours = sorted(by_hour)
+    if len(hours) < 4:
+        return [], []
+    price = {h: _avg(by_hour[h]) for h in hours}
+    mean = sum(price.values()) / len(price)
+    thr = mean + max(AUTO_PEAK_ABS, AUTO_PEAK_REL * mean)
+    runs: list[list[datetime]] = []
+    for h in hours:
+        if price[h] >= thr:
+            if runs and h - runs[-1][-1] <= timedelta(hours=1, minutes=1):
+                runs[-1].append(h)
+            else:
+                runs.append([h])
+    peaks: list[list[datetime]] = []
+    for run in runs:
+        if len(run) == 1:
+            # En enkelt dyr time: tag den dyreste nabo med, hvis den er over gennemsnittet (mindst 2 timer)
+            i = hours.index(run[0])
+            nb = [hours[j] for j in (i - 1, i + 1) if 0 <= j < len(hours)
+                  and abs(hours[j] - run[0]) <= timedelta(hours=1, minutes=1) and price[hours[j]] >= mean]
+            if not nb:
+                continue
+            run = sorted(run + [max(nb, key=lambda x: price[x])])
+        if len(run) > AUTO_MAX_BLOCK_H:
+            k = AUTO_MAX_BLOCK_H
+            i = max(range(len(run) - k + 1), key=lambda i: sum(price[h] for h in run[i:i + k]))
+            run = run[i:i + k]
+        peaks.append(run)
+    peaks = sorted(peaks, key=lambda r: sum(price[h] for h in r) / len(r), reverse=True)[:HEAT_MAX_BLOCKS]
+    reduce = sorted((s for r in peaks for h in r for s in by_hour[h]), key=lambda s: s.start)
+    boost: list[Slot] = []
+    for r in peaks:
+        peak = [s for h in r for s in by_hour[h]]
+        boost += _preheat(boost_slots, len(r), tz, peak, reduce + boost)
+    return sorted(boost, key=lambda s: s.start), reduce
+
+
 def _percentile(values: list[float], q: float) -> float:
     vals = sorted(values)
     if not vals:
@@ -418,10 +470,18 @@ def build_plan(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
         plan.hotwater_slots += cheapest(win("hotwater"), settings["hotwater_hours"], contiguous=True)
         # Varme: sænk i dyreste timer, hæv i billigste – og forvarm huset op til den dyre periode.
         # Altid hele, sammenhængende timer, så varmepumpens setpunkt ikke svinger.
-        # Sparetimer: gerne to perioder, når dagen har to dyre toppe (fx morgen og aften)
-        reduce = heating_blocks(win("heating_reduce"), settings["heating_reduce_hours"], tz,
-                                most_expensive=True, split_margin=0.0) if settings["heating_reduce_degrees"] > 0 else []
-        boost = heating_with_preheat(win("heating_boost"), settings["heating_boost_hours"], tz, reduce)
+        if settings.get("heating_auto"):
+            # Automatisk: antal timer og placering vælges ud fra dagens priser
+            boost, reduce = auto_heating(win("heating_reduce"), win("heating_boost"), tz)
+            if settings["heating_reduce_degrees"] <= 0:
+                reduce = []
+            if settings["heating_boost_degrees"] <= 0:
+                boost = []
+        else:
+            # Sparetimer: gerne to perioder, når dagen har to dyre toppe (fx morgen og aften)
+            reduce = heating_blocks(win("heating_reduce"), settings["heating_reduce_hours"], tz,
+                                    most_expensive=True, split_margin=0.0) if settings["heating_reduce_degrees"] > 0 else []
+            boost = heating_with_preheat(win("heating_boost"), settings["heating_boost_hours"], tz, reduce)
         plan.heating_reduce += reduce
         plan.heating_boost += boost
 
