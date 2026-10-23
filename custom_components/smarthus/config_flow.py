@@ -49,6 +49,13 @@ from .const import (
     CONF_EXPORT_ENERGY,
     CONF_IMPORT_ENERGY,
     CONF_HEATING_CLIMATE,
+    CONF_HEATING_TYPE,
+    HEATING_TYPE_STANDARD,
+    HEATING_TYPE_AIR,
+    CONF_HEATING_INDOOR_TEMP,
+    CONF_HEATING_SCRIPT_NORMAL,
+    CONF_HEATING_SCRIPT_BOOST,
+    CONF_HEATING_SCRIPT_REDUCE,
     CONF_OUTDOOR_TEMP,
     CONF_WEATHER,
     CONF_HEATPUMP_ENERGY,
@@ -446,8 +453,19 @@ class SmartHusOptionsFlow(OptionsFlow):
     async def async_step_heating(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
             return self._save(HEATING_KEYS, user_input)
-        fields = [(CONF_HEATING_CLIMATE, CLIMATE), (CONF_HEATPUMP_ENERGY, ENERGY)]
-        return self.async_show_form(step_id="heating", data_schema=_entity_schema(fields, self._current()))
+        cur = self._current()
+        schema = vol.Schema({
+            vol.Optional(CONF_HEATING_TYPE, default=cur.get(CONF_HEATING_TYPE) or HEATING_TYPE_STANDARD):
+                selector.SelectSelector(selector.SelectSelectorConfig(
+                    options=[HEATING_TYPE_STANDARD, HEATING_TYPE_AIR], translation_key="heating_type",
+                    mode=selector.SelectSelectorMode.LIST)),
+        }).extend(_entity_schema([
+            (CONF_HEATING_CLIMATE, CLIMATE), (CONF_HEATPUMP_ENERGY, ENERGY),
+            # Kun for luft-til-luft varmepumper
+            (CONF_HEATING_INDOOR_TEMP, OUTDOOR),
+            (CONF_HEATING_SCRIPT_NORMAL, SCRIPT), (CONF_HEATING_SCRIPT_BOOST, SCRIPT), (CONF_HEATING_SCRIPT_REDUCE, SCRIPT),
+        ], cur).schema)
+        return self.async_show_form(step_id="heating", data_schema=schema)
 
     async def async_step_weather(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:

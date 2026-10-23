@@ -101,6 +101,13 @@ class SmartHusBinary(SmartHusEntity, BinarySensorEntity):
             attrs["outdoor_source"] = c.outdoor_source
             attrs["outdoor_limit"] = c.settings.get("heating_max_outdoor") if c.outdoor_temp is not None else None
             attrs["paused_warm_outside"] = not c.heating_outdoor_ok
+            attrs["air_to_air"] = c.heating_air_to_air
+            if c.heating_air_to_air:
+                attrs["indoor_temp"] = c.indoor_temp
+                attrs["min_indoor"] = c.settings.get("heating_min_indoor") if c.indoor_temp is not None else None
+                attrs["frost_guard"] = c.heating_too_cold
+                attrs["off_in_reduce"] = c.heating_off_in_reduce
+                attrs["scripts"] = c.has_heating_scripts
         return attrs
 
 

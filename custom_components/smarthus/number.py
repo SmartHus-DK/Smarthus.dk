@@ -55,6 +55,8 @@ from .const import (
     S_HEATING_REDUCE_FROM,
     S_HEATING_REDUCE_TO,
     S_HEATING_MAX_OUTDOOR,
+    S_HEATING_MIN_INDOOR,
+    CONF_HEATING_INDOOR_TEMP,
 )
 from .controller import SmartHusController
 from .entity import SmartHusEntity
@@ -185,6 +187,9 @@ NUMBERS: tuple[SmartHusNumberDescription, ...] = (
     SmartHusNumberDescription(key=S_HEATING_MAX_OUTDOOR, icon="mdi:sun-thermometer-outline", native_min_value=-20,
                               native_max_value=30, native_step=0.5, native_unit_of_measurement=C,
                               requires=CONF_HEATING_CLIMATE),
+    SmartHusNumberDescription(key=S_HEATING_MIN_INDOOR, icon="mdi:snowflake-thermometer", native_min_value=0,
+                              native_max_value=20, native_step=0.5, native_unit_of_measurement=C,
+                              requires=CONF_HEATING_INDOOR_TEMP),
     SmartHusNumberDescription(key=S_SOLAR_EXPORT_MIN, icon="mdi:transmission-tower-off", native_min_value=-2,
                               native_max_value=5, native_step=0.01, native_unit_of_measurement="kr/kWh",
                               requires=CONF_SOLAR_CURTAIL),
@@ -219,6 +224,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
             if d.key == S_HOTWATER_MIN_TEMP and controller.has(CONF_HOTWATER_MIN_ENTITY):
                 continue
             if controller.has(CONF_HOTWATER_ENTITY) and controller.hotwater_temp_entity:
+                entities.append(SmartHusNumber(entry, controller, d))
+        elif d.key == S_HEATING_MIN_INDOOR:
+            # Frostsikring – kun for luft-til-luft varmepumper med indeføler
+            if controller.heating_air_to_air and controller.has(CONF_HEATING_INDOOR_TEMP):
                 entities.append(SmartHusNumber(entry, controller, d))
         elif d.key == S_HEATING_MAX_OUTDOOR:
             if controller.has(CONF_HEATING_CLIMATE):

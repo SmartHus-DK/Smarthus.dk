@@ -174,14 +174,24 @@
       },
       "heating": {
         "title": "Heating / heat pump",
-        "description": "The temperature is raised in the cheapest hours and lowered in the most expensive.",
+        "description": "The temperature is raised in the cheapest hours and lowered in the most expensive ones. Choose the type first – 'Small air-to-air heat pump' is meant for e.g. frost protection of a holiday home, where the pump can be switched off entirely in expensive hours.",
         "data": {
+          "heating_type": "Type of heating",
           "heating_climate_entity": "Thermostat / heat pump",
-          "heatpump_energy_sensor": "Energy meter: heat pump (kWh)"
+          "heatpump_energy_sensor": "Energy meter: heat pump (kWh)",
+          "heating_indoor_temp_sensor": "Air-to-air: indoor sensor (°C) – optional",
+          "heating_script_normal": "Air-to-air via IR/RF: script for normal",
+          "heating_script_boost": "Air-to-air via IR/RF: script for extra heat",
+          "heating_script_reduce": "Air-to-air via IR/RF: script for save / off"
         },
         "data_description": {
+          "heating_type": "Standard: thermostat or heat pump for the whole house. Small air-to-air heat pump: only for small units, e.g. frost protection of a holiday home – the pump can be switched off in expensive hours and IR/RF scripts can be used.",
           "heating_climate_entity": "The thermostat or heat pump (climate entity) raised in cheap hours and lowered in expensive hours.",
-          "heatpump_energy_sensor": "Increasing meter (kWh) of the heat pump. Only used for savings."
+          "heatpump_energy_sensor": "Increasing meter (kWh) of the heat pump. Only used for savings.",
+          "heating_indoor_temp_sensor": "Air-to-air only. Frost protection: if it is colder inside than 'Minimum indoor temperature' (default 8 °C), SmartHus skips the saving hours.",
+          "heating_script_normal": "Air-to-air only, without a climate entity (e.g. Broadlink remote.send_command). Run when heating returns to normal. The script receives the variables mode and temperature.",
+          "heating_script_boost": "Air-to-air only. Run for extra heat in cheap hours.",
+          "heating_script_reduce": "Air-to-air only. Run in saving hours – e.g. an IR signal that turns the pump off or sets a low temperature."
         }
       },
       "weather": {
@@ -293,6 +303,12 @@
       "options": {
         "incl": "Including VAT",
         "excl": "Excluding VAT"
+      }
+    },
+    "heating_type": {
+      "options": {
+        "standard": "Standard – thermostat/heat pump for the whole house",
+        "air_to_air": "Small air-to-air heat pump (e.g. frost protection)"
       }
     }
   },
@@ -521,6 +537,9 @@
       },
       "heating_auto": {
         "name": "Heating: automatic plan"
+      },
+      "heating_off_in_reduce": {
+        "name": "Heating: off in saving hours (air-to-air)"
       }
     },
     "number": {
@@ -640,6 +659,9 @@
       },
       "hotwater_min_temp": {
         "name": "Hot water: lowest temperature"
+      },
+      "heating_min_indoor": {
+        "name": "Heating: minimum indoor temperature"
       }
     },
     "select": {

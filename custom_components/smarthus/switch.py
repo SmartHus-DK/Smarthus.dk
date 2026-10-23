@@ -16,6 +16,7 @@ from .const import (
     CONF_GRID_POWER,
     F_HOTWATER_SURPLUS_SMART,
     F_HEATING_AUTO,
+    F_HEATING_OFF_REDUCE,
     CONF_HEATING_CLIMATE,
     CONF_SOLAR_CURTAIL,
     MODULE_BATTERY,
@@ -55,6 +56,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
         entities.append(FlagSwitch(entry, controller, F_HOTWATER_SURPLUS_SMART, "mdi:cash-sync", default=True))
     if controller.has(CONF_HEATING_CLIMATE):
         entities.append(FlagSwitch(entry, controller, F_HEATING_AUTO, "mdi:auto-mode", default=False))
+    if controller.heating_air_to_air and controller.config.get(CONF_HEATING_CLIMATE):
+        # Kun for små luft-til-luft varmepumper (fx vinterbeskyttelse): sluk helt i sparetimer
+        entities.append(FlagSwitch(entry, controller, F_HEATING_OFF_REDUCE, "mdi:power-sleep", default=False))
     async_add_entities(entities)
 
 

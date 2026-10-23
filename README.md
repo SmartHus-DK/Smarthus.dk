@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.32.1** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
+**Version 1.33.0** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
 
 SmartHus bruger strømmen, når den er billigst, og sparer, når den er dyrest. Den lader elbilen og batteriet i de billige timer, varmer vandet med billig strøm eller solcelleoverskud, skruer lidt op og ned for varmen og stopper salg af solstrøm, når prisen er for lav. Du ser det hele – og hvad du har sparet – på ét kort.
 
@@ -322,6 +322,19 @@ Vælg **Energimåler: husets forbrug** under Batteri / inverter og indstil batte
 <details><summary><b>Varmt vand efter behov (kræver temperaturføler)</b></summary>
 
 Mange varmepumper varmer selv vandet op, når det falder under deres egen grænse – også midt i den dyreste time. Når vandet er under **Hold øje under** (standard 45 °C), måler SmartHus, hvor hurtigt vandet køler af, og regner ud, hvornår det når **Laveste temperatur** (standard 42 °C). Har varmepumpen sin egen nedre grænse som entitet (fx "Varmvand target temperature"), kan den vælges under Varmt vand i opsætningen – så bruges den i stedet for den manuelle værdi. Ligger begge dele på selve vandvarmeren (en `water_heater` med `current_temperature` og `temperature`), vælges den i begge felter: vandets temperatur læses fra `current_temperature` og grænsen fra `temperature`. Ligger dagens planlagte opvarmning ikke før det tidspunkt, varmes vandet op i den billigste time inden – så varmepumpen ikke selv starter i en dyr time. Afkølingen måles fra seneste opvarmning; efter genstart hentes de seneste 4 timer fra historikken. Sæt "Hold øje under" til 0 for at slå det fra.
+</details>
+
+<details><summary><b>Lille luft-til-luft varmepumpe – fx vinterbeskyttelse i sommerhus</b></summary>
+
+**Kun til små luft-til-luft varmepumper**, typisk vinterbeskyttelse af et sommerhus, hvor der holdes en lav grundtemperatur (fx 10 °C). Ikke til jordvarme, luft-til-vand eller gulvvarme – der bruges standardtypen.
+
+Vælg *Type af varmeanlæg → Lille luft-til-luft varmepumpe* under Varme i opsætningen. Så kan:
+
+- **Pumpen slukkes helt i sparetimerne** (kontakten *Sluk i sparetimer* på kortet) og tændes igen bagefter – i stedet for blot at sænke temperaturen. I de meget billige timer hæves den som normalt.
+- **Frostsikring:** med en indeføler springer SmartHus sparetimerne over, hvis det er koldere inde end *Mindste indetemperatur* (standard 8 °C), indtil der igen er 1 °C varmere.
+- **IR/RF-styring uden climate-entitet:** vælg tre scripts – *normal*, *ekstra varme* og *spar/sluk* – fx med Broadlinks `remote.send_command`. De køres kun, når tilstanden skifter, og får variablerne `mode` og `temperature`. Har pumpen en climate-entitet (fx via SmartIR, Sensibo, Tuya IR eller ESPHome `heatpumpir`), er det dog den bedste løsning.
+
+IR er envejs: bruger nogen den almindelige fjernbetjening, ved SmartHus det ikke før næste skift. Kombinér gerne med *Automatisk plan*, så der kun spares på dage med tydelige pristoppe.
 </details>
 
 <details><summary><b>Solcelleoverskud – varmt vand og elbil</b></summary>

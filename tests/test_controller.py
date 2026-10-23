@@ -57,6 +57,7 @@ def make(config, states):
     c.ev_ready_mode = {}
     c._hw_surplus_sec, c._hw_done_date = 0.0, None
     c.hw_demand_now, c.hw_demand, c.hw_deadline, c.hw_rate, c._hw_samples = False, [], None, None, []
+    c.heating_too_cold, c._heating_off_by_us = False, False
     c.flags = {"hotwater_surplus_smart": True}
     c.ev_solar, c._ev_current_sent = {}, {}
     c.tz = ZoneInfo("Europe/Copenhagen")
@@ -381,6 +382,38 @@ async def main():
     assert c.ready_mode("ev") == ("next", None)
     c.ev_ready_mode = {"ev": ("horizon", None)}
     assert c._ready_input("ev") == {"horizon": True}
+        # 10) Lille luft-til-luft varmepumpe: sluk i sparetimer, frostsikring og IR-scripts
+    ac = {"climate.ac": State("heat", temperature=10)}
+    c, h = make({"heating_type": "air_to_air", "heating_climate_entity": "climate.ac",
+                 "heating_indoor_temp_sensor": "sensor.inde"}, {**ac, "sensor.inde": State("12")})
+    c.settings.update({"heating_base_temp": 10.0, "heating_reduce_degrees": 2.0})
+    c.flags["heating_off_in_reduce"] = True
+    await c._set_heating("reduce", True)
+    assert h.services.calls[-1] == ("climate", "set_hvac_mode", {"entity_id": "climate.ac", "hvac_mode": "off"})
+    ac["climate.ac"] = State("off", temperature=10)
+    c.hass.states = types.SimpleNamespace(get={**ac, "sensor.inde": State("12")}.get)
+    await c._set_heating("normal", True)
+    assert ("climate", "set_hvac_mode", {"entity_id": "climate.ac", "hvac_mode": "heat"}) in h.services.calls
+    # Frostsikring: 7 °C inde (under 8) → spar ikke; først over 9 °C igen
+    c.hass.states = types.SimpleNamespace(get={**ac, "sensor.inde": State("7")}.get)
+    assert c._update_frost_guard() is True
+    c.hass.states = types.SimpleNamespace(get={**ac, "sensor.inde": State("8.5")}.get)
+    assert c._update_frost_guard() is True
+    c.hass.states = types.SimpleNamespace(get={**ac, "sensor.inde": State("9.1")}.get)
+    assert c._update_frost_guard() is False
+    # Standardanlæg: ingen indeføler, ingen sluk – kun temperatur
+    c, h = make({"heating_climate_entity": "climate.vp", "heating_indoor_temp_sensor": "sensor.inde"},
+                {"climate.vp": State("heat", temperature=21), "sensor.inde": State("5")})
+    c.flags["heating_off_in_reduce"] = True
+    assert c.indoor_temp is None and not c.heating_off_in_reduce
+    await c._set_heating("reduce", True)
+    assert h.services.calls[-1][1] == "set_temperature"
+    # Kun scripts (fx Broadlink): varmen tæller som opsat, scriptet køres ved skift
+    c, h = make({"heating_type": "air_to_air", "heating_script_reduce": "script.ac_off",
+                 "heating_script_normal": "script.ac_on"}, {})
+    assert c.has_heating_control and c.has("heating_climate_entity")
+    await c._set_heating("reduce", False); await c._set_heating("reduce", False)
+    assert [x[2]["entity_id"] for x in h.services.calls] == ["script.ac_off"]
     print("controller OK")
 
 def test_controller_control():

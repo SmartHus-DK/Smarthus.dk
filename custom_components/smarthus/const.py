@@ -15,7 +15,7 @@ EDS_DAYAHEAD_FROM: Final = date(2025, 10, 1)
 
 STATIC_URL: Final = "/smarthus_static"
 CARD_URL: Final = f"{STATIC_URL}/smarthus-card.js"
-CARD_VERSION: Final = "1.32.1"
+CARD_VERSION: Final = "1.33.0"
 
 PLATFORMS: Final = ["sensor", "binary_sensor", "switch", "number", "select"]
 
@@ -141,6 +141,16 @@ HOTWATER_HYSTERESIS: Final = 3.0  # °C – start igen når vandet er kølet så
 # Varme / varmepumpe
 CONF_HEATING_CLIMATE: Final = "heating_climate_entity"
 CONF_HEATPUMP_ENERGY: Final = "heatpump_energy_sensor"
+# Lille luft-til-luft varmepumpe (fx vinterbeskyttelse i sommerhus) – ofte styret med IR/RF
+CONF_HEATING_TYPE: Final = "heating_type"
+HEATING_TYPE_STANDARD: Final = "standard"
+HEATING_TYPE_AIR: Final = "air_to_air"
+CONF_HEATING_INDOOR_TEMP: Final = "heating_indoor_temp_sensor"
+CONF_HEATING_SCRIPT_NORMAL: Final = "heating_script_normal"
+CONF_HEATING_SCRIPT_BOOST: Final = "heating_script_boost"
+CONF_HEATING_SCRIPT_REDUCE: Final = "heating_script_reduce"
+S_HEATING_MIN_INDOOR: Final = "heating_min_indoor"       # frostsikring: spar aldrig under denne indetemperatur
+F_HEATING_OFF_REDUCE: Final = "heating_off_in_reduce"    # sluk luft-til-luft-pumpen i sparetimer
 CONF_OUTDOOR_TEMP: Final = "outdoor_temp_sensor"
 CONF_WEATHER: Final = "weather_entity"
 S_HEATING_MAX_OUTDOOR: Final = "heating_max_outdoor"
@@ -191,7 +201,8 @@ def get_cars(config: dict) -> list[dict]:
         }]
     return []
 HOTWATER_KEYS: Final = [CONF_HOTWATER_ENTITY, CONF_HOTWATER_TEMP, CONF_HOTWATER_MIN_ENTITY, CONF_HOTWATER_ENERGY]
-HEATING_KEYS: Final = [CONF_HEATING_CLIMATE, CONF_HEATPUMP_ENERGY]
+HEATING_KEYS: Final = [CONF_HEATING_TYPE, CONF_HEATING_CLIMATE, CONF_HEATPUMP_ENERGY, CONF_HEATING_INDOOR_TEMP,
+                       CONF_HEATING_SCRIPT_NORMAL, CONF_HEATING_SCRIPT_BOOST, CONF_HEATING_SCRIPT_REDUCE]
 WEATHER_KEYS: Final = [CONF_OUTDOOR_TEMP, CONF_WEATHER]
 
 # Standardnavne på SigEnergy-tilstande (kan ændres i opsætningen)
@@ -287,6 +298,7 @@ DEFAULT_SETTINGS: Final = {
     S_HEATING_REDUCE_FROM: 0.0,
     S_HEATING_REDUCE_TO: 24.0,
     S_HEATING_MAX_OUTDOOR: 10.0,
+    S_HEATING_MIN_INDOOR: 8.0,
 }
 
 # --- Handlinger ------------------------------------------------------------

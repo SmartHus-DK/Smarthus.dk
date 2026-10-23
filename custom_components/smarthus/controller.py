@@ -62,6 +62,14 @@ from .const import (
     CONF_EXPORT_ENERGY,
     CONF_IMPORT_ENERGY,
     CONF_HEATING_CLIMATE,
+    CONF_HEATING_TYPE,
+    HEATING_TYPE_AIR,
+    CONF_HEATING_INDOOR_TEMP,
+    CONF_HEATING_SCRIPT_NORMAL,
+    CONF_HEATING_SCRIPT_BOOST,
+    CONF_HEATING_SCRIPT_REDUCE,
+    S_HEATING_MIN_INDOOR,
+    F_HEATING_OFF_REDUCE,
     CONF_HEATPUMP_ENERGY,
     CONF_OUTDOOR_TEMP,
     CONF_WEATHER,
@@ -189,6 +197,8 @@ class SmartHusController:
         # Varmt vand med temperaturføler: True når øvre grænse er nået
         self.hotwater_full = False
         self.heating_outdoor_ok = True     # varmestyringen er aktiv ift. udetemperaturen
+        self.heating_too_cold = False      # frostsikring (luft-til-luft): for koldt inde til at spare
+        self._heating_off_by_us = False    # SmartHus har slukket luft-til-luft-pumpen i sparetimer
         self._heating_paused_applied = False
         self._ev_charged: dict[str, tuple[str, float]] = {}
         self.ev_ready_mode: dict = {}  # bil → (tilstand, fast dato) for "klar kl."  # bil → (klar-tidspunkt, ladede timer)  # grundtemperaturen er sat for den nuværende pause
@@ -725,6 +735,9 @@ class SmartHusController:
 
     # --- Hjælpere ----------------------------------------------------------
     def has(self, key: str) -> bool:
+        # Varme tæller som opsat med en termostat – eller med scripts til en luft-til-luft varmepumpe
+        if key == CONF_HEATING_CLIMATE:
+            return self.has_heating_control
         # Batteri og eksport tæller som opsat, hvis der enten er valgt en entitet eller scripts
         if key == CONF_BATTERY_MODE_ENTITY:
             return self.has_battery_control
@@ -1139,24 +1152,91 @@ class SmartHusController:
         if self.active(MODULE_HOTWATER) and self.has(CONF_HOTWATER_ENTITY):
             await self._apply_hotwater(p.hotwater_on, force)
 
+    # --- Varme ------------------------------------------------------------
+    @property
+    def heating_air_to_air(self) -> bool:
+        """Lille luft-til-luft varmepumpe (fx vinterbeskyttelse i sommerhus)."""
+        return self.config.get(CONF_HEATING_TYPE) == HEATING_TYPE_AIR
+
+    @property
+    def has_heating_scripts(self) -> bool:
+        return self.heating_air_to_air and any(
+            self.config.get(k) for k in (CONF_HEATING_SCRIPT_NORMAL, CONF_HEATING_SCRIPT_BOOST, CONF_HEATING_SCRIPT_REDUCE))
+
+    @property
+    def has_heating_control(self) -> bool:
+        return bool(self.config.get(CONF_HEATING_CLIMATE)) or self.has_heating_scripts
+
+    @property
+    def indoor_temp(self) -> float | None:
+        if not self.heating_air_to_air:
+            return None
+        return self._float_state(self.config.get(CONF_HEATING_INDOOR_TEMP))
+
+    @property
+    def heating_off_in_reduce(self) -> bool:
+        return (self.heating_air_to_air and bool(self.config.get(CONF_HEATING_CLIMATE))
+                and bool(self.flags.get(F_HEATING_OFF_REDUCE, False)))
+
+    def _update_frost_guard(self) -> bool:
+        """Frostsikring: under mindste indetemperatur springes sparetimer over (1 °C hysterese)."""
+        temp = self.indoor_temp
+        if temp is None:
+            self.heating_too_cold = False
+        else:
+            limit = float(self.settings.get(S_HEATING_MIN_INDOOR, 8.0))
+            if temp < limit:
+                self.heating_too_cold = True
+            elif temp >= limit + 1.0:
+                self.heating_too_cold = False
+        return self.heating_too_cold
+
+    async def _ensure_hvac(self, entity_id: str, mode: str, force: bool = False) -> None:
+        st = self.hass.states.get(entity_id)
+        if st is None or st.state == STATE_UNAVAILABLE or st.state == mode:
+            return
+        if not force and not self._rate_ok(entity_id):
+            return
+        await self._call("climate", "set_hvac_mode", {"entity_id": entity_id, "hvac_mode": mode})
+
+    async def _set_heating(self, mode: str, force: bool) -> None:
+        """Sæt varmen i tilstand normal / boost / reduce – med termostat eller scripts."""
+        base = self.settings[S_HEATING_BASE_TEMP]
+        temp = base + self.settings[S_HEATING_BOOST_DEG] if mode == "boost" else \
+            base - self.settings[S_HEATING_REDUCE_DEG] if mode == "reduce" else base
+        if self.heating_air_to_air:
+            key = {"normal": CONF_HEATING_SCRIPT_NORMAL, "boost": CONF_HEATING_SCRIPT_BOOST,
+                   "reduce": CONF_HEATING_SCRIPT_REDUCE}[mode]
+            # Scripts (fx IR/RF-signaler) køres kun, når tilstanden skifter
+            if await self._run_script(key, "heating", mode, force, {"mode": mode, "temperature": round(temp, 1)}):
+                return
+        climate = self.config.get(CONF_HEATING_CLIMATE)
+        if not climate:
+            return
+        if mode == "reduce" and self.heating_off_in_reduce:
+            await self._ensure_hvac(climate, "off", force)
+            self._heating_off_by_us = True
+            return
+        if self._heating_off_by_us:
+            # Tænd igen efter sparetimerne (kun hvis det var SmartHus, der slukkede)
+            await self._ensure_hvac(climate, "heat", True)
+            self._heating_off_by_us = False
+        await self._ensure_temperature(climate, temp, force)
+
     async def _apply_heating_step(self, p, force: bool) -> None:
-        if not (self.active(MODULE_HEATING) and self.has(CONF_HEATING_CLIMATE)):
+        if not (self.active(MODULE_HEATING) and self.has_heating_control):
             return
         if not self._update_heating_outdoor():
             if not self._heating_paused_applied or force:
                 # sæt grundtemperaturen én gang, og lad så termostaten være
-                await self._ensure_temperature(self.config[CONF_HEATING_CLIMATE],
-                                               self.settings[S_HEATING_BASE_TEMP], True)
+                await self._set_heating("normal", True)
                 self._heating_paused_applied = True
             return
         self._heating_paused_applied = False
-        base = self.settings[S_HEATING_BASE_TEMP]
-        temp = base
-        if p.heating_mode == HEATING_BOOST:
-            temp = base + self.settings[S_HEATING_BOOST_DEG]
-        elif p.heating_mode == HEATING_REDUCE:
-            temp = base - self.settings[S_HEATING_REDUCE_DEG]
-        await self._ensure_temperature(self.config[CONF_HEATING_CLIMATE], temp, force)
+        mode = "boost" if p.heating_mode == HEATING_BOOST else "reduce" if p.heating_mode == HEATING_REDUCE else "normal"
+        if mode == "reduce" and self._update_frost_guard():
+            mode = "normal"      # for koldt inde – spar ikke
+        await self._set_heating(mode, force)
 
     def _plug(self, car: dict) -> bool | None:
         entity_id = car.get("plug")
@@ -1623,9 +1703,8 @@ class SmartHusController:
                 self._hw_button_on = False     # varmepumpen styrer selv igen
             else:
                 await self._ensure_switch(entity_id, True, True)
-        elif module == MODULE_HEATING and self.has(CONF_HEATING_CLIMATE):
-            await self._ensure_temperature(self.config[CONF_HEATING_CLIMATE],
-                                           self.settings[S_HEATING_BASE_TEMP], True)
+        elif module == MODULE_HEATING and self.has_heating_control:
+            await self._set_heating("normal", True)
 
     async def async_set_enabled(self, module: str, on: bool) -> None:
         was = self.active(module) if module != MODULE_MASTER else self.enabled[MODULE_MASTER]

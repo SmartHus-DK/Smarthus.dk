@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.32.1";
+const SMARTHUS_CARD_VERSION = "1.33.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -83,6 +83,9 @@ const MODULES = [
         note: "Vælger selv sparetimer i dagens dyre toppe og forvarmer i de billigste timer før dem" }] },
       { title: "Ekstra varme i billige timer", items: ["heating_boost_degrees", "heating_boost_hours", ["heating_boost_from", "heating_boost_to"]] },
       { title: "Spar i dyre timer", items: ["heating_reduce_degrees", "heating_reduce_hours", ["heating_reduce_from", "heating_reduce_to"]] },
+      { title: "Luft-til-luft (fx vinterbeskyttelse)", items: [{ sw: "heating_off_in_reduce", label: "Sluk i sparetimer",
+        note: "Kun til små luft-til-luft varmepumper, fx i et sommerhus – pumpen slukkes helt i de dyre timer og tændes igen bagefter" },
+        "heating_min_indoor"] },
     ],
   },
   { id: "solar", name: "Solceller", icon: "mdi:solar-power", sw: "control_solar",
@@ -134,6 +137,7 @@ const NUMBER_LABELS = {
   hotwater_boost_temp: "Opvarm til",
   hotwater_normal_temp: "Normal temperatur",
   hotwater_watch_temp: "Hold øje under",
+  heating_min_indoor: "Mindste indetemperatur",
   hotwater_min_temp: "Laveste temperatur",
   heating_base_temp: "Grundtemperatur",
   heating_max_outdoor: "Aktiv under udetemperatur",
@@ -882,6 +886,8 @@ class SmartHusCard extends HTMLElement {
         const ha = this._st("binary_sensor", "heating_boost_now")?.attributes || {};
         const out = ha.outdoor_temp != null ? ` · ${nf(ha.outdoor_temp, 1)} °C` : "";
         if (ha.paused_warm_outside) return `${prefix}Pause – varmt ude${out}`;
+        if (ha.frost_guard) return `${prefix}For koldt inde – sparer ikke · ${nf(ha.indoor_temp, 1)} °C inde`;
+        if (ha.off_in_reduce && isOn("heating_reduce_now")) return `${prefix}Slukket i sparetimen${out}`;
         if (isOn("heating_boost_now")) return `${prefix}Ekstra varme nu${out}`;
         if (isOn("heating_reduce_now")) return `${prefix}Sparer på varmen nu${out}`;
         return `${prefix}${next("heating_boost_now") ? `Ekstra varme ${next("heating_boost_now")}` : "Normal drift"}${out}`;
@@ -913,6 +919,20 @@ class SmartHusCard extends HTMLElement {
     return `<div class="water-sub">${rate}${reach}${plan ? `<br>${plan}` : ""}${src}</div>`;
   }
 
+  /** Lille luft-til-luft varmepumpe (fx vinterbeskyttelse): indetemperatur og frostsikring. */
+  _airToAirInfo(a) {
+    if (!a.air_to_air) return "";
+    const inside = a.indoor_temp != null
+      ? `<div class="water-row"><span>Inde <small class="muted">luft-til-luft · vinterbeskyttelse</small></span><b>${nf(a.indoor_temp, 1)} °C</b></div>`
+      : `<div class="water-sub"><b>Luft-til-luft varmepumpe</b> – fx vinterbeskyttelse i sommerhus.</div>`;
+    const guard = a.frost_guard
+      ? `<div class="water-sub">Det er under ${nf(a.min_indoor, 1)} °C inde – sparetimerne springes over, til der er 1 °C varmere.</div>`
+      : a.min_indoor != null ? `<div class="water-sub">Frostsikring: der spares ikke, hvis det bliver koldere end ${nf(a.min_indoor, 1)} °C inde.</div>` : "";
+    const how = a.off_in_reduce ? `<div class="water-sub">Pumpen slukkes helt i sparetimerne og tændes igen bagefter.</div>`
+      : a.scripts ? `<div class="water-sub">Styres med dine scripts (fx IR/RF-signaler) – de køres kun, når tilstanden skifter.</div>` : "";
+    return inside + guard + how;
+  }
+
   _moduleBody(m) {
     let extra = "";
     if (m.car) extra = this._evCompare(m.id);
@@ -940,7 +960,10 @@ class SmartHusCard extends HTMLElement {
           <div class="water-sub">${a.paused_warm_outside
             ? `Varmestyringen holder pause, fordi det er ${nf(a.outdoor_limit, 1)} °C eller varmere ude. Den starter igen ved ${nf(a.outdoor_limit - 1, 1)} °C.`
             : a.outdoor_limit != null ? `Varmestyringen er aktiv, fordi det er koldere end ${nf(a.outdoor_limit, 1)} °C ude.` : ""}</div>
+          ${this._airToAirInfo(a)}
         </div>`;
+      } else if (a.air_to_air) {
+        extra = `<div class="water">${this._airToAirInfo(a)}</div>`;
       }
     }
     if (m.id === "solar") extra = `<div class="hint">Eksporten stoppes, når salgsprisen er under grænsen, og starter selv igen, når prisen kommer over. 0 kr betyder, at der kun stoppes ved negativ pris.</div>`;
@@ -1520,7 +1543,7 @@ class SmartHusCard extends HTMLElement {
     const unused = autoHeat || (key.endsWith("_ready_hour") && this._st("select", key.replace("_ready_hour", "_ready_day"))?.attributes?.uses_ready_hour === false);
     return `
       <div class="step${unused ? " unused" : ""}">
-        <span class="step-lbl">${esc(this._label(key))}${autoHeat ? `<span class="win-note">Vælges automatisk ud fra dagens priser</span>` : unused ? `<span class="win-note">Bruges ikke – perioden er valgt nedenfor</span>` : ""}${key === "ev_max_total_power" ? `<span class="win-note">0 = ingen grænse</span>` : key === "hotwater_surplus_kw" ? `<span class="win-note">0 = fra · eksport lige nu ${nf(this._st("binary_sensor", "hotwater_now")?.attributes?.export_kw, 1)} kW</span>` : key === "hotwater_watch_temp" ? `<span class="win-note">0 = fra · varm op i en billig time, før vandet når den laveste temperatur</span>` : key === "hotwater_min_temp" ? `<span class="win-note">Varm op, før vandet når hertil – fx varmepumpens egen grænse</span>` : ""}</span>
+        <span class="step-lbl">${esc(this._label(key))}${autoHeat ? `<span class="win-note">Vælges automatisk ud fra dagens priser</span>` : unused ? `<span class="win-note">Bruges ikke – perioden er valgt nedenfor</span>` : ""}${key === "ev_max_total_power" ? `<span class="win-note">0 = ingen grænse</span>` : key === "hotwater_surplus_kw" ? `<span class="win-note">0 = fra · eksport lige nu ${nf(this._st("binary_sensor", "hotwater_now")?.attributes?.export_kw, 1)} kW</span>` : key === "heating_min_indoor" ? `<span class="win-note">Frostsikring – koldere end dette inde, springes sparetimerne over</span>` : key === "hotwater_watch_temp" ? `<span class="win-note">0 = fra · varm op i en billig time, før vandet når den laveste temperatur</span>` : key === "hotwater_min_temp" ? `<span class="win-note">Varm op, før vandet når hertil – fx varmepumpens egen grænse</span>` : ""}</span>
         <span class="step-ctl">
           <button data-action="step" data-entity="${s.entity_id}" data-dir="-1" aria-label="Mindre ${esc(this._label(key))}">−</button>
           <span class="step-val">${shown}</span>
