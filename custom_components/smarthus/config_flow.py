@@ -8,6 +8,7 @@ import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import callback
+from homeassistant.data_entry_flow import section
 from homeassistant.helpers import selector
 from homeassistant.util import slugify
 
@@ -124,6 +125,8 @@ SOC = selector.EntitySelector(selector.EntitySelectorConfig(domain=["sensor", "n
 MODE = selector.EntitySelector(selector.EntitySelectorConfig(domain=["select", "input_select"]))
 ONOFF = selector.EntitySelector(selector.EntitySelectorConfig(domain=["switch", "input_boolean"]))
 SCRIPT = selector.EntitySelector(selector.EntitySelectorConfig(domain="script"))
+AIR_SECTION = "air_to_air"
+AIR_ENABLE = "heating_air_to_air"
 EXPORT = selector.EntitySelector(
     selector.EntitySelectorConfig(domain=["switch", "input_boolean", "select", "input_select", "number", "input_number"])
 )
@@ -452,19 +455,23 @@ class SmartHusOptionsFlow(OptionsFlow):
 
     async def async_step_heating(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
+            # Luft-til-luft ligger i en sammenfoldet sektion for sig
+            air = dict(user_input.pop(AIR_SECTION, None) or {})
+            user_input[CONF_HEATING_TYPE] = HEATING_TYPE_AIR if air.pop(AIR_ENABLE, False) else HEATING_TYPE_STANDARD
+            user_input.update(air)
             return self._save(HEATING_KEYS, user_input)
         cur = self._current()
-        schema = vol.Schema({
-            vol.Optional(CONF_HEATING_TYPE, default=cur.get(CONF_HEATING_TYPE) or HEATING_TYPE_STANDARD):
-                selector.SelectSelector(selector.SelectSelectorConfig(
-                    options=[HEATING_TYPE_STANDARD, HEATING_TYPE_AIR], translation_key="heating_type",
-                    mode=selector.SelectSelectorMode.LIST)),
+        is_air = cur.get(CONF_HEATING_TYPE) == HEATING_TYPE_AIR
+        air_schema = vol.Schema({
+            vol.Optional(AIR_ENABLE, default=is_air): selector.BooleanSelector(),
         }).extend(_entity_schema([
-            (CONF_HEATING_CLIMATE, CLIMATE), (CONF_HEATPUMP_ENERGY, ENERGY),
-            # Kun for luft-til-luft varmepumper
             (CONF_HEATING_INDOOR_TEMP, OUTDOOR),
             (CONF_HEATING_SCRIPT_NORMAL, SCRIPT), (CONF_HEATING_SCRIPT_BOOST, SCRIPT), (CONF_HEATING_SCRIPT_REDUCE, SCRIPT),
         ], cur).schema)
+        schema = _entity_schema([(CONF_HEATING_CLIMATE, CLIMATE), (CONF_HEATPUMP_ENERGY, ENERGY)], cur).extend({
+            # Kun til små luft-til-luft varmepumper (fx vinterbeskyttelse) – foldet sammen, medmindre det er valgt
+            vol.Required(AIR_SECTION): section(air_schema, {"collapsed": not is_air}),
+        })
         return self.async_show_form(step_id="heating", data_schema=schema)
 
     async def async_step_weather(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:

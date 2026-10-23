@@ -181,24 +181,34 @@
       },
       "heating": {
         "title": "Varme / varmepumpe",
-        "description": "Temperaturen hæves i de billigste timer og sænkes i de dyreste. Vælg typen først – 'Lille luft-til-luft varmepumpe' er til fx vinterbeskyttelse i et sommerhus, hvor pumpen kan slukkes helt i de dyre timer.",
+        "description": "Temperaturen hæves i de billigste timer og sænkes i de dyreste.",
         "data": {
-          "heating_type": "Type af varmeanlæg",
           "heating_climate_entity": "Termostat / varmepumpe",
-          "heatpump_energy_sensor": "Energimåler: varmepumpe (kWh)",
-          "heating_indoor_temp_sensor": "Luft-til-luft: indeføler (°C) – valgfri",
-          "heating_script_normal": "Luft-til-luft via IR/RF: script for normal",
-          "heating_script_boost": "Luft-til-luft via IR/RF: script for ekstra varme",
-          "heating_script_reduce": "Luft-til-luft via IR/RF: script for spar / sluk"
+          "heatpump_energy_sensor": "Energimåler: varmepumpe (kWh)"
         },
         "data_description": {
-          "heating_type": "Standard: termostat eller varmepumpe til hele huset (jordvarme, luft-til-vand, gulvvarme). Lille luft-til-luft varmepumpe: kun til små anlæg, fx vinterbeskyttelse i sommerhus – her kan pumpen slukkes helt i de dyre timer, og der kan bruges IR/RF-scripts.",
           "heating_climate_entity": "Termostaten eller varmepumpen (climate-entitet), som SmartHus skruer op i billige timer og ned i dyre timer – fx climate.varmepumpe eller climate.stue.",
-          "heatpump_energy_sensor": "En stigende måler (kWh) for varmepumpens strømforbrug. Bruges kun til at beregne besparelsen.",
-          "heating_indoor_temp_sensor": "Kun luft-til-luft. Frostsikring: er det koldere inde end 'Mindste indetemperatur' (standard 8 °C), springer SmartHus sparetimerne over.",
-          "heating_script_normal": "Kun luft-til-luft uden climate-entitet (fx Broadlink remote.send_command). Køres, når varmen skal tilbage til normal. Scriptet får variablerne mode og temperature.",
-          "heating_script_boost": "Kun luft-til-luft. Køres ved ekstra varme i de billige timer.",
-          "heating_script_reduce": "Kun luft-til-luft. Køres i sparetimerne – fx et IR-signal, der slukker pumpen eller sætter den på lav temperatur."
+          "heatpump_energy_sensor": "En stigende måler (kWh) for varmepumpens strømforbrug. Bruges kun til at beregne besparelsen."
+        },
+        "sections": {
+          "air_to_air": {
+            "name": "Lille luft-til-luft varmepumpe (fx vinterbeskyttelse)",
+            "description": "Kun til små luft-til-luft varmepumper – fx i et sommerhus om vinteren.",
+            "data": {
+              "heating_air_to_air": "Det er en lille luft-til-luft varmepumpe",
+              "heating_indoor_temp_sensor": "Luft-til-luft: indeføler (°C) – valgfri",
+              "heating_script_normal": "Luft-til-luft via IR/RF: script for normal",
+              "heating_script_boost": "Luft-til-luft via IR/RF: script for ekstra varme",
+              "heating_script_reduce": "Luft-til-luft via IR/RF: script for spar / sluk"
+            },
+            "data_description": {
+              "heating_air_to_air": "Kun til små luft-til-luft varmepumper, fx vinterbeskyttelse i et sommerhus. Giver mulighed for at slukke pumpen helt i de dyre timer, frostsikring med en indeføler og styring med IR/RF-scripts. Ikke til jordvarme, luft-til-vand eller gulvvarme.",
+              "heating_indoor_temp_sensor": "Kun luft-til-luft. Frostsikring: er det koldere inde end 'Mindste indetemperatur' (standard 8 °C), springer SmartHus sparetimerne over.",
+              "heating_script_normal": "Kun luft-til-luft uden climate-entitet (fx Broadlink remote.send_command). Køres, når varmen skal tilbage til normal. Scriptet får variablerne mode og temperature.",
+              "heating_script_boost": "Kun luft-til-luft. Køres ved ekstra varme i de billige timer.",
+              "heating_script_reduce": "Kun luft-til-luft. Køres i sparetimerne – fx et IR-signal, der slukker pumpen eller sætter den på lav temperatur."
+            }
+          }
         }
       },
       "weather": {
@@ -315,12 +325,6 @@
       "options": {
         "incl": "Inkl. moms",
         "excl": "Ekskl. moms"
-      }
-    },
-    "heating_type": {
-      "options": {
-        "standard": "Standard – termostat/varmepumpe til hele huset",
-        "air_to_air": "Lille luft-til-luft varmepumpe (fx vinterbeskyttelse)"
       }
     }
   },

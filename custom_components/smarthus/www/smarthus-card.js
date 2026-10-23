@@ -83,7 +83,7 @@ const MODULES = [
         note: "Vælger selv sparetimer i dagens dyre toppe og forvarmer i de billigste timer før dem" }] },
       { title: "Ekstra varme i billige timer", items: ["heating_boost_degrees", "heating_boost_hours", ["heating_boost_from", "heating_boost_to"]] },
       { title: "Spar i dyre timer", items: ["heating_reduce_degrees", "heating_reduce_hours", ["heating_reduce_from", "heating_reduce_to"]] },
-      { title: "Luft-til-luft (fx vinterbeskyttelse)", items: [{ sw: "heating_off_in_reduce", label: "Sluk i sparetimer",
+      { title: "Lille luft-til-luft varmepumpe (fx vinterbeskyttelse)", fold: "air", items: [{ sw: "heating_off_in_reduce", label: "Sluk i sparetimer",
         note: "Kun til små luft-til-luft varmepumper, fx i et sommerhus – pumpen slukkes helt i de dyre timer og tændes igen bagefter" },
         "heating_min_indoor"] },
     ],
@@ -981,6 +981,12 @@ class SmartHusCard extends HTMLElement {
             return this._st("number", it) && !hide(it) ? this._stepper(it) : "";
           })
           .join("");
+        if (rows && g.fold) {
+          // Foldet sammen som udgangspunkt
+          const key = `${m.id}:${g.fold}`, open = this._openGroups?.has(key);
+          return `<div class="grp fold${open ? " open" : ""}"><button class="grp-title grp-btn" data-action="fold" data-key="${key}" aria-expanded="${!!open}">
+            <span>${g.title}</span><ha-icon class="chev${open ? " up" : ""}" icon="mdi:chevron-down"></ha-icon></button>${open ? rows : ""}</div>`;
+        }
         return rows ? `<div class="grp">${g.title ? `<div class="grp-title">${g.title}</div>` : ""}${rows}</div>` : "";
       })
       .join("");
@@ -1589,6 +1595,11 @@ class SmartHusCard extends HTMLElement {
       this._panel = null;
       this._render();
       requestAnimationFrame(() => this.shadowRoot.querySelector(".dock")?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
+    } else if (action === "fold") {
+      this._openGroups = this._openGroups || new Set();
+      const k = el.dataset.key;
+      this._openGroups.has(k) ? this._openGroups.delete(k) : this._openGroups.add(k);
+      this._render();
     } else if (action === "expand") {
       const id = el.dataset.mod;
       this._closed.has(id) ? this._closed.delete(id) : this._closed.add(id);
@@ -1911,6 +1922,9 @@ class SmartHusCard extends HTMLElement {
       .grp { padding-top: 6px; }
       .grp + .grp { margin-top: 6px; border-top: 1px dashed var(--sh-line); }
       .grp-title { font-size: 12px; font-weight: 600; color: var(--secondary-text-color); padding: 6px 0 0; }
+      .grp-btn { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 8px; text-align: left; padding: 8px 0 4px; }
+      .grp-btn .chev { --mdc-icon-size: 18px; transition: transform .2s; }
+      .grp-btn .chev.up { transform: rotate(180deg); }
       .water { padding: 4px 0 10px; }
       .water-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; }
       .water-row b { font-size: 18px; font-variant-numeric: tabular-nums; }

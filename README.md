@@ -328,7 +328,7 @@ Mange varmepumper varmer selv vandet op, når det falder under deres egen græns
 
 **Kun til små luft-til-luft varmepumper**, typisk vinterbeskyttelse af et sommerhus, hvor der holdes en lav grundtemperatur (fx 10 °C). Ikke til jordvarme, luft-til-vand eller gulvvarme – der bruges standardtypen.
 
-Vælg *Type af varmeanlæg → Lille luft-til-luft varmepumpe* under Varme i opsætningen. Så kan:
+Fold sektionen *Lille luft-til-luft varmepumpe* ud under Varme i opsætningen, og slå *Det er en lille luft-til-luft varmepumpe* til. På kortet ligger indstillingerne i en sammenfoldet gruppe under Varme. Så kan:
 
 - **Pumpen slukkes helt i sparetimerne** (kontakten *Sluk i sparetimer* på kortet) og tændes igen bagefter – i stedet for blot at sænke temperaturen. I de meget billige timer hæves den som normalt.
 - **Frostsikring:** med en indeføler springer SmartHus sparetimerne over, hvis det er koldere inde end *Mindste indetemperatur* (standard 8 °C), indtil der igen er 1 °C varmere.
