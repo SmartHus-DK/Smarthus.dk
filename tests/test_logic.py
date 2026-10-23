@@ -819,3 +819,34 @@ def test_heating_preheats_before_expensive_period():
     flat[3] = 0.2
     p = planner.build_plan(model().build_slots(records("2026-10-22", flat)), slots[0].start, TZ, s)
     assert all(a.astimezone(TZ).hour < 17 for a, _ in _blocks(p.heating_boost))
+
+
+hotwater = _load("hotwater")
+
+
+def test_hotwater_cooling_rate_and_demand():
+    t0 = datetime(2026, 10, 23, 1, 0, tzinfo=TZ)
+    # Opvarmning til 58 °C, derefter 0,5 °C i timen ned
+    samples = [(t0 + timedelta(minutes=10 * i), 44 + 3 * i) for i in range(5)]
+    peak = samples[-1][0]
+    samples += [(peak + timedelta(minutes=10 * i), 56 - 0.5 * i / 6) for i in range(1, 19)]
+    now = samples[-1][0]
+    rate = hotwater.cooling_rate(samples, now)
+    assert abs(rate - 0.5) < 0.02
+    assert hotwater.cooling_rate(samples[:6], samples[5][0]) is None          # for kort tid efter toppen
+    # Priser: billigt kl. 05, dyrt kl. 07–09
+    curve = [1.0] * 24
+    curve[5], curve[7], curve[8] = 0.2, 3.0, 3.0
+    slots = model().build_slots(records("2026-10-23", curve))
+    now = datetime(2026, 10, 23, 3, 0, tzinfo=TZ)
+    demand, deadline = hotwater.plan_demand(slots, now, 44.0, 0.5, 45.0, 42.0, 1.0, [])
+    assert deadline == now + timedelta(hours=4)
+    assert [s.start.astimezone(TZ).hour for s in demand] == [5] * 4             # billigste time før kl. 07
+    # Den planlagte opvarmning ligger før – intet ekstra
+    assert hotwater.plan_demand(slots, now, 44.0, 0.5, 45.0, 42.0, 1.0, demand)[0] == []
+    # Over "hold øje"-grænsen eller funktionen slået fra
+    assert hotwater.plan_demand(slots, now, 46.0, 0.5, 45.0, 42.0, 1.0, [])[0] == []
+    assert hotwater.plan_demand(slots, now, 44.0, 0.5, 0, 42.0, 1.0, [])[0] == []
+    # Allerede under den laveste temperatur: varm nu
+    demand, _ = hotwater.plan_demand(slots, now, 41.5, 0.5, 45.0, 42.0, 1.0, [])
+    assert demand and demand[0].start <= now < demand[-1].end

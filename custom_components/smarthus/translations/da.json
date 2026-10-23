@@ -641,6 +641,12 @@
       },
       "battery_solar_sell_margin": {
         "name": "Batteri: min. gevinst ved at sælge solstrøm"
+      },
+      "hotwater_watch_temp": {
+        "name": "Varmt vand: hold øje under"
+      },
+      "hotwater_min_temp": {
+        "name": "Varmt vand: laveste temperatur"
       }
     },
     "select": {

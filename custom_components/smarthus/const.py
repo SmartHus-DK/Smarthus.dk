@@ -15,7 +15,7 @@ EDS_DAYAHEAD_FROM: Final = date(2025, 10, 1)
 
 STATIC_URL: Final = "/smarthus_static"
 CARD_URL: Final = f"{STATIC_URL}/smarthus-card.js"
-CARD_VERSION: Final = "1.30.0"
+CARD_VERSION: Final = "1.31.0"
 
 PLATFORMS: Final = ["sensor", "binary_sensor", "switch", "number", "select"]
 
@@ -225,6 +225,8 @@ S_EV_CHARGE_POWER: Final = "ev_charge_power"
 S_HOTWATER_HOURS: Final = "hotwater_hours"
 S_HOTWATER_BOOST_TEMP: Final = "hotwater_boost_temp"
 S_HOTWATER_NORMAL_TEMP: Final = "hotwater_normal_temp"
+S_HOTWATER_WATCH_TEMP: Final = "hotwater_watch_temp"   # under denne temperatur holdes øje med afkølingen
+S_HOTWATER_MIN_TEMP: Final = "hotwater_min_temp"       # vandet skal varmes op, før det når hertil
 S_HEATING_BASE_TEMP: Final = "heating_base_temp"
 S_HEATING_BOOST_DEG: Final = "heating_boost_degrees"
 S_HEATING_BOOST_HOURS: Final = "heating_boost_hours"
@@ -263,6 +265,8 @@ DEFAULT_SETTINGS: Final = {
     S_HOTWATER_HOURS: 1.0,
     S_HOTWATER_BOOST_TEMP: 55.0,
     S_HOTWATER_NORMAL_TEMP: 45.0,
+    S_HOTWATER_WATCH_TEMP: 45.0,
+    S_HOTWATER_MIN_TEMP: 42.0,
     S_HEATING_BASE_TEMP: 21.0,
     S_HEATING_BOOST_DEG: 1.0,
     S_HEATING_BOOST_HOURS: 4.0,

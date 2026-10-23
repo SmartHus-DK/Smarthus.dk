@@ -16,6 +16,9 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     API_URL,
+    S_HOTWATER_HOURS,
+    S_HOTWATER_MIN_TEMP,
+    S_HOTWATER_WATCH_TEMP,
     EDS_DAYAHEAD_FROM,
     EDS_OLD_URL,
     CONF_SALE_FEE,
@@ -106,6 +109,7 @@ from .planner import CarInput, Plan, build_plan, car_ready, car_settings, heatin
 from .profile import (EFFICIENCY, LEARN_DAYS, SUN_END, SUN_START, Profile, Reserve, build_profile, calc_reserve,
                       expected_load, grid_charge_target, solar_surplus)
 from .savings import SavingsCalculator
+from .hotwater import cooling_rate, plan_demand
 from .energy import EnergyBook, add_devices, layout_from_config, layout_from_energy_prefs, layout_signature, layout_stats
 from .flow import energy_flow, to_kw
 from .pricing import has_vat, vat_factor
@@ -187,6 +191,13 @@ class SmartHusController:
         self._surplus_count = 0
         self._hw_surplus_sec = 0.0
         self._hw_done_date: str | None = None   # dag hvor vandet er varmet op
+        # Varmt vand efter behov: temperaturmålinger, afkøling og ekstra opvarmning
+        self._hw_samples: list[tuple[datetime, float]] = []
+        self._hw_seeded = False
+        self.hw_rate: float | None = None
+        self.hw_deadline: datetime | None = None
+        self.hw_demand: list = []
+        self.hw_demand_now = False
         # Indstillinger der slås til/fra på kortet (gendannes af kontakterne)
         self.flags: dict[str, bool] = {F_HOTWATER_SURPLUS_SMART: True}
         # Solcelleladning pr. elbil
@@ -765,6 +776,7 @@ class SmartHusController:
             for car in self.cars
         ]
         self.plan = build_plan(slots, dt_util.utcnow(), self.tz, self.settings, soc=soc, cars=cars)
+        self._update_hotwater_demand()
         for cid, ep in self.plan.evs.items():
             if self.ev_force.get(cid) and ep.target_reached:
                 self.ev_force[cid] = False  # "Lad nu" slukker selv ved mål-SoC
@@ -778,6 +790,7 @@ class SmartHusController:
             self._forecast_fetched = time.monotonic()
             await self._async_refresh_forecast()
         if self.active(MODULE_HOTWATER):
+            await self._async_sample_hotwater()
             self._update_surplus()
         self._log_ev_charging()
         self.recalculate()
@@ -1449,9 +1462,64 @@ class SmartHusController:
     def hotwater_temp(self) -> float | None:
         return self._float_state(self.config.get(CONF_HOTWATER_TEMP))
 
+    async def _async_sample_hotwater(self) -> None:
+        """Gem vandets temperatur (hvert 2. minut) – første gang hentes de seneste timer fra historikken."""
+        entity_id = self.config.get(CONF_HOTWATER_TEMP)
+        if not entity_id:
+            return
+        now = dt_util.utcnow()
+        if not self._hw_seeded:
+            self._hw_seeded = True
+            try:
+                from homeassistant.components.recorder import get_instance, history
+                hist = await get_instance(self.hass).async_add_executor_job(
+                    history.state_changes_during_period, self.hass, now - timedelta(hours=4), now, entity_id)
+                for st in hist.get(entity_id, []):
+                    try:
+                        self._hw_samples.append((st.last_changed, float(st.state)))
+                    except (TypeError, ValueError):
+                        continue
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.debug("SmartHus: ingen historik for vandtemperaturen: %s", err)
+        temp = self.hotwater_temp
+        if temp is not None and (not self._hw_samples or now - self._hw_samples[-1][0] >= timedelta(minutes=2)):
+            self._hw_samples.append((now, temp))
+        cutoff = now - timedelta(hours=4)
+        self._hw_samples = [x for x in self._hw_samples if x[0] >= cutoff]
+
+    def _update_hotwater_demand(self) -> None:
+        """Ekstra opvarmning i den billigste time, før vandet bliver så koldt, at varmepumpen selv starter."""
+        self.hw_demand_now = False
+        if not (self.active(MODULE_HOTWATER) and self.has(CONF_HOTWATER_ENTITY) and self.has(CONF_HOTWATER_TEMP)):
+            self.hw_demand, self.hw_deadline, self.hw_rate = [], None, None
+            return
+        now = dt_util.utcnow()
+        temp = self.hotwater_temp
+        self.hw_rate = cooling_rate(sorted(self._hw_samples), now)
+        watch = float(self.settings.get(S_HOTWATER_WATCH_TEMP, 45.0))
+        floor = float(self.settings.get(S_HOTWATER_MIN_TEMP, 42.0))
+        regular = [s for s in self.plan.hotwater_slots if s.end > now]
+        keep = [s for s in self.hw_demand if s.end > now]
+        if temp is not None and temp >= watch:
+            keep = []                      # vandet er varmet op igen
+        demand, deadline = plan_demand(self.coordinator.data or [], now, temp, self.hw_rate, watch, floor,
+                                       float(self.settings.get(S_HOTWATER_HOURS, 1.0)), regular)
+        # Behold en valgt blok, så længe den stadig når at varme vandet i tide
+        if keep and (deadline is None or keep[0].start < deadline):
+            demand = keep
+        self.hw_demand, self.hw_deadline = demand, deadline
+        if demand:
+            have = {s.start for s in self.plan.hotwater_slots}
+            self.plan.hotwater_slots = sorted(self.plan.hotwater_slots + [s for s in demand if s.start not in have],
+                                              key=lambda s: s.start)
+            cur = self.plan.current
+            self.hw_demand_now = cur is not None and any(s.start == cur.start for s in demand)
+            if self.hw_demand_now:
+                self.plan.hotwater_on = True
+
     def _hotwater_switch_on(self, planned_on: bool) -> bool:
         """Med temperaturføler: sluk ved øvre grænse, start igen når vandet er kølet af."""
-        if planned_on and not self.hotwater_surplus and self.hotwater_heated_today:
+        if planned_on and not self.hotwater_surplus and not self.hw_demand_now and self.hotwater_heated_today:
             cur = self.plan.current
             if cur is not None and cur.start.astimezone(self.tz).date().isoformat() == self._today():
                 planned_on = False      # vandet er allerede varmet op i dag

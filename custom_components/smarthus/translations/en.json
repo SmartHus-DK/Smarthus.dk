@@ -629,6 +629,12 @@
       },
       "battery_solar_sell_margin": {
         "name": "Battery: min. gain from selling solar"
+      },
+      "hotwater_watch_temp": {
+        "name": "Hot water: watch below"
+      },
+      "hotwater_min_temp": {
+        "name": "Hot water: lowest temperature"
       }
     },
     "select": {

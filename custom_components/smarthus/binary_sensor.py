@@ -85,6 +85,13 @@ class SmartHusBinary(SmartHusEntity, BinarySensorEntity):
             attrs["solar_surplus"] = c.hotwater_surplus
             attrs["heated_today"] = c.hotwater_heated_today
             attrs["export_kw"] = None if c.export_kw is None else round(c.export_kw, 2)
+            # Varmt vand efter behov
+            attrs["cooling_rate"] = None if c.hw_rate is None else round(c.hw_rate, 2)
+            attrs["min_temp_at"] = c.hw_deadline.isoformat() if c.hw_deadline else None
+            attrs["demand_periods"] = merge_periods(c.hw_demand, c.tz)
+            attrs["demand_slots"] = [x.start.isoformat() for x in c.hw_demand]
+            attrs["watch_temp"] = c.settings.get("hotwater_watch_temp")
+            attrs["min_temp"] = c.settings.get("hotwater_min_temp")
         if self.entity_description.key.startswith("heating_"):
             c = self.controller
             attrs["outdoor_temp"] = c.outdoor_temp

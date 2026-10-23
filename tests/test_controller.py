@@ -56,6 +56,7 @@ def make(config, states):
     c._ev_charged = {}
     c.ev_ready_mode = {}
     c._hw_surplus_sec, c._hw_done_date = 0.0, None
+    c.hw_demand_now, c.hw_demand, c.hw_deadline, c.hw_rate, c._hw_samples = False, [], None, None, []
     c.flags = {"hotwater_surplus_smart": True}
     c.ev_solar, c._ev_current_sent = {}, {}
     c.tz = ZoneInfo("Europe/Copenhagen")
@@ -117,6 +118,15 @@ async def main():
     temp["v"] = "51.5"
     assert c._hotwater_switch_on(True) is True       # kølet > 3 °C af: varm igen
     assert c._hotwater_switch_on(False) is False     # uden for billig periode: slukket
+    # Allerede varmet op i dag: ingen ny almindelig opvarmning – men "efter behov" må gerne
+    from datetime import datetime as _hdt, timedelta as _htd, timezone as _htz
+    n = _hdt.now(_htz.utc)
+    c.plan.current = planner.Slot(n - _htd(minutes=5), n + _htd(minutes=10), 0.5, 1.0, 0.4)
+    c._hw_done_date = c._today()
+    temp["v"] = "43"
+    assert c._hotwater_switch_on(True) is False
+    c.hw_demand_now = True
+    assert c._hotwater_switch_on(True) is True
     # Uden føler: følg planen
     c, h = make({"hotwater_entity": "switch.vand"}, {})
     assert c._hotwater_switch_on(True) is True

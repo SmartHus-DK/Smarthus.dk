@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.30.0";
+const SMARTHUS_CARD_VERSION = "1.31.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -72,6 +72,7 @@ const MODULES = [
       { title: "Solcelleoverskud", items: ["hotwater_surplus_kw", { sw: "hotwater_surplus_smart", label: "Kun når det betaler sig",
         note: "Sælg i stedet, hvis salgsprisen er højere end den billige time senere" }] },
       { title: "Temperatur", items: ["hotwater_boost_temp", "hotwater_normal_temp"] },
+      { title: "Efter behov", items: ["hotwater_watch_temp", "hotwater_min_temp"] },
     ],
   },
   {
@@ -130,6 +131,8 @@ const NUMBER_LABELS = {
   hotwater_hours: "Timer at opvarme",
   hotwater_boost_temp: "Opvarm til",
   hotwater_normal_temp: "Normal temperatur",
+  hotwater_watch_temp: "Hold øje under",
+  hotwater_min_temp: "Laveste temperatur",
   heating_base_temp: "Grundtemperatur",
   heating_max_outdoor: "Aktiv under udetemperatur",
   heating_boost_degrees: "Hæv med",
@@ -869,6 +872,8 @@ class SmartHusCard extends HTMLElement {
         if (isOn("hotwater_now")) return `${prefix}${a.warm_enough ? "Varmt nok – venter" : "Opvarmer nu"}${t}`;
         if (a.heated_today && !isOn("hotwater_now")) return `${prefix}Varmet op i dag${t}`;
         if (a.solar_surplus) return `${prefix}${a.warm_enough ? "Varmt nok – venter" : "Varmer med solcelleoverskud"}${t}`;
+        const dem = upcoming(a.demand_slots);
+        if (dem.length) return `${prefix}Ekstra opvarmning ${dem[0].active ? "nu" : dem[0].text} – før vandet bliver for koldt${t}`;
         return `${prefix}${next("hotwater_now") ? `Opvarmer ${next("hotwater_now")}` : "Ingen plan"}${t}`;
       }
       case "heating": {
@@ -889,6 +894,21 @@ class SmartHusCard extends HTMLElement {
     return "";
   }
 
+  /** Varmt vand efter behov: afkøling, hvornår vandet bliver for koldt, og den ekstra opvarmning. */
+  _hotwaterDemand(a) {
+    if (!a.watch_temp || a.water_temp == null) return "";
+    const dem = upcoming(a.demand_slots);
+    const at = a.min_temp_at ? new Date(a.min_temp_at) : null;
+    const when = (d) => whenText(d);
+    if (a.water_temp >= a.watch_temp) return `<div class="water-sub">Holder øje med afkølingen, når vandet er under ${nf(a.watch_temp, 0)} °C.</div>`;
+    const rate = a.cooling_rate != null && a.cooling_rate > 0.05 ? `Falder ${nf(a.cooling_rate, 1)} °C i timen` : "Falder næsten ikke";
+    const reach = at ? ` · ${nf(a.min_temp, 0)} °C ${when(at)}` : "";
+    const plan = dem.length
+      ? `<b>Ekstra opvarmning ${dem[0].active ? "nu" : dem[0].text}</b> – den billigste tid, før vandet bliver for koldt.`
+      : at ? "Den planlagte opvarmning når det i tide." : "";
+    return `<div class="water-sub">${rate}${reach}${plan ? `<br>${plan}` : ""}</div>`;
+  }
+
   _moduleBody(m) {
     let extra = "";
     if (m.car) extra = this._evCompare(m.id);
@@ -901,6 +921,7 @@ class SmartHusCard extends HTMLElement {
           <div class="water-row"><span>Vandets temperatur</span><b>${nf(a.water_temp, 1)} °C</b></div>
           <div class="water-bar"><i style="width:${pct * 100}%"></i></div>
           <div class="water-sub">${a.warm_enough ? "Maks. temperatur nået – opvarmningen er sat på pause" : `Maks. ${nf(a.max_temp, 0)} °C`}</div>
+          ${this._hotwaterDemand(a)}
         </div>`;
       }
     }
@@ -1442,7 +1463,7 @@ class SmartHusCard extends HTMLElement {
     const unused = key.endsWith("_ready_hour") && this._st("select", key.replace("_ready_hour", "_ready_day"))?.attributes?.uses_ready_hour === false;
     return `
       <div class="step${unused ? " unused" : ""}">
-        <span class="step-lbl">${esc(this._label(key))}${unused ? `<span class="win-note">Bruges ikke – perioden er valgt nedenfor</span>` : ""}${key === "ev_max_total_power" ? `<span class="win-note">0 = ingen grænse</span>` : key === "hotwater_surplus_kw" ? `<span class="win-note">0 = fra · eksport lige nu ${nf(this._st("binary_sensor", "hotwater_now")?.attributes?.export_kw, 1)} kW</span>` : ""}</span>
+        <span class="step-lbl">${esc(this._label(key))}${unused ? `<span class="win-note">Bruges ikke – perioden er valgt nedenfor</span>` : ""}${key === "ev_max_total_power" ? `<span class="win-note">0 = ingen grænse</span>` : key === "hotwater_surplus_kw" ? `<span class="win-note">0 = fra · eksport lige nu ${nf(this._st("binary_sensor", "hotwater_now")?.attributes?.export_kw, 1)} kW</span>` : key === "hotwater_watch_temp" ? `<span class="win-note">0 = fra · varm op i en billig time, før vandet når den laveste temperatur</span>` : key === "hotwater_min_temp" ? `<span class="win-note">Varm op, før vandet når hertil – fx varmepumpens egen grænse</span>` : ""}</span>
         <span class="step-ctl">
           <button data-action="step" data-entity="${s.entity_id}" data-dir="-1" aria-label="Mindre ${esc(this._label(key))}">−</button>
           <span class="step-val">${shown}</span>

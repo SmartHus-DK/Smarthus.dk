@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.30.0** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
+**Version 1.31.0** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
 
 SmartHus bruger strømmen, når den er billigst, og sparer, når den er dyrest. Den lader elbilen og batteriet i de billige timer, varmer vandet med billig strøm eller solcelleoverskud, skruer lidt op og ned for varmen og stopper salg af solstrøm, når prisen er for lav. Du ser det hele – og hvad du har sparet – på ét kort.
 
@@ -317,6 +317,11 @@ smarthus_normal:
 <details><summary><b>Batteriets reserve (lærer husets forbrug)</b></summary>
 
 Vælg **Energimåler: husets forbrug** under Batteri / inverter og indstil batteriets størrelse på kortet. Hver nat lærer SmartHus husets forbrug time for time ud fra de seneste **14 dage** (hverdage og weekend for sig) fra langtidsstatistikken. Den beregner, hvad huset bruger, til strømmen bliver billig igen, minus forventet sol, og sælger kun det, batteriet har ud over reserven og laveste niveau. Bruges efter 2 døgns historik. Se `sensor.smarthus_battery_reserve` og `sensor.smarthus_battery_sellable`.
+</details>
+
+<details><summary><b>Varmt vand efter behov (kræver temperaturføler)</b></summary>
+
+Mange varmepumper varmer selv vandet op, når det falder under deres egen grænse – også midt i den dyreste time. Når vandet er under **Hold øje under** (standard 45 °C), måler SmartHus, hvor hurtigt vandet køler af, og regner ud, hvornår det når **Laveste temperatur** (standard 42 °C). Ligger dagens planlagte opvarmning ikke før det tidspunkt, varmes vandet op i den billigste time inden – så varmepumpen ikke selv starter i en dyr time. Afkølingen måles fra seneste opvarmning; efter genstart hentes de seneste 4 timer fra historikken. Sæt "Hold øje under" til 0 for at slå det fra.
 </details>
 
 <details><summary><b>Solcelleoverskud – varmt vand og elbil</b></summary>

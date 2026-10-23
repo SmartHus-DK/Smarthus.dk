@@ -39,6 +39,8 @@ from .const import (
     S_HOTWATER_BOOST_TEMP,
     S_HOTWATER_HOURS,
     S_HOTWATER_NORMAL_TEMP,
+    S_HOTWATER_WATCH_TEMP,
+    S_HOTWATER_MIN_TEMP,
     S_BATTERY_CHARGE_FROM,
     S_BATTERY_CHARGE_TO,
     S_BATTERY_DISCHARGE_FROM,
@@ -125,6 +127,12 @@ NUMBERS: tuple[SmartHusNumberDescription, ...] = (
     SmartHusNumberDescription(key=S_HOTWATER_NORMAL_TEMP, icon="mdi:thermometer", native_min_value=20,
                               native_max_value=70, native_step=0.5, native_unit_of_measurement=C,
                               requires=CONF_HOTWATER_ENTITY),
+    SmartHusNumberDescription(key=S_HOTWATER_WATCH_TEMP, icon="mdi:thermometer-alert", native_min_value=0,
+                              native_max_value=80, native_step=0.5, native_unit_of_measurement=C,
+                              requires=CONF_HOTWATER_TEMP),
+    SmartHusNumberDescription(key=S_HOTWATER_MIN_TEMP, icon="mdi:thermometer-low", native_min_value=20,
+                              native_max_value=70, native_step=0.5, native_unit_of_measurement=C,
+                              requires=CONF_HOTWATER_TEMP),
     SmartHusNumberDescription(key=S_HOTWATER_SURPLUS_KW, icon="mdi:solar-power-variant", native_min_value=0,
                               native_max_value=20, native_step=0.1, native_unit_of_measurement="kW",
                               requires=CONF_GRID_POWER),
@@ -204,6 +212,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
             hw = controller.config.get(CONF_HOTWATER_ENTITY) or ""
             thermostat = hw.split(".")[0] in ("water_heater", "climate")
             if thermostat or (d.key == S_HOTWATER_BOOST_TEMP and hw and controller.has(CONF_HOTWATER_TEMP)):
+                entities.append(SmartHusNumber(entry, controller, d))
+        elif d.key in (S_HOTWATER_WATCH_TEMP, S_HOTWATER_MIN_TEMP):
+            if controller.has(CONF_HOTWATER_ENTITY) and controller.has(CONF_HOTWATER_TEMP):
                 entities.append(SmartHusNumber(entry, controller, d))
         elif d.key == S_HEATING_MAX_OUTDOOR:
             if controller.has(CONF_HEATING_CLIMATE):
