@@ -93,6 +93,8 @@ class SmartHusBinary(SmartHusEntity, BinarySensorEntity):
             attrs["watch_temp"] = c.settings.get("hotwater_watch_temp")
             attrs["min_temp"] = c.hotwater_min_temp
             attrs["min_temp_source"] = c.hotwater_min_source
+            attrs["water_temp_entity"] = c.hotwater_temp_entity
+            attrs["min_temp_entity"] = c.config.get("hotwater_min_temp_entity")
         if self.entity_description.key.startswith("heating_"):
             c = self.controller
             attrs["outdoor_temp"] = c.outdoor_temp

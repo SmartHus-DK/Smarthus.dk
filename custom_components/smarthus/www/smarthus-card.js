@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.31.2";
+const SMARTHUS_CARD_VERSION = "1.31.3";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -903,7 +903,8 @@ class SmartHusCard extends HTMLElement {
     if (a.water_temp >= a.watch_temp) return `<div class="water-sub">Holder øje med afkølingen, når vandet er under ${nf(a.watch_temp, 0)} °C${a.min_temp_source ? ` · laveste ${nf(a.min_temp, 1)} °C fra ${esc(a.min_temp_source)}` : ""}.</div>`;
     const rate = a.cooling_rate != null && a.cooling_rate > 0.05 ? `Falder ${nf(a.cooling_rate, 1)} °C i timen` : "Falder næsten ikke";
     const reach = at ? ` · ${nf(a.min_temp, 1)} °C ${when(at)}` : "";
-    const src = a.min_temp_source ? `<br><span class="muted">Laveste temperatur ${nf(a.min_temp, 1)} °C fra ${esc(a.min_temp_source)}</span>` : "";
+    const src = a.min_temp_source ? `<br><span class="muted">Laveste temperatur ${nf(a.min_temp, 1)} °C fra ${esc(a.min_temp_source)} (${esc(a.min_temp_entity)})</span>`
+      : a.min_temp_entity ? `<br><span class="muted">Kan ikke læse grænsen fra ${esc(a.min_temp_entity)} – bruger ${nf(a.min_temp, 1)} °C</span>` : "";
     const plan = dem.length
       ? `<b>Ekstra opvarmning ${dem[0].active ? "nu" : dem[0].text}</b> – den billigste tid, før vandet bliver for koldt.`
       : at ? "Den planlagte opvarmning når det i tide." : "";
@@ -924,6 +925,9 @@ class SmartHusCard extends HTMLElement {
           <div class="water-sub">${a.warm_enough ? "Maks. temperatur nået – opvarmningen er sat på pause" : `Maks. ${nf(a.max_temp, 0)} °C`}</div>
           ${this._hotwaterDemand(a)}
         </div>`;
+      } else if (a.water_temp_entity) {
+        extra = `<div class="water"><div class="water-sub">Kan ikke læse vandets temperatur fra <b>${esc(a.water_temp_entity)}</b>.
+          Vælg en sensor med temperaturen i °C – eller vandvarmeren selv (water_heater), så bruges dens current_temperature.</div></div>`;
       }
     }
     if (m.id === "heating") {

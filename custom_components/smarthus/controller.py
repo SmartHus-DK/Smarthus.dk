@@ -120,6 +120,19 @@ from .weather import forecast_sensor_ids, merge_wh, pick_weather_entity, summari
 
 _LOGGER = logging.getLogger(__name__)
 
+
+def _num(val) -> float | None:
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return None
+
+
+def _water_temp(val) -> float | None:
+    """Et realistisk tal for varmt vand (1–100 °C) – 0 eller tomme værdier ignoreres."""
+    v = _num(val)
+    return v if v is not None and 1.0 <= v <= 100.0 else None
+
 _UNITS = {"wh": 0.001, "kwh": 1.0, "mwh": 1000.0}
 
 
@@ -1474,11 +1487,12 @@ class SmartHusController:
         st = st if st is not None else self.hass.states.get(entity_id)
         if st is None:
             return None
-        val = st.attributes.get("current_temperature") if entity_id.startswith(("water_heater.", "climate.")) else st.state
-        try:
-            return float(val)
-        except (TypeError, ValueError):
-            return None
+        if entity_id.startswith(("water_heater.", "climate.")):
+            val = st.attributes.get("current_temperature")
+        else:
+            # En sensor uden tal i tilstanden, men med current_temperature (fx nogle varmepumpe-integrationer)
+            val = st.state if _num(st.state) is not None else st.attributes.get("current_temperature")
+        return _water_temp(val)
 
     @property
     def hotwater_temp(self) -> float | None:
@@ -1500,11 +1514,8 @@ class SmartHusController:
         if entity_id.startswith(("water_heater.", "climate.")):
             val = st.attributes.get("temperature")
         else:
-            val = st.state
-        try:
-            return float(val)
-        except (TypeError, ValueError):
-            return None
+            val = st.state if _num(st.state) is not None else st.attributes.get("temperature")
+        return _water_temp(val)
 
     @property
     def hotwater_min_temp(self) -> float:
