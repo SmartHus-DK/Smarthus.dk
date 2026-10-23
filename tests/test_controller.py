@@ -127,6 +127,15 @@ async def main():
     assert c._hotwater_switch_on(True) is False
     c.hw_demand_now = True
     assert c._hotwater_switch_on(True) is True
+    # Vandets temperatur fra en water_heater (current_temperature) – valgt eller som styret entitet
+    wh = {"water_heater.dhw1": State("eco", current_temperature=48, temperature=42)}
+    c, h = make({"hotwater_entity": "button.charge", "hotwater_temp_sensor": "water_heater.dhw1",
+                 "hotwater_min_temp_entity": "water_heater.dhw1"}, wh)
+    assert c.hotwater_temp == 48.0 and c.hotwater_min_temp == 42.0
+    c, h = make({"hotwater_entity": "water_heater.dhw1"}, wh)
+    assert c.hotwater_temp_entity == "water_heater.dhw1" and c.hotwater_temp == 48.0
+    c, h = make({"hotwater_entity": "switch.vand"}, {})
+    assert c.hotwater_temp_entity is None
     # Laveste temperatur: varmepumpens eget setpunkt, ellers indstillingen
     c, h = make({"hotwater_min_temp_entity": "number.dhw_min"}, {"number.dhw_min": State("41.5")})
     assert c.hotwater_min_temp == 41.5

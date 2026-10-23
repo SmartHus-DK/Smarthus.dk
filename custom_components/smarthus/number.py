@@ -212,13 +212,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
         elif d.key in (S_HOTWATER_BOOST_TEMP, S_HOTWATER_NORMAL_TEMP):
             hw = controller.config.get(CONF_HOTWATER_ENTITY) or ""
             thermostat = hw.split(".")[0] in ("water_heater", "climate")
-            if thermostat or (d.key == S_HOTWATER_BOOST_TEMP and hw and controller.has(CONF_HOTWATER_TEMP)):
+            if thermostat or (d.key == S_HOTWATER_BOOST_TEMP and hw and controller.hotwater_temp_entity):
                 entities.append(SmartHusNumber(entry, controller, d))
         elif d.key in (S_HOTWATER_WATCH_TEMP, S_HOTWATER_MIN_TEMP):
             # Laveste temperatur indstilles kun manuelt, når varmepumpens egen grænse ikke er valgt
             if d.key == S_HOTWATER_MIN_TEMP and controller.has(CONF_HOTWATER_MIN_ENTITY):
                 continue
-            if controller.has(CONF_HOTWATER_ENTITY) and controller.has(CONF_HOTWATER_TEMP):
+            if controller.has(CONF_HOTWATER_ENTITY) and controller.hotwater_temp_entity:
                 entities.append(SmartHusNumber(entry, controller, d))
         elif d.key == S_HEATING_MAX_OUTDOOR:
             if controller.has(CONF_HEATING_CLIMATE):

@@ -1460,8 +1460,29 @@ class SmartHusController:
         return self.heating_outdoor_ok
 
     @property
+    def hotwater_temp_entity(self) -> str | None:
+        """Hvor vandets temperatur aflæses: den valgte føler, ellers vandvarmeren selv (water_heater/climate)."""
+        if self.config.get(CONF_HOTWATER_TEMP):
+            return self.config[CONF_HOTWATER_TEMP]
+        hw = self.config.get(CONF_HOTWATER_ENTITY) or ""
+        return hw if hw.startswith(("water_heater.", "climate.")) else None
+
+    def _temp_value(self, entity_id: str | None, st=None) -> float | None:
+        """Temperatur fra en sensor (tilstanden) eller fra en water_heater/climate (current_temperature)."""
+        if not entity_id:
+            return None
+        st = st if st is not None else self.hass.states.get(entity_id)
+        if st is None:
+            return None
+        val = st.attributes.get("current_temperature") if entity_id.startswith(("water_heater.", "climate.")) else st.state
+        try:
+            return float(val)
+        except (TypeError, ValueError):
+            return None
+
+    @property
     def hotwater_temp(self) -> float | None:
-        return self._float_state(self.config.get(CONF_HOTWATER_TEMP))
+        return self._temp_value(self.hotwater_temp_entity)
 
     @property
     def hotwater_min_source(self) -> str | None:
@@ -1497,21 +1518,24 @@ class SmartHusController:
 
     async def _async_sample_hotwater(self) -> None:
         """Gem vandets temperatur (hvert 2. minut) – første gang hentes de seneste timer fra historikken."""
-        entity_id = self.config.get(CONF_HOTWATER_TEMP)
+        entity_id = self.hotwater_temp_entity
         if not entity_id:
             return
         now = dt_util.utcnow()
         if not self._hw_seeded:
             self._hw_seeded = True
             try:
+                from functools import partial
+
                 from homeassistant.components.recorder import get_instance, history
-                hist = await get_instance(self.hass).async_add_executor_job(
-                    history.state_changes_during_period, self.hass, now - timedelta(hours=4), now, entity_id)
+                # Også ændringer i egenskaber (fx en water_heaters current_temperature)
+                hist = await get_instance(self.hass).async_add_executor_job(partial(
+                    history.get_significant_states, self.hass, now - timedelta(hours=4), now, [entity_id],
+                    significant_changes_only=False))
                 for st in hist.get(entity_id, []):
-                    try:
-                        self._hw_samples.append((st.last_changed, float(st.state)))
-                    except (TypeError, ValueError):
-                        continue
+                    val = self._temp_value(entity_id, st)
+                    if val is not None:
+                        self._hw_samples.append((st.last_updated, val))
             except Exception as err:  # noqa: BLE001
                 _LOGGER.debug("SmartHus: ingen historik for vandtemperaturen: %s", err)
         temp = self.hotwater_temp
@@ -1523,7 +1547,7 @@ class SmartHusController:
     def _update_hotwater_demand(self) -> None:
         """Ekstra opvarmning i den billigste time, før vandet bliver så koldt, at varmepumpen selv starter."""
         self.hw_demand_now = False
-        if not (self.active(MODULE_HOTWATER) and self.has(CONF_HOTWATER_ENTITY) and self.has(CONF_HOTWATER_TEMP)):
+        if not (self.active(MODULE_HOTWATER) and self.has(CONF_HOTWATER_ENTITY) and self.hotwater_temp_entity):
             self.hw_demand, self.hw_deadline, self.hw_rate = [], None, None
             return
         now = dt_util.utcnow()
