@@ -124,6 +124,7 @@ CONF_EV_SOC: Final = "ev_soc_sensor"
 CONF_HOTWATER_ENTITY: Final = "hotwater_entity"
 CONF_HOTWATER_ENERGY: Final = "hotwater_energy_sensor"
 CONF_HOTWATER_TEMP: Final = "hotwater_temp_sensor"
+CONF_HOTWATER_MIN_ENTITY: Final = "hotwater_min_temp_entity"   # varmepumpens egen nedre grænse (setpunkt)
 # Effekt til/fra nettet lige nu (bruges til solcelleoverskud)
 CONF_GRID_POWER: Final = "grid_power_sensor"
 CONF_GRID_POWER_SIGN: Final = "grid_power_sign"
@@ -188,7 +189,7 @@ def get_cars(config: dict) -> list[dict]:
             "energy": config.get(CONF_EV_ENERGY),
         }]
     return []
-HOTWATER_KEYS: Final = [CONF_HOTWATER_ENTITY, CONF_HOTWATER_TEMP, CONF_HOTWATER_ENERGY]
+HOTWATER_KEYS: Final = [CONF_HOTWATER_ENTITY, CONF_HOTWATER_TEMP, CONF_HOTWATER_MIN_ENTITY, CONF_HOTWATER_ENERGY]
 HEATING_KEYS: Final = [CONF_HEATING_CLIMATE, CONF_HEATPUMP_ENERGY]
 WEATHER_KEYS: Final = [CONF_OUTDOOR_TEMP, CONF_WEATHER]
 

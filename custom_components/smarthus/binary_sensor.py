@@ -91,7 +91,8 @@ class SmartHusBinary(SmartHusEntity, BinarySensorEntity):
             attrs["demand_periods"] = merge_periods(c.hw_demand, c.tz)
             attrs["demand_slots"] = [x.start.isoformat() for x in c.hw_demand]
             attrs["watch_temp"] = c.settings.get("hotwater_watch_temp")
-            attrs["min_temp"] = c.settings.get("hotwater_min_temp")
+            attrs["min_temp"] = c.hotwater_min_temp
+            attrs["min_temp_source"] = c.hotwater_min_source
         if self.entity_description.key.startswith("heating_"):
             c = self.controller
             attrs["outdoor_temp"] = c.outdoor_temp

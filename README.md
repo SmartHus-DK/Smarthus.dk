@@ -321,7 +321,7 @@ Vælg **Energimåler: husets forbrug** under Batteri / inverter og indstil batte
 
 <details><summary><b>Varmt vand efter behov (kræver temperaturføler)</b></summary>
 
-Mange varmepumper varmer selv vandet op, når det falder under deres egen grænse – også midt i den dyreste time. Når vandet er under **Hold øje under** (standard 45 °C), måler SmartHus, hvor hurtigt vandet køler af, og regner ud, hvornår det når **Laveste temperatur** (standard 42 °C). Ligger dagens planlagte opvarmning ikke før det tidspunkt, varmes vandet op i den billigste time inden – så varmepumpen ikke selv starter i en dyr time. Afkølingen måles fra seneste opvarmning; efter genstart hentes de seneste 4 timer fra historikken. Sæt "Hold øje under" til 0 for at slå det fra.
+Mange varmepumper varmer selv vandet op, når det falder under deres egen grænse – også midt i den dyreste time. Når vandet er under **Hold øje under** (standard 45 °C), måler SmartHus, hvor hurtigt vandet køler af, og regner ud, hvornår det når **Laveste temperatur** (standard 42 °C). Har varmepumpen sin egen nedre grænse som entitet (fx "Varmvand target temperature"), kan den vælges under Varmt vand i opsætningen – så bruges den i stedet for den manuelle værdi. Ligger dagens planlagte opvarmning ikke før det tidspunkt, varmes vandet op i den billigste time inden – så varmepumpen ikke selv starter i en dyr time. Afkølingen måles fra seneste opvarmning; efter genstart hentes de seneste 4 timer fra historikken. Sæt "Hold øje under" til 0 for at slå det fra.
 </details>
 
 <details><summary><b>Solcelleoverskud – varmt vand og elbil</b></summary>

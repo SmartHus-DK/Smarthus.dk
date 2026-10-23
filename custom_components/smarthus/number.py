@@ -15,6 +15,7 @@ from .const import (
     CONF_HEATING_CLIMATE,
     CONF_HOTWATER_ENTITY,
     CONF_HOTWATER_TEMP,
+    CONF_HOTWATER_MIN_ENTITY,
     DEFAULT_SETTINGS,
     S_BATTERY_CHARGE_HOURS,
     S_BATTERY_DISCHARGE_HOURS,
@@ -214,6 +215,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
             if thermostat or (d.key == S_HOTWATER_BOOST_TEMP and hw and controller.has(CONF_HOTWATER_TEMP)):
                 entities.append(SmartHusNumber(entry, controller, d))
         elif d.key in (S_HOTWATER_WATCH_TEMP, S_HOTWATER_MIN_TEMP):
+            # Laveste temperatur indstilles kun manuelt, når varmepumpens egen grænse ikke er valgt
+            if d.key == S_HOTWATER_MIN_TEMP and controller.has(CONF_HOTWATER_MIN_ENTITY):
+                continue
             if controller.has(CONF_HOTWATER_ENTITY) and controller.has(CONF_HOTWATER_TEMP):
                 entities.append(SmartHusNumber(entry, controller, d))
         elif d.key == S_HEATING_MAX_OUTDOOR:

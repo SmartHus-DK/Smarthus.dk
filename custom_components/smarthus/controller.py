@@ -17,6 +17,7 @@ from homeassistant.util import dt as dt_util
 from .const import (
     API_URL,
     S_HOTWATER_HOURS,
+    CONF_HOTWATER_MIN_ENTITY,
     S_HOTWATER_MIN_TEMP,
     S_HOTWATER_WATCH_TEMP,
     EDS_DAYAHEAD_FROM,
@@ -1462,6 +1463,35 @@ class SmartHusController:
     def hotwater_temp(self) -> float | None:
         return self._float_state(self.config.get(CONF_HOTWATER_TEMP))
 
+    @property
+    def hotwater_min_source(self) -> str | None:
+        """Navnet på varmepumpens egen nedre grænse, hvis den er valgt og har en værdi."""
+        entity_id = self.config.get(CONF_HOTWATER_MIN_ENTITY)
+        if not entity_id or self._setpoint_value(entity_id) is None:
+            return None
+        st = self.hass.states.get(entity_id)
+        return st.name if st else entity_id
+
+    def _setpoint_value(self, entity_id: str) -> float | None:
+        st = self.hass.states.get(entity_id)
+        if st is None:
+            return None
+        if entity_id.startswith(("water_heater.", "climate.")):
+            val = st.attributes.get("temperature")
+        else:
+            val = st.state
+        try:
+            return float(val)
+        except (TypeError, ValueError):
+            return None
+
+    @property
+    def hotwater_min_temp(self) -> float:
+        """Laveste temperatur: varmepumpens eget setpunkt, hvis det er valgt – ellers indstillingen."""
+        entity_id = self.config.get(CONF_HOTWATER_MIN_ENTITY)
+        val = self._setpoint_value(entity_id) if entity_id else None
+        return val if val is not None else float(self.settings.get(S_HOTWATER_MIN_TEMP, 42.0))
+
     async def _async_sample_hotwater(self) -> None:
         """Gem vandets temperatur (hvert 2. minut) – første gang hentes de seneste timer fra historikken."""
         entity_id = self.config.get(CONF_HOTWATER_TEMP)
@@ -1497,7 +1527,7 @@ class SmartHusController:
         temp = self.hotwater_temp
         self.hw_rate = cooling_rate(sorted(self._hw_samples), now)
         watch = float(self.settings.get(S_HOTWATER_WATCH_TEMP, 45.0))
-        floor = float(self.settings.get(S_HOTWATER_MIN_TEMP, 42.0))
+        floor = self.hotwater_min_temp
         regular = [s for s in self.plan.hotwater_slots if s.end > now]
         keep = [s for s in self.hw_demand if s.end > now]
         if temp is not None and temp >= watch:

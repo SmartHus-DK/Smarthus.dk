@@ -900,13 +900,14 @@ class SmartHusCard extends HTMLElement {
     const dem = upcoming(a.demand_slots);
     const at = a.min_temp_at ? new Date(a.min_temp_at) : null;
     const when = (d) => whenText(d);
-    if (a.water_temp >= a.watch_temp) return `<div class="water-sub">Holder øje med afkølingen, når vandet er under ${nf(a.watch_temp, 0)} °C.</div>`;
+    if (a.water_temp >= a.watch_temp) return `<div class="water-sub">Holder øje med afkølingen, når vandet er under ${nf(a.watch_temp, 0)} °C${a.min_temp_source ? ` · laveste ${nf(a.min_temp, 1)} °C fra ${esc(a.min_temp_source)}` : ""}.</div>`;
     const rate = a.cooling_rate != null && a.cooling_rate > 0.05 ? `Falder ${nf(a.cooling_rate, 1)} °C i timen` : "Falder næsten ikke";
-    const reach = at ? ` · ${nf(a.min_temp, 0)} °C ${when(at)}` : "";
+    const reach = at ? ` · ${nf(a.min_temp, 1)} °C ${when(at)}` : "";
+    const src = a.min_temp_source ? `<br><span class="muted">Laveste temperatur ${nf(a.min_temp, 1)} °C fra ${esc(a.min_temp_source)}</span>` : "";
     const plan = dem.length
       ? `<b>Ekstra opvarmning ${dem[0].active ? "nu" : dem[0].text}</b> – den billigste tid, før vandet bliver for koldt.`
       : at ? "Den planlagte opvarmning når det i tide." : "";
-    return `<div class="water-sub">${rate}${reach}${plan ? `<br>${plan}` : ""}</div>`;
+    return `<div class="water-sub">${rate}${reach}${plan ? `<br>${plan}` : ""}${src}</div>`;
   }
 
   _moduleBody(m) {
