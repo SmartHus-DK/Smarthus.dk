@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.31.3** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
+**Version 1.32.0** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
 
 SmartHus bruger strømmen, når den er billigst, og sparer, når den er dyrest. Den lader elbilen og batteriet i de billige timer, varmer vandet med billig strøm eller solcelleoverskud, skruer lidt op og ned for varmen og stopper salg af solstrøm, når prisen er for lav. Du ser det hele – og hvad du har sparet – på ét kort.
 
@@ -361,7 +361,7 @@ Har ladeboksens integration en **number**-entitet for ladestrøm (fx Zaptec "Ava
 - **Tidsrum:** batteri, varmt vand og varme har hvert sit fra–til (0–24 = hele døgnet, 22–06 går over midnat).
 - **Stop eksport under:** når salgsprisen er under grænsen, stoppes eksporten (standard 0 kr = kun ved negativ pris).
 - **Varme i hele timer:** ekstra varme og sparetimer vælges som hele klokketimer i højst to sammenhængende perioder pr. døgn, hver mindst 2 timer – så varmepumpens setpunkt ikke skifter hvert kvarter.
-- **Forvarmning:** halvdelen af timerne med ekstra varme (mindst 2) lægges i de billigste timer inden for 5 timer før dagens dyreste spareperiode, så huset er varmt, når prisen topper. Resten lægges i døgnets billigste timer (typisk om natten). Er timerne før ikke mindst 0,30 kr/kWh billigere end sparetimerne, bruges blot de billigste timer.
+- **Forvarmning:** ekstra varme lægges i de billigste timer inden for 5 timer før de dyre spareperioder, så huset er varmt, når prisen topper. Har dagen to dyre toppe (fx morgen og aften), spares der i begge, og der forvarmes før dem begge. Med én top lægges halvdelen af timerne (mindst 2) før den og resten i døgnets billigste timer. Forvarmning sker kun, når timerne før er mindst 0,30 kr/kWh billigere end sparetimerne.
 - **Varmestyring:** kun aktiv under **Aktiv under udetemperatur** (standard 10 °C, start igen 1 °C under). Sæt 30 °C for altid aktiv.
 - **Varmt vand via knap** (fx varmepumpens "Charge"): SmartHus trykker én gang, når den billige periode (eller solcelleoverskuddet) starter, og varmepumpen stopper selv, når vandet er varmt.
 - **Varmt vand med føler:** slukker ved maks. temperatur og tænder igen i den billige periode, når vandet er kølet 3 °C af.

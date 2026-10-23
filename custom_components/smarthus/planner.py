@@ -75,7 +75,7 @@ PREHEAT_DISTANCE = 0.03   # kr/kWh pr. time før den dyre periode (varmen siver 
 
 def heating_blocks(slots: list[Slot], hours: float, tz: tzinfo, *, most_expensive: bool = False,
                    exclude: list[Slot] | None = None, max_blocks: int = HEAT_MAX_BLOCKS,
-                   bias: dict | None = None) -> list[Slot]:
+                   bias: dict | None = None, split_margin: float = 0.05) -> list[Slot]:
     """Vælg hele, sammenhængende timer til varmen – højst to perioder pr. døgn, hver mindst 2 timer.
 
     En varmepumpe skal ikke skifte setpunkt hvert kvarter. Derfor regnes der i hele klokketimer
@@ -125,7 +125,7 @@ def heating_blocks(slots: list[Slot], hours: float, tz: tzinfo, *, most_expensiv
                     if runs_ok(j, b):
                         v = va + block(j, b)
                         # En opdeling skal være tydeligt bedre end én samlet blok
-                        if best is None or v < best[0] - 0.05 * n:
+                        if best is None or v < best[0] - split_margin * n:
                             best = (v, [(i, a), (j, b)])
     if best is None:
         return []
@@ -302,41 +302,70 @@ class Plan:
         return self._first().cost_planned
 
 
-def heating_with_preheat(slots: list[Slot], hours: float, tz: tzinfo, reduce: list[Slot]) -> list[Slot]:
-    """Ekstra varme: en del lige op til den dyreste spareperiode (forvarmning), resten i de billigste timer.
+def _blocks_of(slots: list[Slot]) -> list[list[Slot]]:
+    out: list[list[Slot]] = []
+    for s in sorted(slots, key=lambda x: x.start):
+        if out and s.start == out[-1][-1].end:
+            out[-1].append(s)
+        else:
+            out.append([s])
+    return out
 
-    Varme gemt i huset holder kun nogle timer. Derfor lægges op til halvdelen af timerne (mindst 2)
-    i de billigste timer inden for 5 timer før den dyre periode – tæt på perioden foretrækkes. Det
-    sker kun, når de timer er tydeligt billigere end sparetimerne; ellers bruges de billigste timer.
+
+def _avg(slots: list[Slot]) -> float:
+    return sum(x.price for x in slots) / len(slots)
+
+
+def _hours_of(slots: list[Slot]) -> int:
+    return round(sum((x.end - x.start).total_seconds() for x in slots) / 3600)
+
+
+def _preheat(slots: list[Slot], n: int, tz: tzinfo, peak: list[Slot], taken: list[Slot]) -> list[Slot]:
+    """De billigste n hele timer inden for 5 timer før en dyr periode – tæt på perioden foretrækkes."""
+    start = peak[0].start
+    skip = {x.start for x in taken}
+    cand = [s for s in slots if start - timedelta(hours=PREHEAT_WINDOW_H) <= s.start < start and s.start not in skip]
+    bias = {}
+    for s in cand:
+        h = s.start.astimezone(tz).replace(minute=0, second=0, microsecond=0)
+        bias[h] = (start - h).total_seconds() / 3600 * PREHEAT_DISTANCE
+    pre = heating_blocks(cand, n, tz, max_blocks=1, bias=bias)
+    # Kun hvis det er tydeligt billigere end den dyre periode
+    return pre if pre and _avg(pre) <= _avg(peak) - PREHEAT_MIN_SPREAD else []
+
+
+def heating_with_preheat(slots: list[Slot], hours: float, tz: tzinfo, reduce: list[Slot]) -> list[Slot]:
+    """Ekstra varme lige op til de dyre spareperioder (forvarmning), resten i de billigste timer.
+
+    Varme gemt i huset holder kun nogle timer. Har dagen to dyre perioder (fx morgen og aften),
+    forvarmes der før dem begge, og timerne deles mellem dem. Med én dyr periode lægges op til
+    halvdelen af timerne (mindst 2) før den, og resten i døgnets billigste timer. Forvarmning sker
+    kun, når timerne før er tydeligt billigere end sparetimerne.
     """
     n = int(round(hours))
     if n <= 0:
         return []
+    peaks = sorted(_blocks_of(reduce), key=_avg, reverse=True)[:HEAT_MAX_BLOCKS]
     pre: list[Slot] = []
-    if reduce:
-        # Den dyreste sammenhængende spareperiode
-        blocks: list[list[Slot]] = []
-        for s in sorted(reduce, key=lambda x: x.start):
-            if blocks and s.start == blocks[-1][-1].end:
-                blocks[-1].append(s)
-            else:
-                blocks.append([s])
-        main = max(blocks, key=lambda b: sum(x.price for x in b) / len(b))
-        start = main[0].start
-        cand = [s for s in slots if start - timedelta(hours=PREHEAT_WINDOW_H) <= s.start < start and s not in reduce]
-        n_pre = min(n, max(HEAT_MIN_BLOCK_H, n // 2))
-        bias = {}
-        for s in cand:
-            h = s.start.astimezone(tz).replace(minute=0, second=0, microsecond=0)
-            bias[h] = (start - h).total_seconds() / 3600 * PREHEAT_DISTANCE
-        pre = heating_blocks(cand, n_pre, tz, max_blocks=1, bias=bias)
-        main_avg = sum(x.price for x in main) / len(main)
-        if pre and sum(x.price for x in pre) / len(pre) > main_avg - PREHEAT_MIN_SPREAD:
-            pre = []
-    rest_h = n
-    if pre:
-        rest_h = n - round(sum((x.end - x.start).total_seconds() for x in pre) / 3600)
-    rest = heating_blocks(slots, rest_h, tz, exclude=pre + reduce, max_blocks=1 if pre else HEAT_MAX_BLOCKS) if rest_h > 0 else []
+    pre_blocks = 0
+    if len(peaks) >= 2 and n >= 2 * HEAT_MIN_BLOCK_H:
+        # To dyre perioder: del timerne mellem forvarmningerne (den dyreste får evt. den ekstra time)
+        first = (n + 1) // 2
+        for peak, k in ((peaks[0], first), (peaks[1], n - first)):
+            got = _preheat(slots, k, tz, peak, reduce + pre)
+            if got:
+                pre += got
+                pre_blocks += 1
+    elif peaks:
+        got = _preheat(slots, min(n, max(HEAT_MIN_BLOCK_H, n // 2)), tz, peaks[0], reduce)
+        if got:
+            pre, pre_blocks = got, 1
+    rest_h = n - (_hours_of(pre) if pre else 0)
+    rest: list[Slot] = []
+    if rest_h > 0:
+        left = HEAT_MAX_BLOCKS - pre_blocks
+        if left > 0:
+            rest = heating_blocks(slots, rest_h, tz, exclude=pre + reduce, max_blocks=left)
     return sorted(pre + rest, key=lambda s: s.start)
 
 
@@ -389,8 +418,9 @@ def build_plan(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
         plan.hotwater_slots += cheapest(win("hotwater"), settings["hotwater_hours"], contiguous=True)
         # Varme: sænk i dyreste timer, hæv i billigste – og forvarm huset op til den dyre periode.
         # Altid hele, sammenhængende timer, så varmepumpens setpunkt ikke svinger.
+        # Sparetimer: gerne to perioder, når dagen har to dyre toppe (fx morgen og aften)
         reduce = heating_blocks(win("heating_reduce"), settings["heating_reduce_hours"], tz,
-                                most_expensive=True) if settings["heating_reduce_degrees"] > 0 else []
+                                most_expensive=True, split_margin=0.0) if settings["heating_reduce_degrees"] > 0 else []
         boost = heating_with_preheat(win("heating_boost"), settings["heating_boost_hours"], tz, reduce)
         plan.heating_reduce += reduce
         plan.heating_boost += boost

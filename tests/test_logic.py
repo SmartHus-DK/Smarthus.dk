@@ -850,3 +850,20 @@ def test_hotwater_cooling_rate_and_demand():
     # Allerede under den laveste temperatur: varm nu
     demand, _ = hotwater.plan_demand(slots, now, 41.5, 0.5, 45.0, 42.0, 1.0, [])
     assert demand and demand[0].start <= now < demand[-1].end
+
+
+def test_heating_two_peaks_preheat_before_both():
+    # Dyr morgen og dyr aften, billig middag og sen aften (som 23/10 2026)
+    prices = [1.85, 1.75, 1.72, 1.72, 1.68, 1.72, 2.03, 2.25, 2.38, 2.13, 1.83, 1.66,
+              1.48, 1.45, 1.48, 1.52, 1.58, 2.13, 2.13, 2.12, 1.75, 1.15, 1.22, 1.1]
+    d0 = datetime(2026, 10, 23, tzinfo=TZ)
+    slots = [planner.Slot(d0 + timedelta(minutes=15 * i), d0 + timedelta(minutes=15 * (i + 1)), p * 0.4, p, p * 0.3)
+             for i, p in enumerate(x for x in prices for _ in range(4))]
+    s = dict(const.DEFAULT_SETTINGS)
+    s.update({"heating_boost_hours": 6, "heating_reduce_hours": 4, "heating_reduce_degrees": 1})
+    p = planner.build_plan(slots, slots[0].start, TZ, s)
+    blocks = lambda xs: [(a.astimezone(TZ).hour, h) for a, h in _blocks(xs)]  # noqa: E731
+    assert blocks(p.heating_reduce) == [(7, 2.0), (17, 2.0)]      # begge toppe
+    boost = blocks(p.heating_boost)
+    assert len(boost) == 2 and sum(h for _, h in boost) == 6
+    assert any(2 <= a and a + h <= 7 for a, h in boost) and any(12 <= a and a + h <= 17 for a, h in boost), boost
