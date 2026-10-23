@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.32.0";
+const SMARTHUS_CARD_VERSION = "1.32.1";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -1359,7 +1359,7 @@ class SmartHusCard extends HTMLElement {
         ${bat != null ? `
         <div class="res-bar">${seg(floor, COLORS.mid)}${seg(have, COLORS.battery_charge)}${seg(missing, COLORS.battery_charge, "miss")}${seg(sell, COLORS.battery_discharge)}</div>
         <div class="res-leg">${leg(COLORS.mid, "Laveste niveau")}${leg(COLORS.battery_charge, "Reserve")}${missing > 0.05 ? leg(COLORS.battery_charge, "Mangler", "miss") : ""}${leg(COLORS.battery_discharge, `Kan sælges${sell > 0.05 ? "" : " (0 kWh)"}`)}</div>
-        <div class="cmp-result">${result}</div>${solarLine}` :
+        <div class="cmp-result">${result}</div>${solarLine}${this._cycleBox(a, sale, charge)}` :
         `<div class="cmp-sub" style="margin-left:0">Vælg en sensor for batteriniveau for at se, hvor meget der må sælges.</div>`}
         <div class="prof-title">Husets forbrug pr. time (lært af ${nf(a.learned_days, 0)} dage)</div>
         <div class="prof">${bars}</div>
@@ -1394,6 +1394,55 @@ class SmartHusCard extends HTMLElement {
       </div>`;
   }
 
+  /**
+   * Skøn over næste køb/salg-cyklus: hvad der lades (og hvad det koster), hvad der kan sælges ud
+   * over reserven i næste dyre periode, og hvad det forventes at give – solgt til nettet eller brugt i huset.
+   */
+  _cycleBox(a, sale, charge) {
+    if (!sale) return "";
+    const cap = this._num("number", "battery_capacity");
+    const maxSoc = this._num("number", "battery_max_soc") ?? 95;
+    const bat = a.battery_kwh, floor = a.min_level_kwh || 0, need = a.reserve_kwh || 0;
+    if (bat == null || !cap) return "";
+    const RT = 0.9;
+    const full = cap * maxSoc / 100;
+    const gc = a.grid_charge;
+    const chargeFirst = charge && charge.start < sale.start;
+    let chargeKwh = 0, costPer;
+    if (chargeFirst) {
+      const target = gc && !gc.sell_solar_better && gc.target_kwh != null ? Math.min(gc.target_kwh, full) : full;
+      chargeKwh = Math.max(target - bat, 0);
+      const own = this._st("sensor", "battery_trade_today")?.attributes?.avg_cost_in_battery;
+      // Blandet pris: det der allerede er i batteriet + det der lades
+      const ownCost = own ?? charge.avgBuy;
+      costPer = (bat * ownCost + chargeKwh * charge.avgBuy) / Math.max(bat + chargeKwh, 0.01) / RT;
+    } else {
+      const own = this._st("sensor", "battery_trade_today")?.attributes?.avg_cost_in_battery;
+      costPer = (own ?? (charge ? charge.avgBuy : sale.avgBuy * 0.6)) / RT;
+    }
+    const atSale = chargeFirst ? bat + chargeKwh : bat;
+    const sellKwh = Math.max(atSale - floor - need, 0);
+    const income = sellKwh * sale.avgSale;
+    const houseValue = sellKwh * sale.avgBuy;
+    const cost = sellKwh * costPer;
+    const profit = income - cost;
+    const row = (l, v, cls = "") => `<div class="tr-row ${cls}"><span>${l}</span><b>${v}</b></div>`;
+    const sign = (v) => `${v >= 0 ? "+" : "−"}${nf(Math.abs(v))} kr`;
+    let body;
+    if (sellKwh < 0.05) {
+      body = `<div class="cmp-sub" style="margin-left:0">Intet at sælge ${esc(sale.when)} – ${chargeFirst ? `heller ikke efter opladningen ${esc(charge.when)}, ` : ""}strømmen skal bruges i huset.</div>`;
+    } else {
+      body = `${chargeFirst && chargeKwh > 0.05 ? row(`Lader ${nf(chargeKwh, 1)} kWh ${esc(charge.when)} à ca. ${nf(charge.avgBuy)} kr`, `−${nf(chargeKwh * charge.avgBuy)} kr`, "neg") : ""}
+        ${row(`Sælger ${nf(sellKwh, 1)} kWh ${esc(sale.when)} à ca. ${nf(sale.avgSale)} kr`, `+${nf(income)} kr`)}
+        ${row(`Strømmen koster ca. ${nf(costPer)} kr/kWh (inkl. ca. 10 % tab)`, `−${nf(cost)} kr`, "neg")}
+        ${row("Forventet gevinst ved salg", sign(profit), `sum ${profit >= 0 ? "pos" : "neg"}`)}
+        <div class="cmp-sub" style="margin-left:0">${profit < 0 && houseValue > cost
+          ? `Det betaler sig ikke at sælge til nettet til ${nf(sale.avgSale)} kr/kWh. Bruges strømmen i huset i stedet, sparer den ca. ${nf(houseValue - cost)} kr (købspris ${nf(sale.avgBuy)} kr/kWh).`
+          : `Bruges strømmen i huset i stedet, er den ca. ${nf(houseValue)} kr værd (købspris ${nf(sale.avgBuy)} kr/kWh).`}</div>`;
+    }
+    return `<div class="cycle"><div class="cycle-title">Næste køb og salg <span>skøn</span></div>${body}</div>`;
+  }
+
   /** Kommende perioder for en plan (fx afladning) med gennemsnitlig salgs- og købspris. */
   _salePeriod(key) {
     const all = (this._st("binary_sensor", key)?.attributes?.slots || []).map((t) => new Date(t).getTime())
@@ -1409,7 +1458,7 @@ class SmartHusCard extends HTMLElement {
     const avg = (f) => hits.reduce((x, p) => x + (p[f] ?? 0), 0) / hits.length;
     const first = upcoming(slots.map((t) => new Date(t).toISOString()))[0];
     const when = first ? (first.active ? `nu–${first.text.split("–")[1]}` : first.text) : "";
-    return { when, avgSale: avg("sale"), avgBuy: avg("price") };
+    return { when, start: slots[0], hours: slots.length / 4, avgSale: avg("sale"), avgBuy: avg("price") };
   }
 
   _evCompare(cid) {
@@ -1810,6 +1859,9 @@ class SmartHusCard extends HTMLElement {
                  background: color-mix(in srgb, var(--primary-text-color) 6%, transparent); }
       .res-bar i { display: block; height: 100%; }
       .res-bar i.miss, .res-leg i.miss { background: repeating-linear-gradient(135deg, var(--c) 0 3px, transparent 3px 6px) !important; opacity: .7; }
+      .cycle { margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: color-mix(in srgb, ${COLORS.battery_discharge} 9%, transparent); }
+      .cycle-title { font-size: 12.5px; font-weight: 700; margin-bottom: 4px; }
+      .cycle-title span { font-weight: 500; color: var(--secondary-text-color); margin-left: 4px; }
       .tr-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
       .tr-head .tabs { margin-top: 0; }
       .tr-row { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; font-size: 13px; }
