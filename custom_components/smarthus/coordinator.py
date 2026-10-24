@@ -34,9 +34,12 @@ from .const import (
     SOURCE_STROMLIGNING,
 )
 from .planner import Slot
-from .pricing import PriceModel, apply_external_prices, apply_external_spot, has_vat, parse_price_list, vat_factor
+from .pricing import PriceModel, missing_tomorrow, apply_external_prices, apply_external_spot, has_vat, parse_price_list, vat_factor
 
 _LOGGER = logging.getLogger(__name__)
+
+NORMAL_INTERVAL = timedelta(minutes=30)
+WAIT_INTERVAL = timedelta(minutes=5)     # mens vi venter på morgendagens priser
 
 
 class SmartHusPriceCoordinator(DataUpdateCoordinator[list[Slot]]):
@@ -47,7 +50,7 @@ class SmartHusPriceCoordinator(DataUpdateCoordinator[list[Slot]]):
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(minutes=30),
+            update_interval=NORMAL_INTERVAL,
             config_entry=entry,
         )
         self.config = config
@@ -95,6 +98,8 @@ class SmartHusPriceCoordinator(DataUpdateCoordinator[list[Slot]]):
         """Strømligning har opdateret – genberegn uden at hente spotpriser igen."""
         if self._raw:
             self.async_set_updated_data(self._with_external(self._raw))
+            if missing_tomorrow(self._raw, dt_util.now()):
+                self.hass.async_create_task(self.async_request_refresh())   # måske er de kommet nu
 
     async def _async_update_data(self) -> list[Slot]:
         today = dt_util.now().date()
@@ -125,4 +130,6 @@ class SmartHusPriceCoordinator(DataUpdateCoordinator[list[Slot]]):
             if self.data:
                 return self.data
             raise UpdateFailed("Energi Data Service returnerede ingen priser")
+        # Kig efter morgendagens priser hvert 5. minut, til de er kommet – ellers hver halve time
+        self.update_interval = WAIT_INTERVAL if missing_tomorrow(slots, dt_util.now()) else NORMAL_INTERVAL
         return slots

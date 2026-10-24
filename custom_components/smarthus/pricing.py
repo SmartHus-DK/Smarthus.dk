@@ -45,6 +45,17 @@ def parse_price_list(raw: list | None) -> list[tuple[datetime, float]]:
     return out
 
 
+TOMORROW_FROM_HOUR = 12.5   # priserne for i morgen kommer normalt ca. kl. 13
+
+
+def missing_tomorrow(slots: list[Slot], now_local: datetime) -> bool:
+    """Er det efter ca. kl. 12.30, og mangler vi stadig priser for i morgen?"""
+    if now_local.hour + now_local.minute / 60 < TOMORROW_FROM_HOUR:
+        return False
+    tomorrow = (now_local + timedelta(days=1)).date()
+    return not any(s.start.astimezone(now_local.tzinfo).date() == tomorrow for s in slots)
+
+
 def apply_external_prices(slots: list[Slot], prices: list[tuple[datetime, float]]) -> tuple[list[Slot], int]:
     """Erstat købsprisen i hvert tidsrum med den eksterne pris, der gælder på tidspunktet.
 

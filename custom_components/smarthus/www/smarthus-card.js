@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.33.1";
+const SMARTHUS_CARD_VERSION = "1.33.2";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -291,17 +291,17 @@ class SmartHusCard extends HTMLElement {
     if (!s) return [];
     const all = [...(s.attributes.today || []), ...(s.attributes.tomorrow || [])];
     const map = new Map();
+    const avg = (v) => (v.length ? v.reduce((x, y) => x + y, 0) / v.length : null);
     for (const p of all) {
-      const t = new Date(p.start);
-      const h = new Date(t);
-      h.setMinutes(0, 0, 0);
-      const k = h.getTime();
-      if (!map.has(k)) map.set(k, { start: h, prices: [] });
+      // Hel time i UTC – så de to timer 02–03, når vi skifter til vintertid, ikke lægges sammen
+      const k = Math.floor(new Date(p.start).getTime() / 3600e3) * 3600e3;
+      if (!map.has(k)) map.set(k, { start: new Date(k), prices: [], sales: [] });
       map.get(k).prices.push(p.price);
+      if (typeof p.sale === "number") map.get(k).sales.push(p.sale);
     }
     return [...map.values()]
       .sort((a, b) => a.start - b.start)
-      .map((h) => ({ start: h.start, price: h.prices.reduce((x, y) => x + y, 0) / h.prices.length }));
+      .map((h) => ({ start: h.start, price: avg(h.prices), sale: avg(h.sales) }));
   }
 
   // --- Render -----------------------------------------------------------
@@ -641,8 +641,9 @@ class SmartHusCard extends HTMLElement {
     const W = n * 10;
     const H = 100;
     const prices = hours.map((h) => h.price);
+    const sales = hours.map((h) => h.sale).filter((v) => v !== null);
     // Y-akse med hele kroner (0,5 kr når priserne er lave, 2 kr når de er meget høje)
-    const rawMax = Math.max(...prices, 0.01), rawMin = Math.min(...prices, 0);
+    const rawMax = Math.max(...prices, ...sales, 0.01), rawMin = Math.min(...prices, ...sales, 0);
     const span = rawMax - rawMin;
     const step = span <= 1.5 ? 0.5 : span > 8 ? 2 : 1;
     const max = Math.ceil(rawMax / step - 1e-9) * step;
@@ -673,6 +674,19 @@ class SmartHusCard extends HTMLElement {
     for (let v = min; v <= max + 1e-9; v += step) yTicks.push(Math.round(v * 100) / 100);
     const grid = yTicks.map((v) => `<line x1="0" x2="${W}" y1="${y0 - v * scale}" y2="${y0 - v * scale}" class="${v === 0 ? "zeroline" : "gridline"}"></line>`).join("");
     const yAxis = yTicks.map((v, i) => `<span style="top:${(16 + ((y0 - v * scale) / H) * 110).toFixed(1)}px">${nf(v, step < 1 ? 1 : 0)}${i === yTicks.length - 1 ? " kr" : ""}</span>`).join("");
+
+    // Salgsprisen som trappekurve oven på søjlerne
+    let salePath = "";
+    if (sales.length) {
+      let pen = false;
+      hours.forEach((h, i) => {
+        if (h.sale === null) { pen = false; return; }
+        const y = (y0 - h.sale * scale).toFixed(2);
+        salePath += `${pen ? "L" : "M"}${i * 10} ${y}L${i * 10 + 10} ${y}`;
+        pen = true;
+      });
+    }
+    const saleSvg = salePath ? `<path d="${salePath}" class="saleline"></path>` : "";
 
     const nowX = xOf(now);
     const midnight = hours.find((h, i) => i > 0 && h.start.getHours() === 0);
@@ -714,7 +728,7 @@ class SmartHusCard extends HTMLElement {
       const h = hours[i];
       const day = h.start.getDate() === new Date().getDate() ? "i dag" : "i morgen";
       const end = new Date(h.start.getTime() + 3600e3);
-      return `${day} kl. ${hh(h.start)}–${hh(end)}: <b>${nf(h.price)} kr/kWh</b>`;
+      return `${day} kl. ${hh(h.start)}–${hh(end)}: <b>${nf(h.price)} kr/kWh</b>${h.sale !== null ? ` · salg <b>${nf(h.sale)} kr</b>` : ""}`;
     })();
 
     const legend = lanes
@@ -734,6 +748,7 @@ class SmartHusCard extends HTMLElement {
             ${grid}
             ${midX !== null ? `<line x1="${midX}" x2="${midX}" y1="0" y2="${H}" class="midline"></line>` : ""}
             ${bars}
+            ${saleSvg}
             ${nowX >= 0 && nowX <= W ? `<line x1="${nowX}" x2="${nowX}" y1="0" y2="${H}" class="nowline"></line>` : ""}
           </svg>
           ${midX !== null ? `<div class="daylbl" style="left:${(midX / W) * 100}%">I morgen</div>` : ""}
@@ -742,6 +757,7 @@ class SmartHusCard extends HTMLElement {
         </div>
         ${lanes.length ? `<svg class="lanes" viewBox="0 0 ${W} ${lanesHeight}" preserveAspectRatio="none" style="height:${lanesHeight}px" aria-hidden="true">${lanesSvg}${nowX >= 0 && nowX <= W ? `<line x1="${nowX}" x2="${nowX}" y1="0" y2="${lanesHeight}" class="nowline"></line>` : ""}</svg>` : ""}
         <div class="ticks">${ticks}</div>
+        ${saleSvg ? `<div class="pricekey"><span><i class="k-buy"></i>Købspris</span><span><i class="k-sale"></i>Salgspris</span></div>` : ""}
         ${legend ? `<div class="legend">${legend}</div>` : ""}
       </div>`;
   }
@@ -1786,6 +1802,12 @@ class SmartHusCard extends HTMLElement {
       .bar.sel { stroke: var(--primary-text-color); stroke-width: 1; vector-effect: non-scaling-stroke; }
       .nowline { stroke: var(--primary-text-color); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
       .midline { stroke: var(--sh-line); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+      .saleline { fill: none; stroke: ${COLORS.solar_sold}; stroke-width: 2; stroke-linejoin: round; vector-effect: non-scaling-stroke; pointer-events: none; }
+      .pricekey { display: flex; gap: 14px; justify-content: flex-end; font-size: 11px; color: var(--secondary-text-color); margin-top: 4px; }
+      .pricekey span { display: inline-flex; align-items: center; gap: 5px; }
+      .pricekey i { display: inline-block; }
+      .pricekey .k-buy { width: 8px; height: 10px; border-radius: 2px; background: linear-gradient(${COLORS.cheap} 0 33%, ${COLORS.mid} 0 66%, ${COLORS.expensive} 0); }
+      .pricekey .k-sale { width: 14px; height: 2px; background: ${COLORS.solar_sold}; border-radius: 1px; }
       .daylbl { position: absolute; top: 0; font-size: 11px; color: var(--secondary-text-color); padding-left: 4px; }
       .daylbl.first { left: 0; padding-left: 0; }
       .lanes { display: block; width: 100%; margin-top: 6px; }

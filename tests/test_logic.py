@@ -913,3 +913,23 @@ def test_ev_charges_in_blocks_of_at_least_one_hour():
     now = datetime(2026, 10, 23, 22, 0, tzinfo=TZ)
     ep = planner.build_plan(slots, now, TZ, s, cars=[planner.CarInput("ev", "Bil", soc=None)]).evs["ev"]
     assert ep.slots and all(h >= 1 for _, h in _blocks(ep.slots))
+
+
+def test_missing_tomorrow_prices_on_dst_day():
+    """Efter kl. 12.30 kigges der efter morgendagens priser – også den dag vi skifter til vintertid (25 timer)."""
+    model = pricing.PriceModel(dict(const.DEFAULT_PRICES), TZ)
+    day0 = datetime(2026, 10, 24, tzinfo=TZ)                     # i morgen (25/10) har 25 timer
+    start_utc = day0.astimezone(timezone.utc)
+    recs = [{"TimeUTC": (start_utc + timedelta(minutes=15 * i)).strftime("%Y-%m-%dT%H:%M:%S"),
+             "DayAheadPriceDKK": 500.0} for i in range(96)]
+    slots = model.build_slots(recs)
+    assert not pricing.missing_tomorrow(slots, datetime(2026, 10, 24, 11, 0, tzinfo=TZ))   # for tidligt
+    assert pricing.missing_tomorrow(slots, datetime(2026, 10, 24, 14, 11, tzinfo=TZ))
+    # Morgendagen: 25 timer = 100 kvarterer, fra lokal midnat
+    t_utc = datetime(2026, 10, 25, tzinfo=TZ).astimezone(timezone.utc)
+    recs += [{"TimeUTC": (t_utc + timedelta(minutes=15 * i)).strftime("%Y-%m-%dT%H:%M:%S"),
+              "DayAheadPriceDKK": 400.0} for i in range(100)]
+    slots = model.build_slots(recs)
+    assert not pricing.missing_tomorrow(slots, datetime(2026, 10, 24, 14, 11, tzinfo=TZ))
+    days = planner.local_days(slots, TZ)
+    assert len(days["2026-10-25"]) == 100
