@@ -130,6 +130,9 @@ from .weather import forecast_sensor_ids, merge_wh, pick_weather_entity, summari
 _LOGGER = logging.getLogger(__name__)
 
 EV_CHANGE_GRACE_SEC = 90   # sekunder uden opstart efter man har ændret elbilens tidspunkt/mål
+RESTORE_DELAY_SEC = 10     # slås styringen til igen inden for 10 s, sendes der intet til enhederne
+EV_STRAY_KW = 0.5          # laderen trækker strøm, selv om den er slukket i Home Assistant
+EV_STRAY_TICKS = 4         # … i 4 × 30 s → send sluk igen
 
 
 def _num(val) -> float | None:
@@ -233,6 +236,8 @@ class SmartHusController:
         # Når man ændrer elbilens tidspunkt/mål, ventes der lidt, før laderen startes – så man
         # kan nå at vælge "klar kl.", før en halvfærdig indstilling starter opladningen
         self._ev_hold: dict[str, float] = {}
+        self._restore_pending: dict[str, object] = {}   # udskudt "normal drift", når styring slås fra
+        self._ev_stray: dict[str, int] = {}              # tællere: lader slukket, men lader stadig
         self._unsub = None
         self._unsub_prices = None
         self.expected_unique_ids: set[str] = set()
@@ -732,6 +737,8 @@ class SmartHusController:
         if getattr(self, "_unsub_sl", None):
             self._unsub_sl()
             self._unsub_sl = None
+        for m in list(self._restore_pending):
+            self._cancel_restore(m)
         await self._store.async_save(self.savings.data)
 
     @callback
@@ -952,6 +959,10 @@ class SmartHusController:
         return out
 
     # --- Styring -----------------------------------------------------------
+    def _recently_sent(self, entity_id: str) -> bool:
+        last = self._last_cmd.get(entity_id)
+        return last is not None and time.monotonic() - last < MIN_COMMAND_INTERVAL
+
     def _rate_ok(self, entity_id: str) -> bool:
         last = self._last_cmd.get(entity_id)
         # Første kommando til en enhed sendes altid (også lige efter genstart)
@@ -965,6 +976,24 @@ class SmartHusController:
         except Exception as err:  # noqa: BLE001 – enhedsfejl må ikke stoppe styringen
             _LOGGER.warning("SmartHus kunne ikke styre %s (%s.%s): %s", entity_id, domain, service, err)
 
+    async def _ev_verify_off(self, car: dict, on: bool) -> None:
+        """Laderen er slukket i Home Assistant, men bilen lader stadig: sluk-kommandoen er ikke
+        nået frem (fx Easee-skyen). Send den igen efter 2 minutter."""
+        cid, entity_id = car["id"], car["charger"]
+        st = self.hass.states.get(entity_id)
+        kw = self._power_kw(car.get("power")) if car.get("power") else None
+        if on or kw is None or kw < EV_STRAY_KW or st is None or st.state == STATE_ON:
+            self._ev_stray[cid] = 0
+            return
+        self._ev_stray[cid] = self._ev_stray.get(cid, 0) + 1
+        if self._ev_stray[cid] >= EV_STRAY_TICKS and self._rate_ok(entity_id):
+            self._ev_stray[cid] = 0
+            _LOGGER.warning("SmartHus: %s er slukket, men der lades stadig med %.1f kW – sender sluk igen",
+                            entity_id, kw)
+            domain = entity_id.split(".")[0]
+            await self._call(domain if domain in ("switch", "input_boolean") else "homeassistant",
+                             "turn_off", {"entity_id": entity_id})
+
     def _is_on(self, entity_id: str) -> bool:
         st = self.hass.states.get(entity_id)
         return st is not None and st.state == STATE_ON
@@ -973,8 +1002,8 @@ class SmartHusController:
         st = self.hass.states.get(entity_id)
         if st is None or st.state == STATE_UNAVAILABLE:
             return
-        if (st.state == STATE_ON) == on:
-            return
+        if (st.state == STATE_ON) == on and not (force and self._recently_sent(entity_id)):
+            return       # (lige efter en kommando kan tilstanden være forældet – så sendes den alligevel)
         if not force and not self._rate_ok(entity_id):
             return
         domain = entity_id.split(".")[0]
@@ -1166,6 +1195,7 @@ class SmartHusController:
                 await self._ensure_switch(car["charger"], on, force)
                 if on and current is not None:
                     await self._apply_current(car, current, force)
+                await self._ev_verify_off(car, on)
 
     async def _apply_hotwater_step(self, p, force: bool) -> None:
         if self.active(MODULE_HOTWATER) and self.has(CONF_HOTWATER_ENTITY):
@@ -1728,16 +1758,33 @@ class SmartHusController:
     async def async_set_enabled(self, module: str, on: bool) -> None:
         was = self.active(module) if module != MODULE_MASTER else self.enabled[MODULE_MASTER]
         self.enabled[module] = on
-        if module == MODULE_MASTER:
-            if was and not on:
-                for m in self.modules:
-                    if self.enabled[m]:
-                        await self.async_restore_normal(m)
-        elif was and not on:
-            await self.async_restore_normal(module)
+        if was and not on:
+            # Normal drift sendes først efter lidt tid: et fejltryk, der rettes med det samme,
+            # må ikke tænde laderen eller vandvarmeren et øjeblik
+            mods = [m for m in self.modules if self.enabled.get(m)] if module == MODULE_MASTER else [module]
+            self._schedule_restore(mods)
+        if on:
+            for m in (list(self._restore_pending) if module == MODULE_MASTER else [module]):
+                self._cancel_restore(m)
         self.recalculate()
         if on:
             await self.async_apply(force=True)
+
+    def _schedule_restore(self, modules: list[str]) -> None:
+        for m in modules:
+            self._cancel_restore(m)
+
+            async def _run(_now, m=m) -> None:
+                self._restore_pending.pop(m, None)
+                if not self.active(m):           # stadig slået fra
+                    await self.async_restore_normal(m)
+
+            self._restore_pending[m] = async_call_later(self.hass, RESTORE_DELAY_SEC, _run)
+
+    def _cancel_restore(self, module: str) -> None:
+        unsub = self._restore_pending.pop(module, None)
+        if callable(unsub):
+            unsub()
 
     async def async_set_setting(self, key: str, value: float) -> None:
         self.settings[key] = value

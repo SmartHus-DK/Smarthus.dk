@@ -60,6 +60,7 @@ def make(config, states):
     c.heating_too_cold, c._heating_off_by_us = False, False
     c.flags = {"hotwater_surplus_smart": True}
     c.ev_solar, c._ev_current_sent = {}, {}
+    c._ev_hold, c._restore_pending, c._ev_stray = {}, {}, {}
     c.tz = ZoneInfo("Europe/Copenhagen")
     c.enabled = {"master": True}
     c.plan = planner.Plan()
@@ -426,6 +427,25 @@ async def main():
     c._ev_hold["ev"] = 0.0
     await c._apply_ev_step(c.plan, False)
     assert h.services.calls[-1] == ("switch", "turn_on", {"entity_id": "switch.lader"})
+    # Lader slukket i Home Assistant, men bilen lader stadig (Easee fik ikke sluk-kommandoen): send igen efter 2 min
+    c, h = make({}, {"switch.lader": State("off"), "sensor.ladeeffekt": State("7.2", unit_of_measurement="kW")})
+    car = {"id": "ev", "name": "Bil", "charger": "switch.lader", "power": "sensor.ladeeffekt"}
+    for _ in range(3):
+        await c._ev_verify_off(car, False)
+    assert h.services.calls == []
+    await c._ev_verify_off(car, False)
+    assert h.services.calls == [("switch", "turn_off", {"entity_id": "switch.lader"})]
+    # Styring slået fra og til igen med det samme: normal drift sendes ikke (ingen kort opstart af laderen)
+    c, h = make({}, {"switch.lader": State("off")})
+    c.cars, c.car_ids, c.shared_chargers = [car], ["ev"], {}
+    c.modules, c.enabled = ["ev"], {"master": True, "ev": True}
+    c.recalculate = lambda: None
+    async def no_apply(force=False): pass
+    c.async_apply = no_apply
+    await c.async_set_enabled("master", False)
+    assert "ev" in c._restore_pending and h.services.calls == []
+    await c.async_set_enabled("master", True)
+    assert c._restore_pending == {} and h.services.calls == []
     print("controller OK")
 
 def test_controller_control():
