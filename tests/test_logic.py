@@ -886,3 +886,30 @@ def test_heating_auto_plan_from_prices():
     # En flad dag: ingen plan
     p = planner.build_plan(mk([1.5] * 24), d0, TZ, s)
     assert not p.heating_reduce and not p.heating_boost
+
+
+def test_ev_charges_in_blocks_of_at_least_one_hour():
+    d0 = datetime(2026, 10, 24, tzinfo=TZ)
+    # Kvarterpriser: billigt 00–03, men enkelte kvarterer lidt dyrere (giver huller med "billigste kvarterer")
+    q = [1.0] * 96
+    for i in range(0, 12):
+        q[i] = 0.50
+    q[2] = q[6] = 0.56          # kl. 00:30 og 01:30 en smule dyrere
+    for i in range(12, 16):
+        q[i] = 0.58
+    slots = [planner.Slot(d0 + timedelta(minutes=15 * i), d0 + timedelta(minutes=15 * (i + 1)), p * 0.4, p, p * 0.3)
+             for i, p in enumerate(q)]
+    loose = planner.cheapest(slots, 2.5)
+    blocks = planner.cheapest_blocks(slots, 2.5)
+    assert len(_blocks(loose)) > 1                                  # huller i den gamle plan
+    assert len(blocks) == 10 and all(h >= 1 for _, h in _blocks(blocks))
+    assert sum(s.price for s in blocks) <= sum(s.price for s in loose) + 0.2   # koster kun lidt mere
+    # Under 1 time: én samlet blok
+    short = planner.cheapest_blocks(slots, 0.5)
+    assert len(_blocks(short)) == 1 and len(short) == 2
+    # Elbilens plan bruger blokkene
+    s = dict(const.DEFAULT_SETTINGS)
+    s.update({"ev_hours": 2.5, "ev_ready_hour": 7})
+    now = datetime(2026, 10, 23, 22, 0, tzinfo=TZ)
+    ep = planner.build_plan(slots, now, TZ, s, cars=[planner.CarInput("ev", "Bil", soc=None)]).evs["ev"]
+    assert ep.slots and all(h >= 1 for _, h in _blocks(ep.slots))

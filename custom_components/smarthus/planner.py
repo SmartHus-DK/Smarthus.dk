@@ -66,6 +66,68 @@ def cheapest(slots: list[Slot], hours: float, *, contiguous: bool = False,
     return ordered[best_i:best_i + n]
 
 
+EV_MIN_BLOCK_H = 1.0   # elbilen lader i sammenhængende blokke på mindst 1 time (ingen korte pauser)
+
+
+def cheapest_blocks(slots: list[Slot], hours: float, min_block_h: float = EV_MIN_BLOCK_H) -> list[Slot]:
+    """De billigste tidsrum svarende til `hours` – men kun i sammenhængende blokke på mindst `min_block_h`.
+
+    Med kvarterpriser vælger en ren "billigste kvarterer" ofte enkelte kvarterer fra, så laderen
+    starter og stopper. Her findes den billigste plan, hvor hver blok er mindst så lang (dynamisk
+    programmering over tid, valgte kvarterer og blokkens længde). Er der ikke plads til det, bruges
+    de billigste kvarterer.
+    """
+    ordered = sorted(slots, key=lambda x: x.start)
+    n = _count(ordered, hours)
+    if n == 0:
+        return []
+    if n >= len(ordered):
+        return list(ordered)
+    res = (ordered[0].end - ordered[0].start).total_seconds() / 3600 or 0.25
+    m = max(1, min(n, int(round(min_block_h / res))))
+    INF = float("inf")
+    # f[k][r] = laveste pris med k valgte og en igangværende blok på r (0 = ingen, m = mindst m)
+    f = [[INF] * (m + 1) for _ in range(n + 1)]
+    f[0][0] = 0.0
+    back: list[dict] = []
+    for i, sl in enumerate(ordered):
+        cont = i > 0 and sl.start == ordered[i - 1].end
+        g = [[INF] * (m + 1) for _ in range(n + 1)]
+        b: dict = {}
+        for k in range(n + 1):
+            for r in range(m + 1):
+                cur = f[k][r]
+                if cur == INF:
+                    continue
+                # Spring over: kun hvis der ikke er en for kort blok i gang
+                if r == 0 or r == m:
+                    if cur < g[k][0]:
+                        g[k][0], b[(k, 0)] = cur, (k, r, False)
+                # Vælg kvarteret
+                if k < n:
+                    if r > 0 and cont:
+                        nr = min(r + 1, m)
+                    elif r == 0 or r == m:
+                        nr = 1           # ny blok (den forrige var lang nok)
+                    else:
+                        continue         # hul midt i en for kort blok
+                    v = cur + sl.price
+                    if v < g[k + 1][nr]:
+                        g[k + 1][nr], b[(k + 1, nr)] = v, (k, r, True)
+        f = g
+        back.append(b)
+    end = min((r for r in (0, m) if f[n][r] < INF), key=lambda r: f[n][r], default=None)
+    if end is None:
+        return cheapest(ordered, hours)
+    chosen, k, r = [], n, end
+    for i in range(len(ordered) - 1, -1, -1):
+        pk, pr, took = back[i][(k, r)]
+        if took:
+            chosen.append(ordered[i])
+        k, r = pk, pr
+    return sorted(chosen, key=lambda x: x.start)
+
+
 HEAT_MIN_BLOCK_H = 2   # en periode med ekstra eller mindre varme varer mindst 2 timer
 HEAT_MAX_BLOCKS = 2    # højst to perioder pr. døgn – så setpunktet ikke svinger op og ned
 PREHEAT_WINDOW_H = 5   # forvarmning ligger i timerne op til den dyre periode
@@ -668,7 +730,7 @@ def ev_plan(slots: list[Slot], now: datetime, tz: tzinfo, hours: float, ready_ho
         covered = bool(window) and max(s.end for s in window) >= ready and min(s.start for s in window) <= start
     if covered:
         pool = [s for s in window if available is None or available(s)]
-        return cheapest(pool, hours)
+        return cheapest_blocks(pool, hours)
     # Sikkerhed: data mangler – lad i de sidste timer før klar-tid
     if ready - local_now <= timedelta(hours=hours + 1):
         res = window[0].hours if window else 0.25
