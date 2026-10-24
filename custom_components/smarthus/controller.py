@@ -129,6 +129,8 @@ from .weather import forecast_sensor_ids, merge_wh, pick_weather_entity, summari
 
 _LOGGER = logging.getLogger(__name__)
 
+EV_CHANGE_GRACE_SEC = 90   # sekunder uden opstart efter man har ændret elbilens tidspunkt/mål
+
 
 def _num(val) -> float | None:
     try:
@@ -228,6 +230,9 @@ class SmartHusController:
         # Solcelleladning pr. elbil
         self.ev_solar: dict[str, EvSolarState] = {}
         self._ev_current_sent: dict[str, int] = {}
+        # Når man ændrer elbilens tidspunkt/mål, ventes der lidt, før laderen startes – så man
+        # kan nå at vælge "klar kl.", før en halvfærdig indstilling starter opladningen
+        self._ev_hold: dict[str, float] = {}
         self._unsub = None
         self._unsub_prices = None
         self.expected_unique_ids: set[str] = set()
@@ -860,7 +865,15 @@ class SmartHusController:
 
     def set_ready_mode(self, cid: str, mode: str, day=None) -> None:
         self.ev_ready_mode[cid] = (mode, day)
+        self.hold_ev(cid)
         self.recalculate()
+
+    def hold_ev(self, cid: str) -> None:
+        """Start ikke laderen de næste sekunder (brugeren er i gang med at ændre indstillinger)."""
+        self._ev_hold[cid] = time.monotonic() + EV_CHANGE_GRACE_SEC
+
+    def ev_on_hold(self, cid: str) -> bool:
+        return self._ev_hold.get(cid, 0.0) > time.monotonic()
 
     def _ready_key(self, cid: str) -> str:
         if self.ready_mode(cid)[0] == "horizon":
@@ -951,6 +964,10 @@ class SmartHusController:
             await self.hass.services.async_call(domain, service, data, blocking=True)
         except Exception as err:  # noqa: BLE001 – enhedsfejl må ikke stoppe styringen
             _LOGGER.warning("SmartHus kunne ikke styre %s (%s.%s): %s", entity_id, domain, service, err)
+
+    def _is_on(self, entity_id: str) -> bool:
+        st = self.hass.states.get(entity_id)
+        return st is not None and st.state == STATE_ON
 
     async def _ensure_switch(self, entity_id: str, on: bool, force: bool = False) -> None:
         st = self.hass.states.get(entity_id)
@@ -1144,6 +1161,8 @@ class SmartHusController:
                 on, current = self._ev_target(car, ep, solar_car, step=not force)
                 if self.ev_solar.get(car["id"]) and self.ev_solar[car["id"]].active:
                     solar_car = car["id"]
+                if on and self.ev_on_hold(car["id"]) and not self._is_on(car["charger"]):
+                    continue        # brugeren er ved at ændre klar-tidspunktet – start ikke endnu
                 await self._ensure_switch(car["charger"], on, force)
                 if on and current is not None:
                     await self._apply_current(car, current, force)
@@ -1722,11 +1741,15 @@ class SmartHusController:
 
     async def async_set_setting(self, key: str, value: float) -> None:
         self.settings[key] = value
+        for cid in self.car_ids:
+            if key in (f"{cid}_ready_hour", f"{cid}_target_soc", f"{cid}_hours"):
+                self.hold_ev(cid)
         self.recalculate()
         if key == S_HEATING_MAX_OUTDOOR:
             await self.async_apply()        # pause/start varmestyringen med det samme
 
     async def async_set_ev_force(self, cid: str, on: bool) -> None:
         self.ev_force[cid] = on
+        self._ev_hold.pop(cid, None)          # "Lad nu" skal starte med det samme
         self.recalculate()
         await self.async_apply(force=True)

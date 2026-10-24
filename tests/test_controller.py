@@ -414,6 +414,18 @@ async def main():
     assert c.has_heating_control and c.has("heating_climate_entity")
     await c._set_heating("reduce", False); await c._set_heating("reduce", False)
     assert [x[2]["entity_id"] for x in h.services.calls] == ["script.ac_off"]
+    # Elbil: efter man har ændret klar-tidspunkt, startes laderen ikke de næste 90 s – "Lad nu" starter altid
+    c, h = make({}, {"switch.lader": State("off")})
+    c.cars, c.car_ids, c.shared_chargers = [{"id": "ev", "name": "Bil", "charger": "switch.lader"}], ["ev"], {}
+    c.enabled = {"master": True, "ev": True}
+    c.ev_force, c._ev_hold = {"ev": False}, {}
+    c.plan.evs = {"ev": planner.EvPlan("ev", on=True, connected=True)}
+    c.hold_ev("ev")
+    await c._apply_ev_step(c.plan, True)
+    assert h.services.calls == [], h.services.calls          # venter – brugeren vælger tidspunkt
+    c._ev_hold["ev"] = 0.0
+    await c._apply_ev_step(c.plan, False)
+    assert h.services.calls[-1] == ("switch", "turn_on", {"entity_id": "switch.lader"})
     print("controller OK")
 
 def test_controller_control():
