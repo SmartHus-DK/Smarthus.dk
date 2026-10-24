@@ -168,6 +168,21 @@ def hour_fields(layout: dict, kwh: dict[str, float], price: float | None, sale: 
     return f
 
 
+def balance_other(d: dict, dev_ids: list[str]) -> dict:
+    """'Andet' = huset minus enhederne for hele perioden (ikke summen af timer).
+
+    Enhedernes målere (fx en ladeboks) opdaterer ofte forsinket, så i én time ser det ud,
+    som om enheden brugte mere end huset (Andet = 0), og i den næste for lidt. Summeres
+    timerne, bliver Andet for stort, og rækkerne giver ikke totalen. Derfor regnes det om her.
+    """
+    if dev_ids and "house" in d:
+        devs = sum(d.get(i) or 0.0 for i in dev_ids)
+        devs_kr = sum(d.get(f"{i}_kr") or 0.0 for i in dev_ids)
+        d["other"] = round(max((d.get("house") or 0.0) - devs, 0.0), 4)
+        d["other_kr"] = round(max((d.get("house_kr") or 0.0) - devs_kr, 0.0), 4)
+    return d
+
+
 def _add(dst: dict, src: dict) -> None:
     for k, v in src.items():
         dst[k] = dst.get(k, 0.0) + v
@@ -247,13 +262,17 @@ class EnergyBook:
             "total": [{"p": y, **_rnd(v)} for y, v in sorted(years.items())],
             "months": [{"p": k, **v} for k, v in sorted(months.items())],  # alle måneder – til et valgt år
         }
-        return {
-            "periods": {
-                "today": total([days.get(today.isoformat(), {})]),
-                "week": total(days.get(d, {}) for d in week_days),
-                "month": total([months.get(ym, {})]),
-                "year": total(v for k, v in months.items() if k.startswith(f"{today.year}-")),
-                "total": total(months.values()),
-            },
-            "series": series,
+        periods = {
+            "today": total([days.get(today.isoformat(), {})]),
+            "week": total(days.get(d, {}) for d in week_days),
+            "month": total([months.get(ym, {})]),
+            "year": total(v for k, v in months.items() if k.startswith(f"{today.year}-")),
+            "total": total(months.values()),
         }
+        dev_ids = [d["id"] for d in (self.data.get("layout") or {}).get("devices") or []]
+        for v in periods.values():
+            balance_other(v, dev_ids)
+        for rows in series.values():
+            for r in rows:
+                balance_other(r, dev_ids)
+        return {"periods": periods, "series": series}

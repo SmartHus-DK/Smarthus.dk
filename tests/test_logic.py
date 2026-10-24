@@ -933,3 +933,19 @@ def test_missing_tomorrow_prices_on_dst_day():
     assert not pricing.missing_tomorrow(slots, datetime(2026, 10, 24, 14, 11, tzinfo=TZ))
     days = planner.local_days(slots, TZ)
     assert len(days["2026-10-25"]) == 100
+
+
+def test_energy_other_balances_over_the_period():
+    """Ladeboksens måler kommer en time for sent: rækkerne skal stadig give totalen (Andet regnes for hele perioden)."""
+    lay = {"import": ["i"], "devices": [{"id": "d1", "name": "Easee", "stat": "ev"}]}
+    now = datetime(2026, 10, 24, 17, 0, tzinfo=TZ)
+    rows = [  # kl. 1: huset 10, laderen 0 · kl. 2: huset 2, laderen 10 (forsinket måling)
+        {"start": datetime(2026, 10, 24, 1, tzinfo=TZ), "kwh": {"i": 10, "ev": 0}, "price": 1.0, "sale": 0.5},
+        {"start": datetime(2026, 10, 24, 2, tzinfo=TZ), "kwh": {"i": 2, "ev": 10}, "price": 1.0, "sale": 0.5},
+    ]
+    book = energy.EnergyBook()
+    book.apply(lay, rows, datetime(2026, 10, 1, tzinfo=TZ), True, now)
+    d = book.overview(now)["periods"]["today"]
+    assert d["house"] == 12 and d["d1"] == 10
+    assert d["other"] == 2 and d["other_kr"] == 2            # ikke 10 (summen af timer, hvor Andet aldrig er negativ)
+    assert d["d1"] + d["other"] == d["house"] and d["d1_kr"] + d["other_kr"] == d["house_kr"]
