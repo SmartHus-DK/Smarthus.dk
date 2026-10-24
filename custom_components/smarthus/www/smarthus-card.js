@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.33.2";
+const SMARTHUS_CARD_VERSION = "1.33.3";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -984,16 +984,14 @@ class SmartHusCard extends HTMLElement {
     }
     if (m.id === "solar") extra = `<div class="hint">Eksporten stoppes, når salgsprisen er under grænsen, og starter selv igen, når prisen kommer over. 0 kr betyder, at der kun stoppes ved negativ pris.</div>`;
     const evHasSoc = m.car && this._st("sensor", `${m.id}_smart_saving`)?.attributes?.soc != null;
-    const hide = (k) =>
-      (m.car && evHasSoc && k === `${m.id}_hours`) ||
-      (m.car && !evHasSoc && [`${m.id}_target_soc`, `${m.id}_battery_capacity`].includes(k));
+    const hide = (k) => this._unusedSetting(m, k, evHasSoc);
     const groups = m.groups
       .map((g) => {
         const rows = g.items
           .map((it) => {
-            if (it && it.sw) return this._st("switch", it.sw) ? this._switchRow(it) : "";
+            if (it && it.sw) return this._st("switch", it.sw) && !hide(it.sw) ? this._switchRow(it) : "";
             if (it && it.day) return this._readyDayRow(it.day);
-            if (Array.isArray(it)) return this._st("number", it[0]) && this._st("number", it[1]) ? this._window(it[0], it[1]) : "";
+            if (Array.isArray(it)) return this._st("number", it[0]) && this._st("number", it[1]) && !hide(it[0]) ? this._window(it[0], it[1]) : "";
             return this._st("number", it) && !hide(it) ? this._stepper(it) : "";
           })
           .join("");
@@ -1014,6 +1012,31 @@ class SmartHusCard extends HTMLElement {
         <ha-icon icon="mdi:lightning-bolt"></ha-icon>${fon ? "Stop opladning nu" : `Lad ${esc(m.name)} nu`}</button>`;
     }
     return `<div class="mod-body">${extra}${groups}${actions}</div>`;
+  }
+
+  /** Indstillinger, der ikke har nogen virkning lige nu, vises ikke. */
+  _unusedSetting(m, k, evHasSoc) {
+    const val = (key) => { const v = parseFloat(this._st("number", key)?.state); return isNaN(v) ? null : v; };
+    const on = (key) => this._st("switch", key)?.state === "on";
+    if (m.car) {
+      const c = m.id;
+      if (evHasSoc && k === `${c}_hours`) return true;                         // SoC-sensor: lad til %, ikke timer
+      if (!evHasSoc && [`${c}_target_soc`, `${c}_battery_capacity`].includes(k)) return true;
+      if (k === `${c}_ready_hour` && this._st("select", `${c}_ready_day`)?.attributes?.uses_ready_hour === false) return true;
+      if ([`${c}_solar_start_kw`, `${c}_solar_min_a`, `${c}_solar_max_a`].includes(k) && !on(`${c}_solar`)) return true;
+      return false;
+    }
+    if (m.id === "heating") {
+      const auto = on("heating_auto");
+      if (auto && (k === "heating_boost_hours" || k === "heating_reduce_hours")) return true;   // vælges automatisk
+      if (val("heating_boost_degrees") === 0 && ["heating_boost_hours", "heating_boost_from"].includes(k)) return true;
+      if (val("heating_reduce_degrees") === 0 && ["heating_reduce_hours", "heating_reduce_from"].includes(k)) return true;
+    }
+    if (m.id === "hotwater") {
+      if (k === "hotwater_surplus_smart" && val("hotwater_surplus_kw") === 0) return true;        // overskud er slået fra
+      if (k === "hotwater_min_temp" && val("hotwater_watch_temp") === 0) return true;             // efter behov er slået fra
+    }
+    return false;
   }
 
   // --- 3D-energiflow i SmartHus-stil ------------------------------------
@@ -1565,7 +1588,7 @@ class SmartHusCard extends HTMLElement {
     const unused = autoHeat || (key.endsWith("_ready_hour") && this._st("select", key.replace("_ready_hour", "_ready_day"))?.attributes?.uses_ready_hour === false);
     return `
       <div class="step${unused ? " unused" : ""}">
-        <span class="step-lbl">${esc(this._label(key))}${autoHeat ? `<span class="win-note">Vælges automatisk ud fra dagens priser</span>` : unused ? `<span class="win-note">Bruges ikke – perioden er valgt nedenfor</span>` : ""}${key === "ev_max_total_power" ? `<span class="win-note">0 = ingen grænse</span>` : key === "hotwater_surplus_kw" ? `<span class="win-note">0 = fra · eksport lige nu ${nf(this._st("binary_sensor", "hotwater_now")?.attributes?.export_kw, 1)} kW</span>` : key === "heating_min_indoor" ? `<span class="win-note">Frostsikring – koldere end dette inde, springes sparetimerne over</span>` : key === "hotwater_watch_temp" ? `<span class="win-note">0 = fra · varm op i en billig time, før vandet når den laveste temperatur</span>` : key === "hotwater_min_temp" ? `<span class="win-note">Varm op, før vandet når hertil – fx varmepumpens egen grænse</span>` : ""}</span>
+        <span class="step-lbl">${esc(this._label(key))}${autoHeat ? `<span class="win-note">Vælges automatisk ud fra dagens priser</span>` : unused ? `<span class="win-note">Bruges ikke – perioden er valgt nedenfor</span>` : ""}${key === "ev_max_total_power" ? `<span class="win-note">0 = ingen grænse</span>` : key === "hotwater_surplus_kw" ? `<span class="win-note">0 = fra · eksport lige nu ${nf(this._st("binary_sensor", "hotwater_now")?.attributes?.export_kw, 1)} kW</span>` : key === "heating_min_indoor" ? `<span class="win-note">Frostsikring – koldere end dette inde, springes sparetimerne over</span>` : key === "hotwater_watch_temp" ? `<span class="win-note">0 = fra · varm op i en billig time, før vandet når den laveste temperatur</span>` : key === "hotwater_min_temp" ? `<span class="win-note">Varm op, før vandet når hertil – fx varmepumpens egen grænse</span>` : key === "heating_boost_degrees" || key === "heating_reduce_degrees" ? `<span class="win-note">0 = fra</span>` : ""}</span>
         <span class="step-ctl">
           <button data-action="step" data-entity="${s.entity_id}" data-dir="-1" aria-label="Mindre ${esc(this._label(key))}">−</button>
           <span class="step-val">${shown}</span>
