@@ -263,7 +263,7 @@ class SmartHusController:
         self._unsub_sl = None
         if self.coordinator.uses_stromligning:
             self._unsub_sl = async_track_state_change_event(
-                self.hass, [*self.coordinator.sl_entities, self.coordinator.sl_spot], lambda _e: self.coordinator.async_refresh_external()
+                self.hass, [*self.coordinator.sl_entities, self.coordinator.sl_spot], self._on_stromligning
             )
         if self.has(CONF_HOUSE_ENERGY):
             # Lær forbrugsmønsteret hver nat og kort efter opstart (når historikken er klar)
@@ -980,6 +980,11 @@ class SmartHusController:
         except Exception as err:  # noqa: BLE001 – enhedsfejl må ikke stoppe styringen
             _LOGGER.warning("SmartHus kunne ikke styre %s (%s.%s): %s", entity_id, domain, service, err)
 
+    @callback
+    def _on_stromligning(self, _event) -> None:
+        # Skal køre i Home Assistants event-loop (en almindelig lambda køres i en tråd → fejl)
+        self.coordinator.async_refresh_external()
+
     async def _ev_verify_off(self, car: dict, on: bool) -> None:
         """Laderen er slukket i Home Assistant, men bilen lader stadig: sluk-kommandoen er ikke
         nået frem (fx Easee-skyen). Send den igen efter 2 minutter."""
@@ -997,6 +1002,13 @@ class SmartHusController:
             domain = entity_id.split(".")[0]
             await self._call(domain if domain in ("switch", "input_boolean") else "homeassistant",
                              "turn_off", {"entity_id": entity_id})
+            if car.get("easee_device"):
+                # Easee: sæt også opladningen på pause direkte (kontakten alene virker ikke altid)
+                try:
+                    await self.hass.services.async_call("easee", "action_command", {
+                        "device_id": car["easee_device"], "action_command": "pause"}, blocking=False)
+                except Exception as err:  # noqa: BLE001
+                    _LOGGER.warning("SmartHus kunne ikke sætte Easee på pause: %s", err)
 
     def _track_soc(self) -> None:
         """Tæl den energi, der er ladet, siden bilen sidst meldte et nyt batteriniveau."""

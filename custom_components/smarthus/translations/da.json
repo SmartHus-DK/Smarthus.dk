@@ -290,7 +290,7 @@
           "ev_current_script": "Kun til ladebokse, der hverken er Easee eller har en tal-entitet. Scriptet får variablen 'current' (A).",
           "ev_easee_device": "Har kunden en Easee-lader, så vælg den her – så kan SmartHus styre ladestrømmen ved solcelleladning uden script.",
           "ev_plug_sensor": "Sensor fra bilens egen integration, der viser om ladekablet sidder i – fx Tesla binary_sensor.[bil]_charger, Kia/Hyundai binary_sensor.[bil]_ev_plugged_in, VW sensor.[bil]_plug_status. Deler flere biler samme lader, styrer SmartHus kun den bil, der er tilsluttet. Uden sensor vælger du den tilsluttede bil på kortet.",
-          "ev_power_sensor": "Laderens effekt lige nu, fx Easee sensor.[lader]_power. Bruges til energiflowet øverst på kortet."
+          "ev_power_sensor": "Laderens effekt lige nu, fx Easee sensor.[lader]_power. Bruges til energiflowet og til at tjekke, at laderen faktisk stopper (sendes sluk igen, hvis den lader videre)."
         }
       }
     },
