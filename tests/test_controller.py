@@ -62,6 +62,7 @@ def make(config, states):
     c.ev_solar, c._ev_current_sent = {}, {}
     c._ev_hold, c._restore_pending, c._ev_stray, c._soc_est = {}, {}, {}, {}
     c.connected = {}
+    c._ev_past = {}
     c.tz = ZoneInfo("Europe/Copenhagen")
     c.enabled = {"master": True}
     c.plan = planner.Plan()
@@ -464,6 +465,14 @@ async def main():
     soc["v"] = "84"                              # bilen melder et nyt tal → det bruges igen
     c._track_soc()
     assert c.car_soc(car) == 84.0
+    # Overståede planlagte ladekvarterer bliver stående på grafen
+    from datetime import datetime as _d, timezone as _tz, timedelta as _td
+    c, h = make({}, {})
+    t0 = _d(2026, 10, 25, 1, 0, tzinfo=_tz.utc)
+    c.plan.evs = {"ev": planner.EvPlan("ev", slots=[planner.Slot(t0, t0 + _td(minutes=15), 0, 1, 0)])}
+    c._ev_past = {"ev": {t0 - _td(hours=1)}}
+    shown = c.ev_slots_shown("ev")
+    assert shown == [(t0 - _td(hours=1)).isoformat(), t0.isoformat()], shown
     print("controller OK")
 
 def test_controller_control():

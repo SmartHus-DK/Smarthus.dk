@@ -143,5 +143,5 @@ class EvChargeBinary(SmartHusEntity, BinarySensorEntity):
             "hours_needed": ep.hours_needed,
             "target_reached": ep.target_reached,
             "periods": merge_periods(ep.slots, self.controller.tz),
-            "slots": [s.start.isoformat() for s in sorted(ep.slots, key=lambda s: s.start)],
+            "slots": self.controller.ev_slots_shown(self.cid),   # inkl. overståede planlagte kvarterer
         }

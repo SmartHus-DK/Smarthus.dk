@@ -241,6 +241,8 @@ class SmartHusController:
         # Bilens SoC fra fx Kia/Hyundai-skyen kan stå stille i lang tid, mens bilen lader.
         # {bil: {"base": seneste SoC fra bilen, "kwh": ladet siden da}} → skønnet SoC
         self._soc_est: dict[str, dict] = {}
+        # Elbilens planlagte kvarterer, der er gået i gang – så de stadig kan ses på grafen bagefter
+        self._ev_past: dict[str, set] = {}
         self._unsub = None
         self._unsub_prices = None
         self.expected_unique_ids: set[str] = set()
@@ -821,6 +823,11 @@ class SmartHusController:
         settings = {**self.settings, "heating_auto": bool(self.flags.get(F_HEATING_AUTO, False))}
         self.plan = build_plan(slots, dt_util.utcnow(), self.tz, settings, soc=soc, cars=cars)
         self._update_hotwater_demand()
+        now = dt_util.utcnow()
+        for cid, ep in self.plan.evs.items():
+            past = self._ev_past.setdefault(cid, set())
+            past.update(sl.start for sl in ep.slots if sl.start <= now)
+            self._ev_past[cid] = {t for t in past if now - t < timedelta(hours=36)}
         for cid, ep in self.plan.evs.items():
             if self.ev_force.get(cid) and ep.target_reached:
                 self.ev_force[cid] = False  # "Lad nu" slukker selv ved mål-SoC
@@ -979,6 +986,12 @@ class SmartHusController:
             await self.hass.services.async_call(domain, service, data, blocking=True)
         except Exception as err:  # noqa: BLE001 – enhedsfejl må ikke stoppe styringen
             _LOGGER.warning("SmartHus kunne ikke styre %s (%s.%s): %s", entity_id, domain, service, err)
+
+    def ev_slots_shown(self, cid: str) -> list[str]:
+        """Elbilens kvarterer til grafen: det der var planlagt (også overståede) + den kommende plan."""
+        ep = self.plan.evs.get(cid)
+        starts = set(self._ev_past.get(cid, set())) | {sl.start for sl in (ep.slots if ep else [])}
+        return [t.isoformat() for t in sorted(starts)]
 
     @callback
     def _on_stromligning(self, _event) -> None:
