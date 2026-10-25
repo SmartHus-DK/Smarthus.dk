@@ -168,6 +168,8 @@ def _ev_attrs(c: SmartHusController, cid: str) -> dict:
         "price_now": round(ep.cost_now / e, 3) if e and ep.cost_now is not None else None,
         "price_planned": round(ep.cost_planned / e, 3) if e and ep.cost_planned is not None else None,
         "soc": ep.soc,
+        "soc_reported": c._float_state((c.car(cid) or {}).get("soc")),
+        "soc_estimated": ep.soc is not None and ep.soc != c._float_state((c.car(cid) or {}).get("soc")),
         "target_soc": car_settings(c.settings, cid)["target_soc"],
         "hours_needed": ep.hours_needed,
         "target_reached": ep.target_reached,

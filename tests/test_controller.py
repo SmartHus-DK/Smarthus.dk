@@ -60,7 +60,8 @@ def make(config, states):
     c.heating_too_cold, c._heating_off_by_us = False, False
     c.flags = {"hotwater_surplus_smart": True}
     c.ev_solar, c._ev_current_sent = {}, {}
-    c._ev_hold, c._restore_pending, c._ev_stray = {}, {}, {}
+    c._ev_hold, c._restore_pending, c._ev_stray, c._soc_est = {}, {}, {}, {}
+    c.connected = {}
     c.tz = ZoneInfo("Europe/Copenhagen")
     c.enabled = {"master": True}
     c.plan = planner.Plan()
@@ -446,6 +447,23 @@ async def main():
     assert "ev" in c._restore_pending and h.services.calls == []
     await c.async_set_enabled("master", True)
     assert c._restore_pending == {} and h.services.calls == []
+    # Bilens SoC står stille på 60 %, mens der lades med 11 kW: skønnet SoC stiger, så lademålet nås
+    soc = {"v": "60"}
+    c, h = make({}, {})
+    c.hass.states = types.SimpleNamespace(get=lambda e: State(soc["v"]) if e == "sensor.soc"
+                                          else State("11", unit_of_measurement="kW") if e == "sensor.p" else None)
+    car = {"id": "ev", "name": "Kia", "charger": "switch.lader", "soc": "sensor.soc", "power": "sensor.p"}
+    c.cars = [car]
+    c.settings["ev_battery_capacity"] = 77.0
+    c._track_soc()                               # første tal fra bilen
+    assert c.car_soc(car) == 60.0
+    for _ in range(240):                         # 2 timer à 30 s med 11 kW = 22 kWh
+        c._track_soc()
+    est = c.car_soc(car)
+    assert 85 < est < 87, est                    # 60 % + 22 kWh × 0,9 / 77 kWh ≈ 85,7 %
+    soc["v"] = "84"                              # bilen melder et nyt tal → det bruges igen
+    c._track_soc()
+    assert c.car_soc(car) == 84.0
     print("controller OK")
 
 def test_controller_control():

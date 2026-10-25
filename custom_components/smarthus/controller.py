@@ -115,7 +115,7 @@ from .const import (
     SIGNAL_TICK,
 )
 from .coordinator import SmartHusPriceCoordinator
-from .planner import CarInput, Plan, build_plan, car_ready, car_settings, heating_outdoor_ok
+from .planner import CHARGE_EFFICIENCY, CarInput, Plan, build_plan, car_ready, car_settings, heating_outdoor_ok
 from .profile import (EFFICIENCY, LEARN_DAYS, SUN_END, SUN_START, Profile, Reserve, build_profile, calc_reserve,
                       expected_load, grid_charge_target, solar_surplus)
 from .savings import SavingsCalculator
@@ -238,6 +238,9 @@ class SmartHusController:
         self._ev_hold: dict[str, float] = {}
         self._restore_pending: dict[str, object] = {}   # udskudt "normal drift", når styring slås fra
         self._ev_stray: dict[str, int] = {}              # tællere: lader slukket, men lader stadig
+        # Bilens SoC fra fx Kia/Hyundai-skyen kan stå stille i lang tid, mens bilen lader.
+        # {bil: {"base": seneste SoC fra bilen, "kwh": ladet siden da}} → skønnet SoC
+        self._soc_est: dict[str, dict] = {}
         self._unsub = None
         self._unsub_prices = None
         self.expected_unique_ids: set[str] = set()
@@ -809,7 +812,7 @@ class SmartHusController:
         self._update_connected()
         cars = [
             CarInput(car["id"], car.get("name") or "Elbil",
-                     soc=self._float_state(car.get("soc")), force=self.ev_force.get(car["id"], False),
+                     soc=self.car_soc(car), force=self.ev_force.get(car["id"], False),
                      connected=self.connected.get(car["id"], True),
                      charged_h=self._charged_hours(car["id"]),
                      **self._ready_input(car["id"]))
@@ -834,6 +837,7 @@ class SmartHusController:
             await self._async_sample_hotwater()
             self._update_surplus()
         self._log_ev_charging()
+        self._track_soc()
         self.recalculate()
         await self.async_apply()
         self._update_savings()
@@ -993,6 +997,32 @@ class SmartHusController:
             domain = entity_id.split(".")[0]
             await self._call(domain if domain in ("switch", "input_boolean") else "homeassistant",
                              "turn_off", {"entity_id": entity_id})
+
+    def _track_soc(self) -> None:
+        """Tæl den energi, der er ladet, siden bilen sidst meldte et nyt batteriniveau."""
+        for car in self.cars:
+            cid = car["id"]
+            rep = self._float_state(car.get("soc"))
+            if rep is None:
+                continue
+            st = self._soc_est.get(cid)
+            if st is None or abs(rep - st["base"]) >= 0.5:
+                self._soc_est[cid] = {"base": rep, "kwh": 0.0}      # nyt tal fra bilen
+                continue
+            kw = self._power_kw(car.get("power")) if car.get("power") else None
+            if kw is not None and kw > 0.3 and self.connected.get(cid, True):
+                st["kwh"] += kw * TICK_SECONDS / 3600
+
+    def car_soc(self, car: dict) -> float | None:
+        """Bilens batteriniveau – skønnet ud fra den ladede energi, hvis bilen ikke har meldt et
+        nyt tal, mens den lader (så den ikke lader forbi lademålet på et forældet tal)."""
+        rep = self._float_state(car.get("soc"))
+        st = self._soc_est.get(car["id"])
+        if rep is None or not st or not st["kwh"]:
+            return rep
+        cap = max(float(car_settings(self.settings, car["id"])["battery_capacity"]), 1.0)
+        est = st["base"] + st["kwh"] * CHARGE_EFFICIENCY / cap * 100
+        return round(min(max(rep, est), 100.0), 1)
 
     def _is_on(self, entity_id: str) -> bool:
         st = self.hass.states.get(entity_id)

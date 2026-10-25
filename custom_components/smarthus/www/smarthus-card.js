@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.33.6";
+const SMARTHUS_CARD_VERSION = "1.33.7";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -93,6 +93,8 @@ const MODULES = [
 ];
 
 const CAR_COLORS = [COLORS.ev, COLORS.ev2, COLORS.ev3];
+/** Batteriniveau – "ca." når det er skønnet ud fra den ladede energi (bilen har ikke meldt et nyt tal). */
+const socT = (a) => `${a.soc_estimated ? "ca. " : ""}${nf(a.soc, 0)} %`;
 
 /** Et felt pr. elbil. Bilens id er fx "ev" eller "ev_tesla". */
 function carModule(cid, name, first) {
@@ -865,16 +867,16 @@ class SmartHusCard extends HTMLElement {
     if (m.car) {
       const a = this._st("sensor", `${m.id}_smart_saving`)?.attributes || {};
       const k = `${m.id}_charge_now`;
-      if (a.target_reached) return `${prefix}Ladet til ${nf(a.soc, 0)} %`;
+      if (a.target_reached) return `${prefix}Ladet til ${socT(a)}`;
       const ca = this._st("binary_sensor", k)?.attributes || {};
       if (ca.connected === false) return `${prefix}Ikke tilsluttet laderen`;
       if (a.short_of_time) return `${prefix}Ikke tid nok – når ca. ${nf(a.soc_at_ready, 0)} % kl. ${a.ready_at ? hh(new Date(a.ready_at)) : ""}`;
-      if (ca.solar_active) return `${prefix}Lader med sol · ${ca.solar_current} A${a.soc != null ? ` · ${nf(a.soc, 0)} %` : ""}`;
-      if (isOn(k)) return `${prefix}Lader nu${a.soc != null ? ` · ${nf(a.soc, 0)} %` : ""}${a.done_at ? ` · klar kl. ${hh(new Date(a.done_at))}` : ""}`;
+      if (ca.solar_active) return `${prefix}Lader med sol · ${ca.solar_current} A${a.soc != null ? ` · ${socT(a)}` : ""}`;
+      if (isOn(k)) return `${prefix}Lader nu${a.soc != null ? ` · ${socT(a)}` : ""}${a.done_at ? ` · klar kl. ${hh(new Date(a.done_at))}` : ""}`;
       const n = next(k);
       const dn = a.done_at ? new Date(a.done_at) : null;
-      if (n && dn) return `${prefix}Lader ${n} · klar kl. ${hh(dn)}${a.soc != null ? ` · ${nf(a.soc, 0)} % af ${nf(a.target_soc, 0)} %` : ""}`;
-      return `${prefix}${n ? `Lader ${n}` : "Venter på priser"}${a.soc != null ? ` · ${nf(a.soc, 0)} % af ${nf(a.target_soc, 0)} %` : ""}`;
+      if (n && dn) return `${prefix}Lader ${n} · klar kl. ${hh(dn)}${a.soc != null ? ` · ${socT(a)} af ${nf(a.target_soc, 0)} %` : ""}`;
+      return `${prefix}${n ? `Lader ${n}` : "Venter på priser"}${a.soc != null ? ` · ${socT(a)} af ${nf(a.target_soc, 0)} %` : ""}`;
     }
     switch (m.id) {
       case "battery": {
