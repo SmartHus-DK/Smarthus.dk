@@ -1798,7 +1798,12 @@ class SmartHusController:
         elif module == MODULE_SOLAR and self.has_export_control:
             await self._apply_export(False, True)
         elif module in self.car_ids:
-            await self._ensure_switch(self.car(module)["charger"], True, True)
+            # Normal drift for elbilen = laderen slukket (der lades kun, når man selv starter den)
+            car = self.car(module)
+            if car["charger"] in self.shared_chargers and any(
+                    self.active(c) and self.connected.get(c, True) for c in self.shared_chargers[car["charger"]] if c != module):
+                return                     # en anden bil i samme lader styres stadig af SmartHus
+            await self._ensure_switch(car["charger"], False, True)
         elif module == MODULE_HOTWATER and self.has(CONF_HOTWATER_ENTITY):
             entity_id = self.config[CONF_HOTWATER_ENTITY]
             if entity_id.split(".")[0] in ("water_heater", "climate"):

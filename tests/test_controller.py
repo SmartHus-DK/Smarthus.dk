@@ -473,6 +473,12 @@ async def main():
     c._ev_past = {"ev": {t0 - _td(hours=1)}}
     shown = c.ev_slots_shown("ev")
     assert shown == [(t0 - _td(hours=1)).isoformat(), t0.isoformat()], shown
+    # Styring af elbilen slået fra → normal drift = laderen slukket
+    c, h = make({}, {"switch.lader": State("on")})
+    c.cars, c.car_ids, c.shared_chargers = [{"id": "ev", "name": "Bil", "charger": "switch.lader"}], ["ev"], {}
+    c.car = lambda cid: c.cars[0]
+    await c.async_restore_normal("ev")
+    assert h.services.calls[-1] == ("switch", "turn_off", {"entity_id": "switch.lader"})
     print("controller OK")
 
 def test_controller_control():
