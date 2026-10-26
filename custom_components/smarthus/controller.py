@@ -243,6 +243,8 @@ class SmartHusController:
         self._soc_est: dict[str, dict] = {}
         # Elbilens planlagte kvarterer, der er gået i gang – så de stadig kan ses på grafen bagefter
         self._ev_past: dict[str, set] = {}
+        # "Lad nu" startet, mens SmartHus' styring af bilen er slået fra
+        self._ev_manual: dict[str, bool] = {}
         self._unsub = None
         self._unsub_prices = None
         self.expected_unique_ids: set[str] = set()
@@ -987,6 +989,18 @@ class SmartHusController:
         except Exception as err:  # noqa: BLE001 – enhedsfejl må ikke stoppe styringen
             _LOGGER.warning("SmartHus kunne ikke styre %s (%s.%s): %s", entity_id, domain, service, err)
 
+    async def _apply_ev_manual(self, car: dict, ep, force: bool) -> None:
+        """Styringen af bilen er slået fra: "Lad nu" virker stadig. Når "Lad nu" slutter (slået fra
+        eller lademålet er nået), slukkes laderen igen – normal drift er slukket."""
+        cid = car["id"]
+        if self.ev_force.get(cid) and ep.connected and not ep.target_reached:
+            self._ev_manual[cid] = True
+            await self._ensure_switch(car["charger"], True, force)
+            if self.has_current_control(car):
+                await self._apply_current(car, int(car_settings(self.settings, cid)["solar_max_a"]), force)
+        elif self._ev_manual.pop(cid, False):
+            await self._ensure_switch(car["charger"], False, True)
+
     def ev_slots_shown(self, cid: str) -> list[str]:
         """Elbilens kvarterer til grafen: det der var planlagt (også overståede) + den kommende plan."""
         ep = self.plan.evs.get(cid)
@@ -1251,6 +1265,8 @@ class SmartHusController:
                 if on and current is not None:
                     await self._apply_current(car, current, force)
                 await self._ev_verify_off(car, on)
+            elif ep:
+                await self._apply_ev_manual(car, ep, force)
 
     async def _apply_hotwater_step(self, p, force: bool) -> None:
         if self.active(MODULE_HOTWATER) and self.has(CONF_HOTWATER_ENTITY):

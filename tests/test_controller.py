@@ -62,7 +62,7 @@ def make(config, states):
     c.ev_solar, c._ev_current_sent = {}, {}
     c._ev_hold, c._restore_pending, c._ev_stray, c._soc_est = {}, {}, {}, {}
     c.connected = {}
-    c._ev_past = {}
+    c._ev_past, c._ev_manual = {}, {}
     c.tz = ZoneInfo("Europe/Copenhagen")
     c.enabled = {"master": True}
     c.plan = planner.Plan()
@@ -479,6 +479,22 @@ async def main():
     c.car = lambda cid: c.cars[0]
     await c.async_restore_normal("ev")
     assert h.services.calls[-1] == ("switch", "turn_off", {"entity_id": "switch.lader"})
+    # Styring af bilen slået fra: "Lad nu" starter laderen, og den slukkes igen, når "Lad nu" slutter
+    st = {"switch.lader": State("off")}
+    c, h = make({}, st)
+    c.cars, c.car_ids, c.shared_chargers = [{"id": "ev", "name": "Bil", "charger": "switch.lader"}], ["ev"], {}
+    c.enabled = {"master": True, "ev": False}
+    c.ev_force = {"ev": True}
+    c.plan.evs = {"ev": planner.EvPlan("ev", connected=True)}
+    await c._apply_ev_step(c.plan, True)
+    assert h.services.calls[-1] == ("switch", "turn_on", {"entity_id": "switch.lader"})
+    st["switch.lader"] = State("on")
+    c.ev_force["ev"] = False
+    await c._apply_ev_step(c.plan, True)
+    assert h.services.calls[-1] == ("switch", "turn_off", {"entity_id": "switch.lader"})
+    n = len(h.services.calls)
+    await c._apply_ev_step(c.plan, False)              # derefter rører SmartHus ikke laderen
+    assert len(h.services.calls) == n
     print("controller OK")
 
 def test_controller_control():

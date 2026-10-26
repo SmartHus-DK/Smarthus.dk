@@ -120,7 +120,7 @@ Energimålere (kWh) er valgfrie, men skal vælges, hvis du vil se, hvad du har s
 - **Lad i:** under Elbil vælger du, hvor de billigste timer skal findes: **Til klar kl.** (standard – frem til næste "Klar kl."), **I dag** (resten af i dag), **I morgen** (00–24), **Begge dage** (nu til og med i morgen) eller **Billigste i sigte** (alle kendte priser – flytter sig, hvis næste dags priser er billigere). Dagene gemmes som faste datoer, så perioden ikke flytter sig, når døgnet skifter eller nye priser kommer. Når perioden er slut, går valget selv tilbage til *Til klar kl.* Er morgendagens priser ikke kommet endnu (ca. kl. 13), står der, at der ventes på dem. "Klar kl." kan også sættes til **00** (midnat i nat). Kortet viser altid **Forventet klar** – hvornår den sidste valgte billige ladetime slutter.
 - **Elbil:** Har flere biler samme lader, vælger du den tilsluttede bil i Elbil-menuen. Kun den valgte bil styres og vises i indstillingerne – i energiflowet ses begge biler med batteriniveau, den ikke-valgte lidt gennemsigtig. Med **Lad nu** lader bilen med det samme.
 
-Slår du styringen fra for et område, sættes udstyret tilbage til normal drift. For elbilen betyder det, at laderen slukkes – den lader så kun, når du selv starter den.
+Slår du styringen fra for et område, sættes udstyret tilbage til normal drift. For elbilen betyder det, at laderen slukkes – den lader så kun, når du selv starter den, fx med **Lad nu** (virker også, når styringen er slået fra; laderen slukkes igen, når "Lad nu" slutter eller lademålet er nået).
 
 ### Sådan bruger SmartHus batteriet
 
