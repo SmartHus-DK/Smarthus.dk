@@ -58,6 +58,7 @@ Installér integrationen til dit anlæg, og vælg derefter **SmartHus → Konfig
 | SolaX | [SolaX Modbus](https://github.com/wills106/homeassistant-solax-modbus) | HACS | Målere, batteristyring (Manual Mode, Gen4+) og eksportgrænse |
 | FoxESS | [FoxESS Modbus](https://github.com/nathanmarlor/foxess_modbus) | HACS | Målere og batteristyring (Force Charge/Discharge – slå *Remote control* til i integrationen) |
 | Growatt | [SolaX Modbus](https://github.com/wills106/homeassistant-solax-modbus) (Growatt-plugin) | HACS | Batteriniveau, sol og batteristyring (MOD/TL-XH: tidsrum 1 · SPH: prioritet) |
+| Fronius | [Fronius](https://www.home-assistant.io/integrations/fronius/) | Indbygget | Målere og batteristyring (Gen24/Tauro/Verto – kræver Modbus TCP og *Inverter control via Modbus*). Slå sensorerne *Power battery* og *Power grid* til
 | Solplanet | [Solplanet](https://github.com/calvinbui/home-assistant-solplanet) | HACS | Batteriniveau – batteriet styres med scripts (skabelon nedenfor) |
 
 Batteristyringen fra "Vælg dit anlæg" er bygget ud fra integrationernes kildekode og **ikke afprøvet på alle modeller** – afprøv lad/aflad/normal på anlægget, før styringen slås til. Andre mærker styres med en rullemenu eller scripts (se [For installatøren](#for-installatøren-avanceret)).

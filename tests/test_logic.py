@@ -1021,3 +1021,20 @@ def test_preset_huawei_uses_battery_device_and_skips_disabled():
     m = presets.match(presets.PRESETS["huawei"], reg)
     assert m.huawei_device == "bat-dev" and m.actions is None
     assert "sensor.inverter_input_power" in m.disabled and "solar_power" not in m.roles
+
+
+def test_preset_fronius_dash_ids_and_storage_control():
+    """Fronius (indbygget): unique_id med "-", lagerstyring via Modbus-grænser."""
+    reg = [presets.Entry("sensor.byd_soc", "BYD123-state_of_charge"),
+           presets.Entry("sensor.solarnet_power_grid", "solarnet-power_flow-power_grid", disabled=True),
+           presets.Entry("sensor.solarnet_power_grid_import", "solarnet-power_flow-power_grid_import"),
+           presets.Entry("sensor.meter_energy_consumed", "MTR1-energy_real_consumed")]
+    for key in ("battery_charge_power_limit", "battery_discharge_power_limit"):
+        reg.append(presets.Entry(f"number.gen24_{key}", f"INV1-modbus-{key}"))
+    for key in ("battery_charge_power_limit_enabled", "battery_discharge_power_limit_enabled", "battery_grid_charging"):
+        reg.append(presets.Entry(f"switch.gen24_{key}", f"INV1-modbus-{key}"))
+    m = presets.match(presets.PRESETS["fronius"], reg)
+    assert m.roles["soc"] == "sensor.byd_soc" and m.roles["import_energy"] == "sensor.meter_energy_consumed"
+    assert "sensor.solarnet_power_grid" in m.disabled        # "power_grid" ≠ "power_grid_import"
+    ch = m.actions["charge"]
+    assert ch[3] == {"type": "number", "entity_id": "number.gen24_battery_discharge_power_limit", "value": -100}

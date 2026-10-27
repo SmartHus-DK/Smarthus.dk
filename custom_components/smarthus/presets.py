@@ -202,6 +202,34 @@ PRESETS: dict[str, Preset] = {p.key: p for p in (
         note="Afprøv på anlægget først – Growatt-modellerne styres forskelligt.",
     ),
     Preset(
+        "fronius", "Fronius", "fronius", "Fronius (indbygget i Home Assistant)",
+        "https://www.home-assistant.io/integrations/fronius/",
+        roles={
+            "soc": "sensor:state_of_charge",
+            "battery_power": "sensor:power_battery",
+            "grid_power": "sensor:power_grid",
+            "solar_power": "sensor:power_photovoltaics",
+            "import_energy": "sensor:energy_real_consumed",
+            "export_energy": "sensor:energy_real_produced",
+            "solar_energy": "sensor:energy_total",
+        },
+        battery_sign="discharge_positive", grid_sign="import_positive",
+        control=({
+            # Fronius' lagerstyring: en negativ grænse vender retningen (afladegrænse −100 % = lad med fuld effekt)
+            "charge": [("number", "battery_charge_power_limit", 100), ("switch", "battery_charge_power_limit_enabled", True),
+                       ("switch", "battery_grid_charging", True),
+                       ("number", "battery_discharge_power_limit", -100), ("switch", "battery_discharge_power_limit_enabled", True)],
+            "discharge": [("number", "battery_discharge_power_limit", 100), ("switch", "battery_discharge_power_limit_enabled", True),
+                          ("number", "battery_charge_power_limit", -100), ("switch", "battery_charge_power_limit_enabled", True)],
+            "normal": [("switch", "battery_charge_power_limit_enabled", False),
+                       ("switch", "battery_discharge_power_limit_enabled", False),
+                       ("number", "battery_charge_power_limit", 100), ("number", "battery_discharge_power_limit", 100),
+                       ("switch", "battery_grid_charging", False)],
+        },),
+        note="Batteristyring kræver Modbus TCP og \"Inverter control via Modbus\" slået til (Gen24/Tauro/Verto). "
+             "Effektsensorerne \"Power battery\" og \"Power grid\" er deaktiveret som standard – slå dem til.",
+    ),
+    Preset(
         "solplanet", "Solplanet", "solplanet", "Solplanet",
         "https://github.com/calvinbui/home-assistant-solplanet",
         roles={"soc": "sensor:soc"},
@@ -242,7 +270,7 @@ def _find(entries: list[Entry], spec: str) -> Entry | None:
     "_battery_sensor" og "_total_battery_sensor") er den korteste den rigtige."""
     platform, key = spec.split(":", 1)
     hits = [e for e in entries if e.entity_id.split(".")[0] == platform
-            and (e.unique_id == key or e.unique_id.endswith("_" + key))]
+            and (e.unique_id == key or e.unique_id.endswith("_" + key) or e.unique_id.endswith("-" + key))]
     return min(hits, key=lambda e: len(e.unique_id)) if hits else None
 
 
