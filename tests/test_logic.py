@@ -949,3 +949,75 @@ def test_energy_other_balances_over_the_period():
     assert d["house"] == 12 and d["d1"] == 10
     assert d["other"] == 2 and d["other_kr"] == 2            # ikke 10 (summen af timer, hvor Andet aldrig er negativ)
     assert d["d1"] + d["other"] == d["house"] and d["d1_kr"] + d["other_kr"] == d["house_kr"]
+
+
+presets = _load("presets")
+
+
+def _reg(prefix, items, device="dev1"):
+    """Falsk entitetsregister: (entity_id, unique_id-nøgle) med integrationens præfiks."""
+    return [presets.Entry(eid, f"{prefix}_{key}", device) for eid, key in items]
+
+
+def test_preset_sigenergy_finds_entities_and_control():
+    reg = _reg("01JABC_plant", [
+        ("sensor.sigen_plant_battery_state_of_charge", "plant_ess_soc"),
+        ("sensor.sigen_plant_ess_power", "plant_ess_power"),
+        ("sensor.sigen_plant_grid_active_power", "plant_grid_sensor_active_power"),
+        ("sensor.sigen_plant_pv_power", "plant_photovoltaic_power"),
+        ("sensor.sigen_plant_accumulated_pv_energy", "plant_accumulated_pv_energy"),
+        ("switch.sigen_plant_remote_ems", "plant_remote_ems_enable"),
+        ("select.sigen_plant_remote_ems_control_mode", "plant_remote_ems_control_mode"),
+        ("number.sigen_plant_grid_export_limit", "plant_grid_point_maximum_export_limitation"),
+    ])
+    m = presets.match(presets.PRESETS["sigenergy"], reg)
+    assert m.roles["soc"] == "sensor.sigen_plant_battery_state_of_charge"
+    assert m.roles["grid_power"] == "sensor.sigen_plant_grid_active_power"
+    assert m.actions["charge"][1] == {"type": "select", "entity_id": "select.sigen_plant_remote_ems_control_mode",
+                                      "value": "Command Charging (Grid First)"}
+    assert m.export == ("number.sigen_plant_grid_export_limit", 0.0)
+    assert "house_energy" in m.missing
+
+
+def test_preset_deye_picks_exact_entity_and_optional_programs():
+    reg = _reg("01JDEYE", [
+        ("sensor.inverter_battery", "battery_sensor"),
+        ("sensor.inverter_total_battery", "total_battery_sensor"),     # må ikke forveksles med "battery_sensor"
+        ("sensor.inverter_battery_power", "battery_power_sensor"),
+        ("select.inverter_work_mode", "work_mode_select"),
+        ("select.inverter_program_1_charging", "program_1_charging_select"),
+        ("number.inverter_program_1_soc", "program_1_soc_number"),
+        ("select.inverter_program_2_charging", "program_2_charging_select"),
+        ("number.inverter_program_2_soc", "program_2_soc_number"),
+    ])
+    m = presets.match(presets.PRESETS["deye"], reg)
+    assert m.roles["soc"] == "sensor.inverter_battery"
+    ch = m.actions["charge"]
+    assert len(ch) == 4 and ch[0]["value"] == "Grid" and ch[1]["value"] == "max_soc"   # program 3–6 findes ikke: springes over
+    normal = presets.fill_keep(m.actions, {"select.inverter_work_mode": "Zero Export To Load"},
+                               presets.keep_fallbacks(m.actions, reg))
+    assert normal["normal"][0] == {"type": "select", "entity_id": "select.inverter_work_mode", "value": "Zero Export To Load"}
+    # Står den i SmartHus' egen tilstand, bruges standarden i stedet
+    bad = presets.fill_keep(m.actions, {"select.inverter_work_mode": "Export First"}, presets.keep_fallbacks(m.actions, reg))
+    assert bad["normal"][0]["value"] == "Zero Export To CT"
+
+
+def test_preset_growatt_uses_first_variant_that_fits():
+    reg = _reg("Growatt", [
+        ("select.growatt_priority", "priority"),
+        ("select.growatt_battery_first_charge_from_grid", "battery_first_charge_from_grid"),
+        ("sensor.growatt_battery_soc", "battery_soc"),
+    ])
+    m = presets.match(presets.PRESETS["growatt"], reg)
+    assert [s["entity_id"] for s in m.actions["charge"]] == ["select.growatt_priority", "select.growatt_battery_first_charge_from_grid"]
+    # Uden styrings-entiteter: ingen styring, og det fortælles, hvad der mangler
+    m2 = presets.match(presets.PRESETS["growatt"], reg[2:])
+    assert m2.actions is None and m2.control_missing
+
+
+def test_preset_huawei_uses_battery_device_and_skips_disabled():
+    reg = [presets.Entry("sensor.batteries_state_of_capacity", "HV123_storage_state_of_capacity", "bat-dev"),
+           presets.Entry("sensor.inverter_input_power", "HV123_input_power", "inv-dev", disabled=True)]
+    m = presets.match(presets.PRESETS["huawei"], reg)
+    assert m.huawei_device == "bat-dev" and m.actions is None
+    assert "sensor.inverter_input_power" in m.disabled and "solar_power" not in m.roles

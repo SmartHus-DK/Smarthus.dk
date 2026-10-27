@@ -15,7 +15,7 @@ EDS_DAYAHEAD_FROM: Final = date(2025, 10, 1)
 
 STATIC_URL: Final = "/smarthus_static"
 CARD_URL: Final = f"{STATIC_URL}/smarthus-card.js"
-CARD_VERSION: Final = "1.33.8"
+CARD_VERSION: Final = "1.34.0"
 
 PLATFORMS: Final = ["sensor", "binary_sensor", "switch", "number", "select"]
 
@@ -93,6 +93,9 @@ BATTERY_SCRIPTS: Final = [CONF_BATTERY_SCRIPT_CHARGE, CONF_BATTERY_SCRIPT_DISCHA
 BATTERY_OPTIONAL_SCRIPTS: Final = [CONF_BATTERY_SCRIPT_SELL_SOLAR]
 # Indbyggede profiler (ingen scripts nødvendige)
 CONF_HUAWEI_DEVICE: Final = "battery_huawei_device"
+# Færdig opsætning for et kendt anlæg ("Vælg dit anlæg"): mærke + trin pr. tilstand
+CONF_BATTERY_PRESET: Final = "battery_preset"
+CONF_BATTERY_ACTIONS: Final = "battery_actions"
 CONF_HUAWEI_POWER: Final = "battery_huawei_power"
 DEFAULT_HUAWEI_POWER: Final = 5000
 # Batteriets effekt lige nu (til energiflowet)

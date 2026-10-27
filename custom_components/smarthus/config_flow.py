@@ -9,14 +9,20 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import section
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import selector
 from homeassistant.util import slugify
 
 from .pricing import parse_price_list
+from . import presets as pz
 
 from .const import (
     AREAS,
     BATTERY_KEYS,
+    BATTERY_SCRIPTS,
+    CONF_BATTERY_ACTIONS,
+    CONF_BATTERY_PRESET,
+    EXPORT_SCRIPTS,
     CONF_AREA,
     CONF_BATTERY_CHARGE_ENERGY,
     CONF_BATTERY_DISCHARGE_ENERGY,
@@ -288,6 +294,33 @@ class SmartHusConfigFlow(ConfigFlow, domain=DOMAIN):
         return SmartHusOptionsFlow()
 
 
+def _preset_summary(m: pz.Match) -> str:
+    """Oversigt til bekræftelsen: hvad blev fundet, og hvad mangler."""
+    p = m.preset
+    lines = [f"**{p.name}** via integrationen **{p.integration}**", ""]
+    if m.roles:
+        lines.append("**Fundet:**")
+        lines += [f"- {pz.ROLE_NAMES[r]}: `{e}`" for r, e in m.roles.items()]
+    if m.actions:
+        n = sum(len(v) for v in m.actions.values())
+        lines += ["", f"**Batteristyring:** lad fra nettet, aflad og normal drift ({n} trin) – erstatter tidligere rullemenu/scripts."]
+    elif m.huawei_device:
+        lines += ["", "**Batteristyring:** Huawei – indbygget styring af batteriet."]
+    elif p.control:
+        lines += ["", "**Batteristyring:** ikke fundet – mangler: " + ", ".join(f"`{x}`" for x in m.control_missing)
+                  + ". Den nuværende styring beholdes."]
+    if m.export:
+        lines.append(f"**Stop af eksport:** `{m.export[0]}` sættes til {m.export[1]:g} ved lav salgspris.")
+    if m.disabled:
+        lines += ["", "**Deaktiverede entiteter (slå dem til og vælg igen):** " + ", ".join(f"`{e}`" for e in m.disabled)]
+    if m.missing:
+        lines += ["", "**Ikke fundet (kan vælges manuelt):** " + ", ".join(pz.ROLE_NAMES[r] for r in m.missing)]
+    if p.note:
+        lines += ["", f"ℹ️ {p.note}"]
+    lines += ["", "Tryk **Send** for at gemme. Afprøv batteristyringen, før styringen slås til."]
+    return "\n".join(lines)
+
+
 class SmartHusOptionsFlow(OptionsFlow):
     """Tilføj/ret enheder og priser efter installation."""
 
@@ -309,7 +342,7 @@ class SmartHusOptionsFlow(OptionsFlow):
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         return self.async_show_menu(
             step_id="init",
-            menu_options=["battery", "solar", "ev", "hotwater", "heating", "weather", "prices"],
+            menu_options=["preset", "battery", "solar", "ev", "hotwater", "heating", "weather", "prices"],
         )
 
     async def async_step_prices(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
@@ -318,6 +351,98 @@ class SmartHusOptionsFlow(OptionsFlow):
             return self._save(PRICE_KEYS, user_input)
         return self.async_show_form(step_id="prices", data_schema=_price_schema({**self._current(), **(user_input or {})}),
                                     errors=errors)
+
+    # --- Vælg dit anlæg: færdig opsætning for kendte invertere/batterier ----------------
+    _preset: str | None = None
+    _preset_entry: str | None = None
+
+    async def async_step_preset(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
+        placeholders = {"integration": "", "url": ""}
+        if user_input is not None:
+            p = pz.PRESETS[user_input["preset"]]
+            entries = self.hass.config_entries.async_entries(p.domain)
+            if not entries:
+                errors["base"] = "preset_integration_missing"
+                placeholders = {"integration": p.integration, "url": p.url}
+            else:
+                self._preset = p.key
+                if len(entries) == 1:
+                    self._preset_entry = entries[0].entry_id
+                    return await self.async_step_preset_confirm()
+                return await self.async_step_preset_entry()
+        options = [selector.SelectOptionDict(value=p.key, label=f"{p.name} – {p.integration}") for p in pz.PRESETS.values()]
+        schema = vol.Schema({vol.Required("preset", default=self._preset or vol.UNDEFINED): selector.SelectSelector(
+            selector.SelectSelectorConfig(options=options, mode=selector.SelectSelectorMode.LIST))})
+        return self.async_show_form(step_id="preset", data_schema=schema, errors=errors,
+                                    description_placeholders=placeholders)
+
+    async def async_step_preset_entry(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        p = pz.PRESETS[self._preset]
+        if user_input is not None:
+            self._preset_entry = user_input["entry"]
+            return await self.async_step_preset_confirm()
+        options = [selector.SelectOptionDict(value=e.entry_id, label=e.title)
+                   for e in self.hass.config_entries.async_entries(p.domain)]
+        schema = vol.Schema({vol.Required("entry"): selector.SelectSelector(
+            selector.SelectSelectorConfig(options=options, mode=selector.SelectSelectorMode.LIST))})
+        return self.async_show_form(step_id="preset_entry", data_schema=schema,
+                                    description_placeholders={"integration": p.integration})
+
+    def _preset_match(self) -> tuple[pz.Match, list[pz.Entry]]:
+        reg = er.async_get(self.hass)
+        entries = [pz.Entry(e.entity_id, e.unique_id or "", e.device_id, e.disabled_by is not None)
+                   for e in er.async_entries_for_config_entry(reg, self._preset_entry)]
+        return pz.match(pz.PRESETS[self._preset], entries), entries
+
+    async def async_step_preset_confirm(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        m, entries = self._preset_match()
+        if user_input is not None:
+            return self.async_create_entry(data=self._preset_options(m, entries))
+        return self.async_show_form(step_id="preset_confirm", data_schema=vol.Schema({}),
+                                    description_placeholders={"summary": _preset_summary(m)})
+
+    def _preset_options(self, m: pz.Match, entries: list[pz.Entry]) -> dict:
+        new = dict(self.config_entry.options)
+        p = m.preset
+        for role, entity_id in m.roles.items():
+            new[pz.ROLE_KEYS[role]] = entity_id
+        if "battery_power" in m.roles and p.battery_sign:
+            new[CONF_BATTERY_POWER_SIGN] = p.battery_sign
+        if "grid_power" in m.roles and p.grid_sign:
+            new[CONF_GRID_POWER_SIGN] = p.grid_sign
+        control_keys = [CONF_BATTERY_MODE_ENTITY, CONF_BATTERY_OPT_CHARGE, CONF_BATTERY_OPT_DISCHARGE,
+                        CONF_BATTERY_OPT_NORMAL, CONF_BATTERY_OPT_SELL_SOLAR, CONF_HUAWEI_DEVICE, *BATTERY_SCRIPTS,
+                        CONF_BATTERY_SCRIPT_SELL_SOLAR]
+        if m.actions:
+            current = {s["entity_id"]: (st.state if (st := self.hass.states.get(s["entity_id"])) else None)
+                       for steps in m.actions.values() for s in steps}
+            for k in control_keys:
+                new.pop(k, None)
+            new[CONF_BATTERY_ACTIONS] = pz.fill_keep(m.actions, current, pz.keep_fallbacks(m.actions, entries))
+            new[CONF_BATTERY_PRESET] = p.key
+        elif m.huawei_device:
+            for k in control_keys:
+                new.pop(k, None)
+            new.pop(CONF_BATTERY_ACTIONS, None)
+            new[CONF_HUAWEI_DEVICE] = m.huawei_device
+            new[CONF_BATTERY_PRESET] = p.key
+        elif new.get(CONF_BATTERY_PRESET) and new.get(CONF_BATTERY_PRESET) != p.key:
+            new.pop(CONF_BATTERY_ACTIONS, None)       # styring fra et andet anlæg passer ikke længere
+            new.pop(CONF_BATTERY_PRESET, None)
+        if m.export:
+            st = self.hass.states.get(m.export[0])
+            try:
+                normal = float(st.state) if st else 0.0
+            except ValueError:
+                normal = 0.0
+            if normal > m.export[1]:
+                for k in (CONF_EXPORT_OPT_STOP, CONF_EXPORT_OPT_NORMAL, *EXPORT_SCRIPTS):
+                    new.pop(k, None)
+                new[CONF_SOLAR_CURTAIL] = m.export[0]
+                new[CONF_EXPORT_VALUE_STOP] = m.export[1]
+                new[CONF_EXPORT_VALUE_NORMAL] = normal
+        return new
 
     async def async_step_battery(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:

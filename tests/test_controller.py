@@ -495,6 +495,21 @@ async def main():
     n = len(h.services.calls)
     await c._apply_ev_step(c.plan, False)              # derefter rører SmartHus ikke laderen
     assert len(h.services.calls) == n
+    # Færdig opsætning (Deye): trinnene køres, når tilstanden skifter – med kortets grænser
+    st = {"select.wm": State("Zero Export To CT", options=["Export First", "Zero Export To CT"]),
+          "select.p1": State("Disabled", options=["Disabled", "Grid"]), "number.s1": State("15")}
+    actions = {"charge": [{"type": "select", "entity_id": "select.p1", "value": "Grid"},
+                          {"type": "number", "entity_id": "number.s1", "value": "max_soc"}],
+               "normal": [{"type": "select", "entity_id": "select.p1", "value": "Disabled"},
+                          {"type": "number", "entity_id": "number.s1", "value": "min_soc"}]}
+    c, h = make({"battery_actions": actions}, st)
+    c.settings["battery_max_soc"], c.settings["battery_min_soc"] = 90, 15
+    assert c.has_battery_control
+    await c._apply_battery("charge", False)
+    assert h.services.calls == [("select", "select_option", {"entity_id": "select.p1", "option": "Grid"}),
+                                ("number", "set_value", {"entity_id": "number.s1", "value": 90.0})], h.services.calls
+    await c._apply_battery("charge", False)          # samme tilstand: intet nyt
+    assert len(h.services.calls) == 2
     print("controller OK")
 
 def test_controller_control():

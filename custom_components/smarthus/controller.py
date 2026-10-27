@@ -98,6 +98,7 @@ from .const import (
     HEATING_BOOST,
     HEATING_REDUCE,
     MIN_COMMAND_INTERVAL,
+    CONF_BATTERY_ACTIONS,
     MODULE_BATTERY,
     MODULE_HEATING,
     MODULE_HOTWATER,
@@ -769,7 +770,7 @@ class SmartHusController:
     @property
     def has_battery_control(self) -> bool:
         return (bool(self.config.get(CONF_BATTERY_MODE_ENTITY)) or bool(self.config.get(CONF_HUAWEI_DEVICE))
-                or any(self.config.get(k) for k in BATTERY_SCRIPTS))
+                or bool(self.config.get(CONF_BATTERY_ACTIONS)) or any(self.config.get(k) for k in BATTERY_SCRIPTS))
 
     @property
     def has_sell_solar(self) -> bool:
@@ -1161,6 +1162,9 @@ class SmartHusController:
                ACTION_SELL_SOLAR: CONF_BATTERY_SCRIPT_SELL_SOLAR}.get(action, CONF_BATTERY_SCRIPT_NORMAL)
         if await self._run_script(key, "battery", action, force, self._script_vars(action)):
             return
+        if self.config.get(CONF_BATTERY_ACTIONS):
+            await self._apply_preset(action, force)
+            return
         if self.config.get(CONF_HUAWEI_DEVICE):
             await self._apply_huawei(action, force)
             return
@@ -1201,6 +1205,40 @@ class SmartHusController:
             _LOGGER.info("SmartHus: %s.%s (%s: %s)", domain, service, group, state)
         except Exception as err:  # noqa: BLE001
             _LOGGER.warning("SmartHus kunne ikke kalde %s.%s: %s", domain, service, err)
+
+    async def _apply_preset(self, action: str, force: bool) -> None:
+        """Færdig opsætning for et kendt anlæg: kør trinnene for tilstanden – kun når den skifter."""
+        actions: dict = self.config[CONF_BATTERY_ACTIONS]
+        state = action if action in actions else ACTION_NORMAL
+        if not force and self._script_state.get("battery") == state:
+            return
+        if not force and not self._rate_ok("battery:preset"):
+            return
+        self._script_state["battery"] = state
+        self._last_cmd["battery:preset"] = time.monotonic()
+        _LOGGER.info("SmartHus: batteri → %s (%d trin)", state, len(actions.get(state, [])))
+        for step in actions.get(state, []):
+            try:
+                await self._run_step(step)
+            except Exception as err:  # noqa: BLE001 – ét trin må ikke stoppe resten
+                _LOGGER.warning("SmartHus kunne ikke udføre %s på %s: %s", step.get("type"), step.get("entity_id"), err)
+
+    async def _run_step(self, step: dict) -> None:
+        kind, entity_id, value = step["type"], step["entity_id"], step.get("value")
+        if value == "max_soc":
+            value = self.settings.get("battery_max_soc", 95)
+        elif value == "min_soc":
+            value = self.settings.get("battery_min_soc", 15)
+        if kind == "select":
+            await self._ensure_option(entity_id, str(value), True)
+        elif kind == "number":
+            await self._ensure_number(entity_id, float(value), True)
+        elif kind == "switch":
+            await self._ensure_switch(entity_id, bool(value), True)
+        elif kind == "time":
+            await self._call("time", "set_value", {"entity_id": entity_id, "time": value})
+        elif kind == "button":
+            await self._call("button", "press", {"entity_id": entity_id})
 
     async def _apply_huawei(self, action: str, force: bool) -> None:
         """Huawei (huawei_solar): tvungen opladning/afladning via integrationens egne handlinger."""

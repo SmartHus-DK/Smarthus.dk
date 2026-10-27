@@ -66,6 +66,7 @@
       "init": {
         "title": "SmartHus – opsætning",
         "menu_options": {
+          "preset": "Vælg dit anlæg (automatisk opsætning)",
           "battery": "Batteri / inverter",
           "solar": "Solceller",
           "ev": "Elbiler",
@@ -292,6 +293,24 @@
           "ev_plug_sensor": "Sensor fra bilens egen integration, der viser om ladekablet sidder i – fx Tesla binary_sensor.[bil]_charger, Kia/Hyundai binary_sensor.[bil]_ev_plugged_in, VW sensor.[bil]_plug_status. Deler flere biler samme lader, styrer SmartHus kun den bil, der er tilsluttet. Uden sensor vælger du den tilsluttede bil på kortet.",
           "ev_power_sensor": "Laderens effekt lige nu, fx Easee sensor.[lader]_power. Bruges til energiflowet og til at tjekke, at laderen faktisk stopper (sendes sluk igen, hvis den lader videre)."
         }
+      },
+      "preset": {
+        "title": "Vælg dit anlæg",
+        "description": "Vælg inverter/batteri. SmartHus finder selv batteriniveau, effekt, energimålere og – hvor det er muligt – batteristyringen i integrationen.\n\nIntegrationen skal være installeret og sat op først (de fleste via HACS). Resten kan stadig rettes under **Batteri / inverter** og **Solceller**.",
+        "data": {
+          "preset": "Anlæg"
+        }
+      },
+      "preset_entry": {
+        "title": "Vælg anlæg",
+        "description": "Der er flere opsætninger af {integration}. Vælg den, SmartHus skal bruge.",
+        "data": {
+          "entry": "Opsætning"
+        }
+      },
+      "preset_confirm": {
+        "title": "Gem opsætningen",
+        "description": "{summary}"
       }
     },
     "error": {
@@ -299,7 +318,8 @@
       "stromligning_no_prices": "Sensoren har ingen priser (attributten 'prices' mangler). Vælg Strømligning-sensoren for den aktuelle pris inkl. moms.",
       "export_select_options": "Du har valgt en rullemenu – udfyld begge navne ('stop eksport' og 'normal eksport').",
       "export_number_values": "Du har valgt et tal – udfyld begge værdier (ved stop og ved normal eksport).",
-      "export_scripts_pair": "Vælg både et script til at stoppe og et til at starte eksporten igen."
+      "export_scripts_pair": "Vælg både et script til at stoppe og et til at starte eksporten igen.",
+      "preset_integration_missing": "Integrationen **{integration}** er ikke installeret. Installér den først: {url}"
     }
   },
   "selector": {

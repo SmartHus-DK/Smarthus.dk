@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.33.8** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
+**Version 1.34.0** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
 
 SmartHus bruger strømmen, når den er billigst, og sparer, når den er dyrest. Den lader elbilen og batteriet i de billige timer, varmer vandet med billig strøm eller solcelleoverskud, skruer lidt op og ned for varmen og stopper salg af solstrøm, når prisen er for lav. Du ser det hele – og hvad du har sparet – på ét kort.
 
@@ -48,15 +48,19 @@ Installér dem, der passer til dit hus. *Indbygget* findes under **Indstillinger
 
 ### Inverter og batteri
 
-| Mærke | Integration | Hvor | Opsætning i SmartHus |
+Installér integrationen til dit anlæg, og vælg derefter **SmartHus → Konfigurer → Vælg dit anlæg**. SmartHus finder selv batteriniveau, effekt, energimålere, batteristyring og stop af eksport i integrationen og viser, hvad der blev fundet, før det gemmes. Resten kan rettes under *Batteri / inverter* og *Solceller*.
+
+| Mærke | Integration (installeres først) | Hvor | "Vælg dit anlæg" finder |
 |---|---|---|---|
-| SigEnergy | [Sigenergy Local Modbus](https://github.com/TypQxQ/Sigenergy-Local-Modbus) | HACS | Rullemenu – se eksempel under [For installatøren](#for-installatøren-avanceret) |
-| Huawei | [Huawei Solar](https://github.com/wlcrs/huawei_solar) | HACS | **Indbygget** – vælg bare batteriet |
-| Deye / Sunsynk | [Solarman](https://github.com/davidrapan/ha-solarman) | HACS | Scripts (skabelon nedenfor) |
-| FoxESS | [FoxESS Modbus](https://github.com/nathanmarlor/foxess_modbus) | HACS | Rullemenu eller scripts |
-| SolaX | [SolaX Modbus](https://github.com/wills106/homeassistant-solax-modbus) | HACS | Rullemenu eller scripts |
-| Growatt | [Modbus](https://www.home-assistant.io/integrations/modbus/) | Indbygget | Scripts (skabelon nedenfor) |
-| Solplanet | [Solplanet](https://github.com/calvinbui/home-assistant-solplanet) | HACS | Scripts (skabelon nedenfor) |
+| SigEnergy | [Sigenergy Local Modbus](https://github.com/TypQxQ/Sigenergy-Local-Modbus) | HACS | Målere, batteristyring (Remote EMS) og eksportgrænse |
+| Huawei | [Huawei Solar](https://github.com/wlcrs/huawei_solar) | HACS | Målere og indbygget batteristyring |
+| Deye / Sunsynk | [Solarman](https://github.com/davidrapan/ha-solarman) | HACS | Målere, batteristyring (tidsprogram 1–6) og eksportgrænse. *Time of Use* skal være slået til |
+| SolaX | [SolaX Modbus](https://github.com/wills106/homeassistant-solax-modbus) | HACS | Målere, batteristyring (Manual Mode, Gen4+) og eksportgrænse |
+| FoxESS | [FoxESS Modbus](https://github.com/nathanmarlor/foxess_modbus) | HACS | Målere og batteristyring (Force Charge/Discharge – slå *Remote control* til i integrationen) |
+| Growatt | [SolaX Modbus](https://github.com/wills106/homeassistant-solax-modbus) (Growatt-plugin) | HACS | Batteriniveau, sol og batteristyring (MOD/TL-XH: tidsrum 1 · SPH: prioritet) |
+| Solplanet | [Solplanet](https://github.com/calvinbui/home-assistant-solplanet) | HACS | Batteriniveau – batteriet styres med scripts (skabelon nedenfor) |
+
+Batteristyringen fra "Vælg dit anlæg" er bygget ud fra integrationernes kildekode og **ikke afprøvet på alle modeller** – afprøv lad/aflad/normal på anlægget, før styringen slås til. Andre mærker styres med en rullemenu eller scripts (se [For installatøren](#for-installatøren-avanceret)).
 
 ### Ladeboks
 

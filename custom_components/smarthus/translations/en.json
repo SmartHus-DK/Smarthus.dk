@@ -61,6 +61,7 @@
       "init": {
         "title": "SmartHus – setup",
         "menu_options": {
+          "preset": "Choose your system (automatic setup)",
           "battery": "Battery / inverter",
           "solar": "Solar",
           "ev": "EVs",
@@ -280,6 +281,24 @@
           "ev_plug_sensor": "Sensor from the car's integration showing if the cable is plugged in. With several cars on one charger, SmartHus only controls the connected car. Without it, pick the connected car on the card.",
           "ev_power_sensor": "The charger's current power, e.g. Easee sensor.[charger]_power. Used for the energy flow and to check that the charger really stops (the stop is resent if it keeps charging)."
         }
+      },
+      "preset": {
+        "title": "Choose your system",
+        "description": "Choose your inverter/battery. SmartHus finds the battery level, power, energy meters and – where possible – the battery control in the integration.\n\nThe integration must be installed and set up first (most via HACS). Everything can still be adjusted under **Battery / inverter** and **Solar**.",
+        "data": {
+          "preset": "System"
+        }
+      },
+      "preset_entry": {
+        "title": "Choose system",
+        "description": "There are several {integration} setups. Choose the one SmartHus should use.",
+        "data": {
+          "entry": "Setup"
+        }
+      },
+      "preset_confirm": {
+        "title": "Save setup",
+        "description": "{summary}"
       }
     },
     "error": {
@@ -287,7 +306,8 @@
       "stromligning_no_prices": "The sensor has no prices (the 'prices' attribute is missing). Choose the Strømligning current price incl. VAT sensor.",
       "export_select_options": "You chose a drop-down – fill in both option names.",
       "export_number_values": "You chose a number – fill in both values.",
-      "export_scripts_pair": "Choose both a stop script and a start script."
+      "export_scripts_pair": "Choose both a stop script and a start script.",
+      "preset_integration_missing": "The integration **{integration}** is not installed. Install it first: {url}"
     }
   },
   "selector": {
