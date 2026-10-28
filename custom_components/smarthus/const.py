@@ -15,7 +15,7 @@ EDS_DAYAHEAD_FROM: Final = date(2025, 10, 1)
 
 STATIC_URL: Final = "/smarthus_static"
 CARD_URL: Final = f"{STATIC_URL}/smarthus-card.js"
-CARD_VERSION: Final = "1.34.0"
+CARD_VERSION: Final = "1.35.0"
 
 PLATFORMS: Final = ["sensor", "binary_sensor", "switch", "number", "select"]
 
@@ -43,7 +43,7 @@ DEFAULT_PRICES: Final = {
     CONF_AREA: "DK1",
     CONF_VAT: True,
     CONF_MARKUP: 0.05,
-    CONF_ENERGINET: 0.14,
+    CONF_ENERGINET: 0.115,   # 2026: transmissionsnettarif 0,043 + systemtarif 0,072
     CONF_ELAFGIFT: 0.008,
     CONF_SALE_FEE: 0.03,
     CONF_T_WINTER_LOW: 0.13,
@@ -68,7 +68,10 @@ CONF_SL_SPOT_VAT: Final = "stromligning_spot_vat"
 VAT_OPTIONS: Final = ["incl", "excl"]
 DEFAULT_SL_SPOT: Final = "sensor.stromligning_spotprice_vat"
 
-PRICE_KEYS: Final = list(DEFAULT_PRICES) + [CONF_PRICE_SOURCE, CONF_SL_PRICE, CONF_SL_TOMORROW, CONF_SL_SPOT, CONF_SL_PRICE_VAT, CONF_SL_SPOT_VAT]
+# Netselskab: tariffer og afgifter hentes automatisk fra Energi Data Service ("" = indtast selv)
+CONF_GRID_COMPANY: Final = "grid_company"
+GRID_MANUAL: Final = "manual"
+PRICE_KEYS: Final = list(DEFAULT_PRICES) + [CONF_GRID_COMPANY, CONF_PRICE_SOURCE, CONF_SL_PRICE, CONF_SL_TOMORROW, CONF_SL_SPOT, CONF_SL_PRICE_VAT, CONF_SL_SPOT_VAT]
 
 # --- Enheder (options) -----------------------------------------------------
 # Batteri / inverter

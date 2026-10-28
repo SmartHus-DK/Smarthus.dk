@@ -29,14 +29,15 @@
           "tariff_summer_high": "Nettarif sommer, høj (06–17 og 21–24)",
           "tariff_summer_peak": "Nettarif sommer, spids (17–21)",
           "stromligning_price_vat": "Prissensoren er",
-          "stromligning_spot_vat": "Spotpris-sensoren er"
+          "stromligning_spot_vat": "Spotpris-sensoren er",
+          "grid_company": "Netselskab"
         },
         "data_description": {
           "price_source": "Strømligning giver kundens rigtige pris fra elabonnementet. Ellers beregner SmartHus prisen ud fra spotprisen og tarifferne nedenfor.",
           "stromligning_price_entity": "Normalt sensor.stromligning_current_price_vat (købspris inkl. alt).",
           "stromligning_tomorrow_entity": "Normalt binary_sensor.stromligning_tomorrow_available_vat (morgendagens priser).",
           "stromligning_spot_entity": "Normalt sensor.stromligning_spotprice_vat. Bruges til salgsprisen for solcellestrøm.",
-          "price_area": "DK1 = Jylland og Fyn. DK2 = Sjælland og øerne.",
+          "price_area": "DK1 = Jylland og Fyn · DK2 = Sjælland, øerne og Bornholm.",
           "supplier_markup": "Elleverandørens tillæg pr. kWh ekskl. moms – står på elregningen.",
           "sale_fee": "Det elselskabet trækker fra, når du sælger strøm (kr/kWh).",
           "include_vat": "Slå til for private kunder (25 % moms på købsprisen).",
@@ -49,7 +50,8 @@
           "tariff_summer_high": "April–september kl. 06–17 og 21–24.",
           "tariff_summer_peak": "April–september kl. 17–21 (spidslast).",
           "stromligning_price_vat": "Vælg om prissensoren (og sensoren for morgendagens priser) viser priser inkl. eller ekskl. moms. Er den uden moms, lægger SmartHus selv 25 % moms på, så alle priser og besparelser er inkl. moms.",
-          "stromligning_spot_vat": "Vælg om spotpris-sensoren er inkl. eller ekskl. moms. Salgsprisen for solstrøm regnes altid uden moms."
+          "stromligning_spot_vat": "Vælg om spotpris-sensoren er inkl. eller ekskl. moms. Salgsprisen for solstrøm regnes altid uden moms.",
+          "grid_company": "Vælg dit netselskab, så henter SmartHus selv nettarif, Energinets tariffer og elafgift fra Energi Data Service (time for time og med de rigtige satser bagud i tid). Står netselskabet ikke på listen, vælg \"Indtast selv\" og udfyld satserne nederst."
         }
       }
     },
@@ -245,14 +247,15 @@
           "tariff_summer_high": "Nettarif sommer, høj (06–17 og 21–24)",
           "tariff_summer_peak": "Nettarif sommer, spids (17–21)",
           "stromligning_price_vat": "Prissensoren er",
-          "stromligning_spot_vat": "Spotpris-sensoren er"
+          "stromligning_spot_vat": "Spotpris-sensoren er",
+          "grid_company": "Netselskab"
         },
         "data_description": {
           "price_source": "Strømligning giver kundens rigtige pris fra elabonnementet. Ellers beregner SmartHus prisen ud fra spotprisen og tarifferne nedenfor.",
           "stromligning_price_entity": "Normalt sensor.stromligning_current_price_vat (købspris inkl. alt).",
           "stromligning_tomorrow_entity": "Normalt binary_sensor.stromligning_tomorrow_available_vat (morgendagens priser).",
           "stromligning_spot_entity": "Normalt sensor.stromligning_spotprice_vat. Bruges til salgsprisen for solcellestrøm.",
-          "price_area": "DK1 = Jylland og Fyn. DK2 = Sjælland og øerne.",
+          "price_area": "DK1 = Jylland og Fyn · DK2 = Sjælland, øerne og Bornholm.",
           "supplier_markup": "Elleverandørens tillæg pr. kWh ekskl. moms – står på elregningen.",
           "sale_fee": "Det elselskabet trækker fra, når du sælger strøm (kr/kWh).",
           "include_vat": "Slå til for private kunder (25 % moms på købsprisen).",
@@ -265,7 +268,8 @@
           "tariff_summer_high": "April–september kl. 06–17 og 21–24.",
           "tariff_summer_peak": "April–september kl. 17–21 (spidslast).",
           "stromligning_price_vat": "Vælg om prissensoren (og sensoren for morgendagens priser) viser priser inkl. eller ekskl. moms. Er den uden moms, lægger SmartHus selv 25 % moms på, så alle priser og besparelser er inkl. moms.",
-          "stromligning_spot_vat": "Vælg om spotpris-sensoren er inkl. eller ekskl. moms. Salgsprisen for solstrøm regnes altid uden moms."
+          "stromligning_spot_vat": "Vælg om spotpris-sensoren er inkl. eller ekskl. moms. Salgsprisen for solstrøm regnes altid uden moms.",
+          "grid_company": "Vælg dit netselskab, så henter SmartHus selv nettarif, Energinets tariffer og elafgift fra Energi Data Service (time for time og med de rigtige satser bagud i tid). Står netselskabet ikke på listen, vælg \"Indtast selv\" og udfyld satserne nederst."
         }
       },
       "ev_car": {

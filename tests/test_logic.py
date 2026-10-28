@@ -57,7 +57,7 @@ def test_price_model_tariffs_and_vat():
     m = model()
     winter_peak = datetime(2026, 1, 10, 18, tzinfo=TZ)
     p = m.buy_price(1.0, winter_peak)
-    expected = (1.0 + 0.05 + 1.17 + 0.14 + 0.008) * 1.25
+    expected = (1.0 + 0.05 + 1.17 + 0.115 + 0.008) * 1.25   # Energinet 2026: 0,115
     assert abs(p - expected) < 1e-3
     assert m.net_tariff(datetime(2026, 7, 1, 3, tzinfo=TZ)) == 0.13
     assert m.sale_price(1.0) == 0.97
@@ -614,7 +614,7 @@ def test_historic_elafgift():
     assert pricing.elafgift_at(datetime(2030, 1, 1, tzinfo=TZ)) is None
     t = datetime(2025, 3, 1, 12, tzinfo=TZ)
     # Historisk pris bruger datidens afgift; den løbende pris bruger den indstillede
-    assert round(m.buy_price(1.0, t, historic=True) - m.buy_price(1.0, t), 4) == round((0.720 - m.c[const.CONF_ELAFGIFT]) * 1.25, 4)
+    assert abs((m.buy_price(1.0, t, historic=True) - m.buy_price(1.0, t)) - (0.720 - m.c[const.CONF_ELAFGIFT]) * 1.25) < 2e-4
 
 
 def test_external_vat():
@@ -1038,3 +1038,28 @@ def test_preset_fronius_dash_ids_and_storage_control():
     assert "sensor.solarnet_power_grid" in m.disabled        # "power_grid" ≠ "power_grid_import"
     ch = m.actions["charge"]
     assert ch[3] == {"type": "number", "entity_id": "number.gen24_battery_discharge_power_limit", "value": -100}
+
+
+tariffs = _load("tariffs")
+
+
+def test_tariffs_from_datahub_rows():
+    """Nettarif pr. time og periode, Energinet + elafgift – og de bruges i prisen (også bagud i tid)."""
+    grid = [{"ChargeTypeCode": "DT_C_01", "ValidFrom": "2026-10-01T00:00:00", "ValidTo": "2027-04-01T00:00:00",
+             **{f"Price{i}": (0.955573 if 18 <= i <= 21 else 0.318524 if i >= 7 else 0.106175) for i in range(1, 25)}},
+            {"ChargeTypeCode": "DT_C_01", "ValidFrom": "2026-04-01T00:00:00", "ValidTo": "2026-10-01T00:00:00",
+             "Price1": 0.106175, **{f"Price{i}": 0.414082 for i in range(18, 22)}}]
+    tso = [{"ChargeTypeCode": "40000", "ValidFrom": "2026-01-01T00:00:00", "ValidTo": "2027-01-01T00:00:00", "Price1": 0.043},
+           {"ChargeTypeCode": "41000", "ValidFrom": "2026-01-01T00:00:00", "ValidTo": "2027-01-01T00:00:00", "Price1": 0.072},
+           {"ChargeTypeCode": "EA-001", "ValidFrom": "2026-01-01T00:00:00", "ValidTo": "2028-01-01T00:00:00", "Price1": 0.008},
+           {"ChargeTypeCode": "EA-001", "ValidFrom": "2025-01-01T00:00:00", "ValidTo": "2026-01-01T00:00:00", "Price1": 0.72}]
+    t = tariffs.Tariffs(TZ, tariffs.parse_rows(grid)["DT_C_01"], tariffs.parse_rows(tso))
+    peak = datetime(2026, 10, 28, 17, 30, tzinfo=TZ)             # kl. 17–18 = Price18
+    assert t.net(peak) == 0.955573 and t.net(datetime(2026, 10, 28, 3, tzinfo=TZ)) == 0.106175
+    assert t.net(datetime(2026, 7, 1, 10, tzinfo=TZ)) == 0.106175   # sommer: kun Price1 + spidslast → Price1 udfylder
+    assert abs(t.transmission(peak) - 0.115) < 1e-9 and t.elafgift(peak) == 0.008
+    assert t.elafgift(datetime(2025, 6, 1, 12, tzinfo=TZ)) == 0.72 and t.transmission(datetime(2025, 6, 1, tzinfo=TZ)) is None
+    m = pricing.PriceModel(dict(const.DEFAULT_PRICES), TZ)
+    m.tariffs = t
+    expected = round((1.0 + 0.05 + 0.955573 + 0.115 + 0.008) * 1.25, 4)
+    assert m.buy_price(1.0, peak) == expected

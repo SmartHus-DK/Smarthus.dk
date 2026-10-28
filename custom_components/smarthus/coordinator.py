@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 import json
 import logging
 from datetime import timedelta
@@ -18,6 +19,8 @@ from homeassistant.util import dt as dt_util
 from .const import (
     API_URL,
     CONF_AREA,
+    CONF_GRID_COMPANY,
+    GRID_MANUAL,
     CONF_PRICE_SOURCE,
     CONF_SALE_FEE,
     CONF_SL_PRICE,
@@ -34,6 +37,7 @@ from .const import (
     SOURCE_STROMLIGNING,
 )
 from .planner import Slot
+from . import tariffs as tf
 from .pricing import PriceModel, missing_tomorrow, apply_external_prices, apply_external_spot, has_vat, parse_price_list, vat_factor
 
 _LOGGER = logging.getLogger(__name__)
@@ -63,6 +67,10 @@ class SmartHusPriceCoordinator(DataUpdateCoordinator[list[Slot]]):
         self.sl_spot = config.get(CONF_SL_SPOT) or DEFAULT_SL_SPOT
         self.external_hits = 0
         self._raw: list[Slot] = []
+        company = config.get(CONF_GRID_COMPANY) or GRID_MANUAL
+        self.grid_company = tf.GRID_COMPANIES.get(company)          # (navn, GLN, kode) eller None
+        self._tariffs_fetched: float | None = None
+        self.tariff_error: str | None = None
 
     @property
     def uses_stromligning(self) -> bool:
@@ -101,7 +109,43 @@ class SmartHusPriceCoordinator(DataUpdateCoordinator[list[Slot]]):
             if missing_tomorrow(self._raw, dt_util.now()):
                 self.hass.async_create_task(self.async_request_refresh())   # måske er de kommet nu
 
+    async def _async_refresh_tariffs(self) -> None:
+        """Hent netselskabets tarif, Energinets tariffer og elafgiften (højst hver 12. time)."""
+        if not self.grid_company:
+            return
+        now = time.monotonic()
+        if self._tariffs_fetched is not None and now - self._tariffs_fetched < 12 * 3600:
+            return
+        _name, gln, code = self.grid_company
+        queries = [
+            {"GLN_Number": [gln], "ChargeTypeCode": [code], "ChargeType": ["D03"]},
+            {"GLN_Number": [tf.ENERGINET_GLN], "ChargeTypeCode": [*tf.ENERGINET_CODES, tf.ELAFGIFT_CODE]},
+        ]
+        found: list[dict[str, list]] = []
+        try:
+            for flt in queries:
+                params = {"filter": json.dumps(flt), "sort": "ValidFrom DESC", "limit": "500"}
+                async with asyncio.timeout(30):
+                    async with self._session.get(tf.DATASET_URL, params=params) as resp:
+                        resp.raise_for_status()
+                        found.append(tf.parse_rows((await resp.json()).get("records", [])))
+        except (aiohttp.ClientError, TimeoutError, ValueError) as err:
+            self.tariff_error = f"Kunne ikke hente tariffer: {err}"
+            _LOGGER.warning("SmartHus: %s – bruger %s", self.tariff_error,
+                            "de senest hentede" if self.model.tariffs else "de indtastede satser")
+            self._tariffs_fetched = now - 11 * 3600      # prøv igen om en time
+            return
+        grid = found[0].get(code, [])
+        if not grid:
+            self.tariff_error = f"Ingen tarif fundet for {_name} ({code})"
+            _LOGGER.warning("SmartHus: %s – bruger de indtastede satser", self.tariff_error)
+        else:
+            self.tariff_error = None
+        self.model.tariffs = tf.Tariffs(self.model.tz, grid, found[1])
+        self._tariffs_fetched = now
+
     async def _async_update_data(self) -> list[Slot]:
+        await self._async_refresh_tariffs()
         today = dt_util.now().date()
         params = {
             "start": (today - timedelta(days=1)).isoformat(),

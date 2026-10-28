@@ -29,11 +29,12 @@
           "tariff_summer_high": "Grid tariff summer, high (06–17 and 21–24)",
           "tariff_summer_peak": "Grid tariff summer, peak (17–21)",
           "stromligning_price_vat": "Price sensor is",
-          "stromligning_spot_vat": "Spot price sensor is"
+          "stromligning_spot_vat": "Spot price sensor is",
+          "grid_company": "Grid company"
         },
         "data_description": {
           "price_source": "Strømligning gives the actual price from the customer's plan. Otherwise SmartHus calculates it from the spot price and the tariffs below.",
-          "price_area": "DK1 = Jutland and Funen. DK2 = Zealand and islands.",
+          "price_area": "DK1 = Jutland and Funen · DK2 = Zealand, the islands and Bornholm.",
           "include_vat": "Turn on for private customers (25% VAT).",
           "energinet_tariff": "Energinet grid + system tariff per kWh excl. VAT.",
           "elafgift": "Electricity tax per kWh excl. VAT.",
@@ -44,7 +45,8 @@
           "tariff_summer_high": "Apr–Sep 06–17 and 21–24.",
           "tariff_summer_peak": "Apr–Sep 17–21 (peak).",
           "stromligning_price_vat": "Choose whether the price sensor (and the tomorrow sensor) shows prices including or excluding VAT. Without VAT, SmartHus adds 25 % VAT so all prices and savings include VAT.",
-          "stromligning_spot_vat": "Choose whether the spot price sensor includes VAT. The sale price for solar power is always without VAT."
+          "stromligning_spot_vat": "Choose whether the spot price sensor includes VAT. The sale price for solar power is always without VAT.",
+          "grid_company": "Choose the grid company, and SmartHus fetches the grid tariff, Energinet tariffs and electricity tax from Energi Data Service (hour by hour, with the correct historic rates). If yours is not listed, choose \"Enter manually\" and fill in the rates below."
         }
       }
     },
@@ -238,11 +240,12 @@
           "tariff_summer_high": "Grid tariff summer, high (06–17 and 21–24)",
           "tariff_summer_peak": "Grid tariff summer, peak (17–21)",
           "stromligning_price_vat": "Price sensor is",
-          "stromligning_spot_vat": "Spot price sensor is"
+          "stromligning_spot_vat": "Spot price sensor is",
+          "grid_company": "Grid company"
         },
         "data_description": {
           "price_source": "Strømligning gives the actual price from the customer's plan. Otherwise SmartHus calculates it from the spot price and the tariffs below.",
-          "price_area": "DK1 = Jutland and Funen. DK2 = Zealand and islands.",
+          "price_area": "DK1 = Jutland and Funen · DK2 = Zealand, the islands and Bornholm.",
           "include_vat": "Turn on for private customers (25% VAT).",
           "energinet_tariff": "Energinet grid + system tariff per kWh excl. VAT.",
           "elafgift": "Electricity tax per kWh excl. VAT.",
@@ -253,7 +256,8 @@
           "tariff_summer_high": "Apr–Sep 06–17 and 21–24.",
           "tariff_summer_peak": "Apr–Sep 17–21 (peak).",
           "stromligning_price_vat": "Choose whether the price sensor (and the tomorrow sensor) shows prices including or excluding VAT. Without VAT, SmartHus adds 25 % VAT so all prices and savings include VAT.",
-          "stromligning_spot_vat": "Choose whether the spot price sensor includes VAT. The sale price for solar power is always without VAT."
+          "stromligning_spot_vat": "Choose whether the spot price sensor includes VAT. The sale price for solar power is always without VAT.",
+          "grid_company": "Choose the grid company, and SmartHus fetches the grid tariff, Energinet tariffs and electricity tax from Energi Data Service (hour by hour, with the correct historic rates). If yours is not listed, choose \"Enter manually\" and fill in the rates below."
         }
       },
       "ev_car": {

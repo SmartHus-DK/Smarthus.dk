@@ -79,6 +79,9 @@ def _price_attrs(c: SmartHusController) -> dict:
         "tomorrow_available": bool(tomorrow),
         "price_area": c.coordinator.area,
         "price_source": "Strømligning" if c.coordinator.uses_stromligning and c.coordinator.external_hits else "SmartHus",
+        "grid_company": c.coordinator.grid_company[0] if c.coordinator.grid_company else None,
+        "tariffs_fetched": bool(c.coordinator.model.tariffs and c.coordinator.model.tariffs.grid),
+        "tariff_error": c.coordinator.tariff_error,
     }
     if cur:
         attrs["spot"] = cur.spot

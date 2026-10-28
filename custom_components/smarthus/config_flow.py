@@ -16,8 +16,11 @@ from homeassistant.util import slugify
 from .pricing import parse_price_list
 from . import presets as pz
 
+from .tariffs import GRID_COMPANIES
 from .const import (
     AREAS,
+    CONF_GRID_COMPANY,
+    GRID_MANUAL,
     BATTERY_KEYS,
     BATTERY_SCRIPTS,
     CONF_BATTERY_ACTIONS,
@@ -190,8 +193,16 @@ VAT_SELECT = selector.SelectSelector(
 
 def _price_schema(values: dict) -> vol.Schema:
     v = {**DEFAULT_PRICES, CONF_PRICE_SOURCE: SOURCE_EDS, **values}
+    grid_options = [selector.SelectOptionDict(value=GRID_MANUAL, label="Indtast selv (felterne nederst)")] + [
+        selector.SelectOptionDict(value=k, label=name) for k, (name, _g, _c) in sorted(GRID_COMPANIES.items(), key=lambda x: x[1][0])]
     return vol.Schema(
         {
+            vol.Required(CONF_AREA, default=v[CONF_AREA]): selector.SelectSelector(
+                selector.SelectSelectorConfig(options=AREA_OPTIONS, mode=selector.SelectSelectorMode.LIST)
+            ),
+            vol.Required(CONF_GRID_COMPANY, default=v.get(CONF_GRID_COMPANY) or GRID_MANUAL): selector.SelectSelector(
+                selector.SelectSelectorConfig(options=grid_options, mode=selector.SelectSelectorMode.DROPDOWN)
+            ),
             vol.Required(CONF_PRICE_SOURCE, default=v[CONF_PRICE_SOURCE]): selector.SelectSelector(
                 selector.SelectSelectorConfig(options=[SOURCE_EDS, SOURCE_STROMLIGNING], translation_key="price_source",
                                               mode=selector.SelectSelectorMode.LIST)
@@ -204,10 +215,6 @@ def _price_schema(values: dict) -> vol.Schema:
             vol.Optional(CONF_SL_SPOT, description={"suggested_value": v.get(CONF_SL_SPOT) or DEFAULT_SL_SPOT}):
                 selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
             vol.Required(CONF_SL_SPOT_VAT, default=v.get(CONF_SL_SPOT_VAT) or "incl"): VAT_SELECT,
-            vol.Required(CONF_AREA, default=v[CONF_AREA]): selector.SelectSelector(
-                selector.SelectSelectorConfig(options=AREA_OPTIONS,
-                                              mode=selector.SelectSelectorMode.LIST)
-            ),
             vol.Required(CONF_VAT, default=v[CONF_VAT]): selector.BooleanSelector(),
             vol.Required(CONF_MARKUP, default=v[CONF_MARKUP]): KR,
             vol.Required(CONF_ENERGINET, default=v[CONF_ENERGINET]): KR,

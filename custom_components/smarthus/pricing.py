@@ -19,6 +19,7 @@ from .const import (
     DEFAULT_PRICES,
 )
 from .planner import Slot
+from .tariffs import Tariffs
 
 
 def parse_price_list(raw: list | None) -> list[tuple[datetime, float]]:
@@ -135,9 +136,12 @@ class PriceModel:
     def __init__(self, config: dict, tz: tzinfo) -> None:
         self.c = {**DEFAULT_PRICES, **{k: v for k, v in config.items() if k in DEFAULT_PRICES}}
         self.tz = tz
+        self.tariffs: Tariffs | None = None      # hentet fra Energi Data Service (valgt netselskab)
 
     def net_tariff(self, when: datetime) -> float:
-        """Tarifmodel 3.0: lav 00–06, høj 06–17, spids 17–21, høj 21–24."""
+        """Netselskabets tarif: hentet, eller Tarifmodel 3.0 med de indtastede satser."""
+        if self.tariffs and (v := self.tariffs.net(when)) is not None:
+            return v
         local = when.astimezone(self.tz)
         summer = 4 <= local.month <= 9
         h = local.hour
@@ -152,13 +156,18 @@ class PriceModel:
     def buy_price(self, spot: float, when: datetime, historic: bool = False) -> float:
         """Købspris. `historic`: brug den elafgift, der gjaldt på tidspunktet (til import af historik)."""
         afgift = float(self.c[CONF_ELAFGIFT])
-        if historic and (old := elafgift_at(when, self.tz)) is not None:
+        energinet = float(self.c[CONF_ENERGINET])
+        if self.tariffs and (v := self.tariffs.elafgift(when)) is not None:
+            afgift = v
+        elif historic and (old := elafgift_at(when, self.tz)) is not None:
             afgift = old
+        if self.tariffs and (v := self.tariffs.transmission(when)) is not None:
+            energinet = v
         total = (
             spot
             + float(self.c[CONF_MARKUP])
             + self.net_tariff(when)
-            + float(self.c[CONF_ENERGINET])
+            + energinet
             + afgift
         )
         if self.c[CONF_VAT]:
