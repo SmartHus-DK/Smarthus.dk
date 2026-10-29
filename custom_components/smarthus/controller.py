@@ -131,6 +131,8 @@ from .weather import forecast_sensor_ids, merge_wh, pick_weather_entity, summari
 _LOGGER = logging.getLogger(__name__)
 
 EV_CHANGE_GRACE_SEC = 90   # sekunder uden opstart efter man har ændret elbilens tidspunkt/mål
+SAVINGS_SAVE_SEC = 300     # regnskabet skrives til disken mindst hvert 5. minut
+HEAL_TODAY_DELAY_SEC = 120 # efter opstart: byg dagens tal op fra statistikken (når recorderen er klar)
 RESTORE_DELAY_SEC = 10     # slås styringen til igen inden for 10 s, sendes der intet til enhederne
 EV_STRAY_KW = 0.5          # laderen trækker strøm, selv om den er slukket i Home Assistant
 EV_STRAY_TICKS = 4         # … i 4 × 30 s → send sluk igen
@@ -181,6 +183,7 @@ class SmartHusController:
         self.plan = Plan()
         self.savings = SavingsCalculator()
         self._savings_loaded = False
+        self._savings_saved = 0.0          # hvornår regnskabet sidst blev skrevet til disken
         self.profile = Profile()
         self.profile_updated: datetime | None = None
         self.reserve: Reserve | None = None
@@ -264,6 +267,7 @@ class SmartHusController:
         if not self._savings_loaded:
             await self.async_load_savings()
         self._unsub = async_track_time_change(self.hass, self._async_tick, second=[5, 35])
+        self._unsub_heal = async_call_later(self.hass, HEAL_TODAY_DELAY_SEC, self._async_heal_today)
         self._unsub_prices = self.coordinator.async_add_listener(self._on_prices)
         self._unsub_sl = None
         if self.coordinator.uses_stromligning:
@@ -293,8 +297,7 @@ class SmartHusController:
             st = row.get("start")
             return datetime.fromtimestamp(st, dt_util.UTC) if isinstance(st, (int, float)) else st
 
-        meters = {n: self.config.get(k) for n, k in (("solar", CONF_SOLAR_ENERGY), ("export", CONF_EXPORT_ENERGY),
-                                                     ("import", CONF_IMPORT_ENERGY)) if self.config.get(k)}
+        meters = self._solar_meters()
         if "solar" not in meters and "import" not in meters:
             raise ValueError("Der er ikke valgt en energimåler for solceller eller køb fra nettet")
         end = dt_util.now().replace(minute=0, second=0, microsecond=0)
@@ -311,6 +314,27 @@ class SmartHusController:
             if not firsts:
                 raise ValueError("Ingen historik fundet for de valgte energimålere")
             start = min(firsts)
+        rows, last, hours_found = await self._async_solar_rows(meters, start, end, first_common=not start_date)
+        if not hours_found:
+            raise ValueError("Ingen historik fundet for de valgte energimålere")
+        summary = self.savings.rebuild_solar(rows, dt_util.now(), last)
+        await self._store.async_save(self.savings.data)
+        async_dispatcher_send(self.hass, SIGNAL_TICK.format(entry_id=self.entry.entry_id))
+        _LOGGER.info("SmartHus: solcellehistorik genberegnet: %s", summary)
+        return summary
+
+    def _solar_meters(self) -> dict[str, str]:
+        return {n: self.config.get(k) for n, k in (("solar", CONF_SOLAR_ENERGY), ("export", CONF_EXPORT_ENERGY),
+                                                    ("import", CONF_IMPORT_ENERGY)) if self.config.get(k)}
+
+    async def _async_solar_rows(self, meters: dict[str, str], start: datetime, end: datetime,
+                                first_common: bool = False) -> tuple[list[dict], dict[str, float], bool]:
+        """Timer med produktion/eksport/køb fra langtidsstatistikken + timens pris, og målernes værdi
+        ved slutningen af perioden."""
+        from homeassistant.components.recorder import get_instance
+        from homeassistant.components.recorder.statistics import statistics_during_period
+
+        rec = get_instance(self.hass)
         stats = await rec.async_add_executor_job(
             statistics_during_period, self.hass, start, end, set(meters.values()), "hour",
             {"energy": "kWh"}, {"change", "state"},
@@ -320,7 +344,7 @@ class SmartHusController:
             return datetime.fromtimestamp(st, self.tz) if isinstance(st, (int, float)) else dt_util.as_local(st)
 
         no_stats = [e for e in meters.values() if not stats.get(e)]
-        if no_stats:
+        if no_stats and first_common:
             raise ValueError(
                 "Ingen langtidsstatistik for: " + ", ".join(no_stats)
                 + ". Målerne skal have state_class 'total' eller 'total_increasing' (de kan ses i Energi-panelet).")
@@ -334,8 +358,8 @@ class SmartHusController:
             if rows and rows[-1].get("state") is not None:
                 last[name] = float(rows[-1]["state"])  # målerens værdi ved historikkens slutning
         if not hours:
-            raise ValueError("Ingen historik fundet for de valgte energimålere")
-        if not start_date:
+            return [], last, False
+        if first_common:
             # Start først, når alle målere har historik – ellers ser fx timer uden eksportmåler
             # ud som 100 % egetforbrug
             firsts = [ts(rows[0]) for rows in (stats.get(e, []) for e in meters.values()) if rows]
@@ -348,11 +372,33 @@ class SmartHusController:
             price, sale = prices.get(t, (None, None))
             rows.append({"start": t, "produced": v.get("solar"), "export": v.get("export"),
                          "import": v.get("import"), "price": price, "sale": sale})
-        summary = self.savings.rebuild_solar(rows, dt_util.now(), last)
-        await self._store.async_save(self.savings.data)
-        async_dispatcher_send(self.hass, SIGNAL_TICK.format(entry_id=self.entry.entry_id))
-        _LOGGER.info("SmartHus: solcellehistorik genberegnet: %s", summary)
-        return summary
+        return rows, last, True
+
+    async def _async_heal_today(self, _now=None) -> None:
+        """Efter opstart: byg dagens solcelle- og købstal op fra langtidsstatistikken.
+
+        Lukkede Home Assistant ikke pænt ned, er de gemte tal ældre end i dag, og alt siden
+        sidste gemning ville ellers mangle (fx "Købt fra nettet i dag" falder til 0).
+        """
+        meters = self._solar_meters()
+        if not meters:
+            return
+        try:
+            now = dt_util.now()
+            start = dt_util.start_of_local_day(now)
+            end = now.replace(minute=0, second=0, microsecond=0)
+            if end <= start:
+                return
+            rows, last, found = await self._async_solar_rows(meters, start, end)
+            if not found:
+                return
+            res = self.savings.replace_today(rows, now, last)
+            await self._store.async_save(self.savings.data)
+            self._savings_saved = time.monotonic()
+            async_dispatcher_send(self.hass, SIGNAL_TICK.format(entry_id=self.entry.entry_id))
+            _LOGGER.info("SmartHus: dagens tal genopbygget fra statistikken: %s", res)
+        except Exception as err:  # noqa: BLE001 – må ikke stoppe opstarten
+            _LOGGER.warning("SmartHus: kunne ikke genopbygge dagens tal: %s", err)
 
     async def _async_hour_prices(self, hours: list[datetime]) -> dict[datetime, tuple[float | None, float | None]]:
         """Købs- og salgspris (kr/kWh) for hver time: Strømlignings historik, ellers spotpris + prismodel.
@@ -747,6 +793,9 @@ class SmartHusController:
             self._unsub_sl = None
         for m in list(self._restore_pending):
             self._cancel_restore(m)
+        if getattr(self, "_unsub_heal", None):
+            self._unsub_heal()
+            self._unsub_heal = None
         await self._store.async_save(self.savings.data)
 
     @callback
@@ -945,7 +994,13 @@ class SmartHusController:
         action = self.plan.battery_action if self.active(MODULE_BATTERY) else None
         self.savings.update(dt_util.now(), self.plan.current, self.plan.day_avg, readings,
                             battery_action=action, battery_kwh=bat_kwh)
+        # async_delay_save skubbes 60 s frem ved hvert kald (hvert 30. sekund) og ville aldrig nå at
+        # skrive – kun ved en pæn nedlukning. Derfor skrives der fast hvert 5. minut, og delay_save
+        # sørger for den sidste skrivning, når Home Assistant lukker ned.
         self._store.async_delay_save(lambda: self.savings.data, 60)
+        if time.monotonic() - self._savings_saved >= SAVINGS_SAVE_SEC:
+            self._savings_saved = time.monotonic()
+            self.hass.async_create_task(self._store.async_save(self.savings.data))
 
     @property
     def _shared_heat_meter(self) -> bool:

@@ -74,6 +74,18 @@ def _migrate(data: dict) -> dict:
     return data
 
 
+def _hour_add(r: dict) -> dict[str, float]:
+    """Én times solcelle- og købstal ud fra målernes ændring i timen og timens pris."""
+    prod = max(r.get("produced") or 0.0, 0.0)
+    exp_raw = r.get("export")
+    exp = min(max(exp_raw, 0.0), prod) if exp_raw is not None else 0.0
+    own = prod - exp
+    imp = max(r.get("import") or 0.0, 0.0)
+    price, sale = r.get("price") or 0.0, r.get("sale") or 0.0
+    return {"produced": prod, "self_kwh": own, "export_kwh": exp, "self_value": own * price,
+            "export_income": exp * sale, "import_kwh": imp, "import_cost": imp * price}
+
+
 class SavingsCalculator:
     """Beregner besparelser ud fra energimålere.
 
@@ -252,6 +264,36 @@ class SavingsCalculator:
                 for k, v in add.items():
                     t[b][k] = round(t[b].get(k, 0.0) + v, 4)
 
+    def replace_today(self, rows: list[dict], now_local: datetime, last: dict[str, float] | None = None) -> dict:
+        """Erstat dagens solcelle- og købstal med timerne fra langtidsstatistikken.
+
+        Måned, år og total rettes med forskellen, så intet tælles dobbelt. `last` er målernes værdi
+        ved slutningen af den sidste hele time – den løbende optælling fortsætter derfra.
+        """
+        self._roll(now_local)
+        today, ym = now_local.date().isoformat(), now_local.strftime("%Y-%m")
+        new = _zero_solar()
+        for r in rows:
+            if r["start"].date().isoformat() != today:
+                continue
+            for f, v in _hour_add(r).items():
+                new[f] += v
+        old = self.data["solar_days"].get(today) or self.data["solar"]["today"]
+        diff = {f: new[f] - old.get(f, 0.0) for f in SOLAR_FIELDS}
+        for t in (self.data["solar"]["month"], self.data["solar"]["year"], self.data["solar"]["total"],
+                  self.data["solar_months"].setdefault(ym, _zero_solar())):
+            for f, v in diff.items():
+                t[f] = round(max(t.get(f, 0.0) + v, 0.0), 4)
+        rounded = {f: round(v, 4) for f, v in new.items()}
+        self.data["solar"]["today"] = dict(rounded)
+        self.data["solar_days"][today] = dict(rounded)
+        self.data["export_pending"] = 0.0
+        if last:
+            self.data["last"].update({k: v for k, v in last.items() if v is not None})
+        self._trim()
+        return {"import_kwh": rounded["import_kwh"], "produced": rounded["produced"],
+                "changed_import": round(diff["import_kwh"], 3)}
+
     def rebuild_solar(self, rows: list[dict], now_local: datetime,
                       last: dict[str, float] | None = None) -> dict:
         """Genberegn hele solcelleregnskabet ud fra historik pr. time.
@@ -277,14 +319,9 @@ class SavingsCalculator:
             imp = max(r.get("import") or 0.0, 0.0)
             if not (prod or imp):
                 continue
-            price, sale = r.get("price"), r.get("sale")
-            if price is None:
+            if r.get("price") is None:
                 no_price += 1
-            add = {
-                "produced": prod, "self_kwh": own, "export_kwh": exp,
-                "self_value": own * (price or 0.0), "export_income": exp * (sale or 0.0),
-                "import_kwh": imp, "import_cost": imp * (price or 0.0),
-            }
+            add = _hour_add(r)
             d, m = t.date().isoformat(), t.strftime("%Y-%m")
             targets = [days.setdefault(d, _zero_solar()), months.setdefault(m, _zero_solar()), buckets["total"]]
             if t.strftime("%Y") == year:

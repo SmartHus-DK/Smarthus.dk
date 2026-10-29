@@ -1063,3 +1063,26 @@ def test_tariffs_from_datahub_rows():
     m.tariffs = t
     expected = round((1.0 + 0.05 + 0.955573 + 0.115 + 0.008) * 1.25, 4)
     assert m.buy_price(1.0, peak) == expected
+
+
+def test_savings_replace_today_after_unclean_restart():
+    """Gemte tal fra i går (Home Assistant lukkede ikke pænt ned): dagens køb genopbygges fra statistikken,
+    og måned/år/total rettes med forskellen – uden dobbelttælling."""
+    sv = savings.SavingsCalculator()
+    yday = datetime(2026, 10, 28, 23, 50, tzinfo=TZ)
+    sv.update(yday, None, None, {"import": 100.0})          # målerens startværdi
+    sv.data["solar"]["month"]["import_kwh"] = 200.0
+    sv.data["solar"]["total"]["import_kwh"] = 900.0
+    now = datetime(2026, 10, 29, 4, 5, tzinfo=TZ)
+    rows = [{"start": datetime(2026, 10, 29, h, tzinfo=TZ), "import": 1.0, "price": 2.0, "sale": 0.5} for h in range(4)]
+    rows.append({"start": datetime(2026, 10, 28, 23, tzinfo=TZ), "import": 9.0, "price": 2.0})   # i går: ignoreres
+    res = sv.replace_today(rows, now, {"import": 104.0})
+    assert res["import_kwh"] == 4.0
+    assert sv.data["solar"]["today"]["import_kwh"] == 4.0 and sv.data["solar"]["today"]["import_cost"] == 8.0
+    assert sv.data["solar"]["month"]["import_kwh"] == 204.0 and sv.data["solar"]["total"]["import_kwh"] == 904.0
+    assert sv.data["last"]["import"] == 104.0
+    # Den løbende optælling fortsætter fra målerens værdi
+    sv.update(datetime(2026, 10, 29, 4, 10, tzinfo=TZ), None, None, {"import": 104.5})
+    # Kører den igen (fx næste opstart), tælles intet dobbelt
+    sv.replace_today(rows, now, {"import": 104.0})
+    assert sv.data["solar"]["month"]["import_kwh"] == 204.0
