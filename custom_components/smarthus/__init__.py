@@ -18,6 +18,7 @@ from homeassistant.helpers.typing import ConfigType
 from .const import CARD_URL, CARD_VERSION, DOMAIN, PLATFORMS, STATIC_URL
 from .controller import SmartHusController
 from .coordinator import SmartHusPriceCoordinator
+from .updater import async_setup_update_check
 
 
 @dataclass
@@ -70,6 +71,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                 await data.controller.async_refresh_energy(full=True)
 
     hass.services.async_register(DOMAIN, "rebuild_energy_overview", _rebuild_energy)
+    async_setup_update_check(hass)
     return True
 
 

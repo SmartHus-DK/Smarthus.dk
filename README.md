@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.35.1** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
+**Version 1.36.0** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
 
 SmartHus bruger strømmen, når den er billigst, og sparer, når den er dyrest. Den lader elbilen og batteriet i de billige timer, varmer vandet med billig strøm eller solcelleoverskud, skruer lidt op og ned for varmen og stopper salg af solstrøm, når prisen er for lav. Du ser det hele – og hvad du har sparet – på ét kort.
 
@@ -21,7 +21,7 @@ SmartHus bruger strømmen, når den er billigst, og sparer, når den er dyrest. 
 
 > Kræver Home Assistant 2025.1 eller nyere og [HACS](https://hacs.xyz).
 
-1. **Installér SmartHus:** Åbn **HACS → ⋮ → Brugerdefinerede repositories**, indsæt `https://github.com/SmartHus-DK/Smarthus.dk`, vælg **Integration** og klik **Tilføj**. Søg efter **SmartHus**, klik **Download**, og genstart Home Assistant.
+1. **Installér SmartHus:** Åbn **HACS → ⋮ → Brugerdefinerede repositories**, indsæt `https://github.com/SmartHus-DK/Smarthus.dk`, vælg **Integration** og klik **Tilføj**. Søg efter **SmartHus**, klik **Download**, og genstart Home Assistant. Nye versioner dukker selv op under **Indstillinger → Opdateringer** – SmartHus tjekker GitHub hver 3. time og beder HACS om at hente oplysningerne.
 2. **Installér de anbefalede integrationer** – se [listen herunder](#anbefalede-integrationer). Mindst én til elpris og én til dit udstyr (inverter, ladeboks eller varmepumpe).
 3. **Tilføj SmartHus:** **Indstillinger → Enheder og tjenester → Tilføj integration → SmartHus**. Vælg prisområde (DK1 = Jylland/Fyn, DK2 = Sjælland).
 4. **Vælg dit udstyr:** Klik **Konfigurer** på SmartHus og gå menuerne igennem. Du vælger bare de entiteter, du allerede har – alle felter er valgfrie, så spring over det, du ikke har. Se [Opsætning](#opsætning-menu-for-menu).
