@@ -134,6 +134,7 @@ EV_CHANGE_GRACE_SEC = 90   # sekunder uden opstart efter man har ændret elbilen
 SAVINGS_SAVE_SEC = 300     # regnskabet skrives til disken mindst hvert 5. minut
 HEAL_TODAY_DELAY_SEC = 120 # efter opstart: byg dagens tal op fra statistikken (når recorderen er klar)
 RESTORE_DELAY_SEC = 10     # slås styringen til igen inden for 10 s, sendes der intet til enhederne
+EV_FULL_IDLE_SEC = 900    # bilen stopper selv: tændt lader uden strømforbrug i 15 min = bilen er fuld
 EV_STRAY_KW = 0.5          # laderen trækker strøm, selv om den er slukket i Home Assistant
 EV_STRAY_TICKS = 4         # … i 4 × 30 s → send sluk igen
 
@@ -245,6 +246,11 @@ class SmartHusController:
         # Bilens SoC fra fx Kia/Hyundai-skyen kan stå stille i lang tid, mens bilen lader.
         # {bil: {"base": seneste SoC fra bilen, "kwh": ladet siden da}} → skønnet SoC
         self._soc_est: dict[str, dict] = {}
+        # Biler uden SoC-sensor: batteriniveau tastet ind af brugeren og skønnet videre ud fra
+        # den ladede energi. {bil: {"base", "kwh", "over_h", "expires", "done"}}
+        self.manual_soc: dict[str, dict] = {}
+        self._ev_idle: dict[str, float] = {}       # siden hvornår laderen er tændt, men bilen ikke trækker strøm
+        self._ev_full_key: dict[str, str] = {}     # uden SoC: bilen er fuld for dette klar-tidspunkt
         # Elbilens planlagte kvarterer, der er gået i gang – så de stadig kan ses på grafen bagefter
         self._ev_past: dict[str, set] = {}
         # "Lad nu" startet, mens SmartHus' styring af bilen er slået fra
@@ -869,6 +875,7 @@ class SmartHusController:
                      soc=self.car_soc(car), force=self.ev_force.get(car["id"], False),
                      connected=self.connected.get(car["id"], True),
                      charged_h=self._charged_hours(car["id"]),
+                     extra_h=self._extra_hours(car),
                      **self._ready_input(car["id"]))
             for car in self.cars
         ]
@@ -935,6 +942,7 @@ class SmartHusController:
 
     def set_ready_mode(self, cid: str, mode: str, day=None) -> None:
         self.ev_ready_mode[cid] = (mode, day)
+        self._refresh_manual_expiry(cid)
         self.hold_ev(cid)
         self.recalculate()
 
@@ -953,7 +961,97 @@ class SmartHusController:
     def _charged_hours(self, cid: str) -> float:
         """Timer der er ladet frem mod bilens næste klar-tidspunkt (bruges uden SoC-sensor)."""
         key, hours = self._ev_charged.get(cid, ("", 0.0))
+        if self._ev_full_key.get(cid) == self._ready_key(cid):
+            return 1000.0                       # bilen er holdt op med at lade selv – den er fuld
         return hours if key == self._ready_key(cid) else 0.0
+
+    # --- Biler uden SoC-sensor ----------------------------------------------
+    def has_soc_sensor(self, car: dict | None) -> bool:
+        return bool(car and car.get("soc"))
+
+    def car_stops_itself(self, cid: str) -> bool:
+        """Brugeren har sat lademålet i bilen – SmartHus lader lidt længere og lader bilen stoppe selv."""
+        return bool(self.flags.get(f"{cid}_car_target", False)) and not self.has_soc_sensor(self.car(cid))
+
+    def _extra_hours(self, car: dict) -> float:
+        cid = car["id"]
+        if not self.car_stops_itself(cid):
+            return 0.0
+        extra = float(car_settings(self.settings, cid)["extra_hours"])
+        st = self.manual_soc.get(cid)
+        if st is not None:
+            return 0.0 if st.get("done") else max(extra - st.get("over_h", 0.0), 0.0)
+        return extra
+
+    def _manual_expiry(self, cid: str) -> datetime:
+        if self.ready_mode(cid)[0] == "horizon":
+            return dt_util.utcnow() + timedelta(hours=24)
+        return self.ready_at(cid)
+
+    def manual_soc_value(self, cid: str) -> float | None:
+        """Skønnet batteriniveau ud fra det indtastede tal og den energi, der er ladet siden."""
+        st = self.manual_soc.get(cid)
+        if st is None:
+            return None
+        cs = car_settings(self.settings, cid)
+        est = st["base"] + st.get("kwh", 0.0) * CHARGE_EFFICIENCY / max(cs["battery_capacity"], 1.0) * 100
+        if st.get("done"):
+            est = max(est, cs["target_soc"])
+        return round(min(est, 100.0), 1)
+
+    def set_manual_soc(self, cid: str, value: float | None) -> None:
+        if value is None:
+            self.manual_soc.pop(cid, None)
+        else:
+            self.manual_soc[cid] = {"base": float(value), "kwh": 0.0, "over_h": 0.0, "done": False,
+                                    "expires": self._manual_expiry(cid).isoformat()}
+        self._ev_idle.pop(cid, None)
+        self.hold_ev(cid)
+        self.recalculate()
+
+    def _refresh_manual_expiry(self, cid: str) -> None:
+        """Ændres klar-tidspunktet, gælder det indtastede batteriniveau frem til det nye tidspunkt."""
+        st = self.manual_soc.get(cid)
+        if st is not None:
+            st["expires"] = self._manual_expiry(cid).isoformat()
+
+    def _track_manual(self, car: dict, now: datetime) -> None:
+        cid = car["id"]
+        st = self.manual_soc.get(cid)
+        charger_on = bool(car.get("charger")) and self._is_on(car["charger"])
+        plugged = self.connected.get(cid, True)
+        kw = self._power_kw(car.get("power")) if car.get("power") else None
+        if st is not None:
+            try:
+                exp = datetime.fromisoformat(st.get("expires") or "")
+            except ValueError:
+                exp = None
+            if (exp is not None and now >= exp) or (not plugged and self.connected_source.get(cid) == "sensor"):
+                self.manual_soc.pop(cid, None)   # forældet: bilen er kørt, eller klar-tidspunktet er gået
+                st = None
+        # Ladet energi siden indtastningen (med effektmåler, ellers skønnet ud fra ladeeffekten)
+        if st is not None and plugged and charger_on:
+            cs = car_settings(self.settings, cid)
+            step_kw = kw if kw is not None else cs["charge_power"]
+            if step_kw > 0.3:
+                st["kwh"] = st.get("kwh", 0.0) + step_kw * TICK_SECONDS / 3600
+            if (self.manual_soc_value(cid) or 0) >= cs["target_soc"]:
+                st["over_h"] = st.get("over_h", 0.0) + TICK_SECONDS / 3600
+        # Bilen stopper selv: laderen er tændt, men bilen har ikke trukket strøm i et kvarter → fuld
+        if not (self.car_stops_itself(cid) and kw is not None and charger_on and plugged):
+            self._ev_idle.pop(cid, None)
+            return
+        if kw >= 0.3:
+            self._ev_idle.pop(cid, None)
+            return
+        since = self._ev_idle.setdefault(cid, time.monotonic())
+        if time.monotonic() - since >= EV_FULL_IDLE_SEC:
+            _LOGGER.info("SmartHus: %s trækker ikke strøm længere – bilen har nået sit lademål", car.get("name"))
+            if st is not None:
+                st["done"] = True
+            else:
+                self._ev_full_key[cid] = self._ready_key(cid)
+            self._ev_idle.pop(cid, None)
 
     def _log_ev_charging(self) -> None:
         """Tæl ladetid pr. klar-tidspunkt, så en bil uden SoC ikke lades de samme timer to gange."""
@@ -1095,8 +1193,12 @@ class SmartHusController:
 
     def _track_soc(self) -> None:
         """Tæl den energi, der er ladet, siden bilen sidst meldte et nyt batteriniveau."""
+        now = dt_util.utcnow()
         for car in self.cars:
             cid = car["id"]
+            if not self.has_soc_sensor(car):
+                self._track_manual(car, now)
+                continue
             rep = self._float_state(car.get("soc"))
             if rep is None:
                 continue
@@ -1111,6 +1213,8 @@ class SmartHusController:
     def car_soc(self, car: dict) -> float | None:
         """Bilens batteriniveau – skønnet ud fra den ladede energi, hvis bilen ikke har meldt et
         nyt tal, mens den lader (så den ikke lader forbi lademålet på et forældet tal)."""
+        if not self.has_soc_sensor(car):
+            return self.manual_soc_value(car["id"])
         rep = self._float_state(car.get("soc"))
         st = self._soc_est.get(car["id"])
         if rep is None or not st or not st["kwh"]:
@@ -1960,6 +2064,8 @@ class SmartHusController:
         for cid in self.car_ids:
             if key in (f"{cid}_ready_hour", f"{cid}_target_soc", f"{cid}_hours"):
                 self.hold_ev(cid)
+            if key == f"{cid}_ready_hour":
+                self._refresh_manual_expiry(cid)
         self.recalculate()
         if key == S_HEATING_MAX_OUTDOOR:
             await self.async_apply()        # pause/start varmestyringen med det samme

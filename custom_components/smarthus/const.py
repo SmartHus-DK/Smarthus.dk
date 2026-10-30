@@ -15,7 +15,7 @@ EDS_DAYAHEAD_FROM: Final = date(2025, 10, 1)
 
 STATIC_URL: Final = "/smarthus_static"
 CARD_URL: Final = f"{STATIC_URL}/smarthus-card.js"
-CARD_VERSION: Final = "1.36.1"
+CARD_VERSION: Final = "1.37.0"
 
 PLATFORMS: Final = ["sensor", "binary_sensor", "switch", "number", "select"]
 
@@ -241,6 +241,8 @@ S_EV_READY_HOUR: Final = "ev_ready_hour"
 S_EV_TARGET_SOC: Final = "ev_target_soc"
 S_EV_CAPACITY: Final = "ev_battery_capacity"
 S_EV_CHARGE_POWER: Final = "ev_charge_power"
+S_EV_EXTRA_HOURS: Final = "ev_extra_hours"      # bilen stopper selv: ekstra ladetid som sikkerhed
+S_EV_MANUAL_SOC: Final = "ev_manual_soc"        # batteriniveau tastet ind (biler uden SoC-sensor)
 S_HOTWATER_HOURS: Final = "hotwater_hours"
 S_HOTWATER_BOOST_TEMP: Final = "hotwater_boost_temp"
 S_HOTWATER_NORMAL_TEMP: Final = "hotwater_normal_temp"
@@ -277,6 +279,7 @@ DEFAULT_SETTINGS: Final = {
     S_EV_TARGET_SOC: 80.0,
     S_EV_CAPACITY: 60.0,
     S_EV_CHARGE_POWER: 11.0,
+    S_EV_EXTRA_HOURS: 2.0,
     "ev_solar_min_a": 6.0,
     "ev_solar_max_a": 16.0,
     "ev_solar_start_kw": 4.0,

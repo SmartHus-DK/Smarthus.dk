@@ -8,6 +8,7 @@ from homeassistant.components.number import NumberEntityDescription, NumberMode,
 from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfTemperature, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import dt as dt_util
 
 from . import SmartHusConfigEntry
 from .const import (
@@ -29,6 +30,8 @@ from .const import (
     S_EV_TARGET_SOC,
     S_EV_CAPACITY,
     S_EV_CHARGE_POWER,
+    S_EV_EXTRA_HOURS,
+    S_EV_MANUAL_SOC,
     S_EV_MAX_TOTAL_POWER,
     S_HEATING_BASE_TEMP,
     S_HEATING_BOOST_DEG,
@@ -68,6 +71,7 @@ class SmartHusNumberDescription(NumberEntityDescription):
     per_car: bool = False  # én pr. elbil; nøglen "ev_..." bliver til "<bil-id>_..."
     needs_current: bool = False  # kun for elbiler med styring af ladestrøm
     multi_car: bool = False  # kun når der er mindst to elbiler
+    no_soc: bool = False  # kun for elbiler uden SoC-sensor
 
 
 H = UnitOfTime.HOURS
@@ -106,6 +110,9 @@ NUMBERS: tuple[SmartHusNumberDescription, ...] = (
     SmartHusNumberDescription(key=S_EV_CAPACITY, icon="mdi:car-battery", native_min_value=5,
                               native_max_value=200, native_step=1, native_unit_of_measurement="kWh",
                               per_car=True),
+    SmartHusNumberDescription(key=S_EV_EXTRA_HOURS, icon="mdi:timer-plus-outline", native_min_value=0,
+                              native_max_value=8, native_step=0.5, native_unit_of_measurement=H,
+                              per_car=True, no_soc=True),
     SmartHusNumberDescription(key=S_EV_CHARGE_POWER, icon="mdi:ev-plug-type2", native_min_value=1,
                               native_max_value=50, native_step=0.1, native_unit_of_measurement="kW",
                               per_car=True),
@@ -205,6 +212,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
             for car in controller.cars:
                 if d.needs_current and not (controller.has_current_control(car) and controller.has(CONF_GRID_POWER)):
                     continue
+                if d.no_soc and controller.has_soc_sensor(car):
+                    continue
                 cid = car["id"]
                 desc = replace(d, key=f"{cid}_{d.key[3:]}", translation_key=d.key)
                 entities.append(SmartHusNumber(entry, controller, desc, car.get("name") or "Elbil", d.key))
@@ -234,6 +243,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
                 entities.append(SmartHusNumber(entry, controller, d))
         elif d.requires is None or controller.has(d.requires):
             entities.append(SmartHusNumber(entry, controller, d))
+    for car in controller.cars:
+        if not controller.has_soc_sensor(car):
+            entities.append(ManualSocNumber(entry, controller, car["id"], car.get("name") or "Elbil"))
     async_add_entities(entities)
 
 
@@ -263,4 +275,47 @@ class SmartHusNumber(SmartHusEntity, RestoreNumber):
 
     async def async_set_native_value(self, value: float) -> None:
         await self.controller.async_set_setting(self.entity_description.key, float(value))
+        self.async_write_ha_state()
+
+
+class ManualSocNumber(SmartHusEntity, RestoreNumber):
+    """Batteriniveau tastet ind af brugeren (biler uden SoC-sensor). Vises som det skønnede niveau,
+    mens bilen lader, og nulstilles, når bilen kobles fra, eller klar-tidspunktet er gået."""
+
+    _domain = "number"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_mode = NumberMode.BOX
+    _attr_icon = "mdi:battery-edit-outline"
+    _attr_native_min_value = 0
+    _attr_native_max_value = 100
+    _attr_native_step = 5
+    _attr_native_unit_of_measurement = PERCENTAGE
+
+    def __init__(self, entry, controller: SmartHusController, cid: str, name: str) -> None:
+        super().__init__(entry, controller, f"{cid}_manual_soc", S_EV_MANUAL_SOC, name)
+        self.cid = cid
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        data = (last.attributes.get("manual") if last is not None else None) or None
+        if isinstance(data, dict) and "base" in data:
+            exp = dt_util.parse_datetime(str(data.get("expires") or ""))
+            if exp is not None and exp > dt_util.utcnow():
+                self.controller.manual_soc[self.cid] = dict(data)
+
+    @property
+    def native_value(self) -> float | None:
+        v = self.controller.manual_soc_value(self.cid)
+        return None if v is None else round(v)
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        st = self.controller.manual_soc.get(self.cid)
+        return {"manual": dict(st) if st else None,
+                "expires": st.get("expires") if st else None,
+                "estimated": bool(st and (st.get("kwh") or st.get("done")))}
+
+    async def async_set_native_value(self, value: float) -> None:
+        self.controller.set_manual_soc(self.cid, float(value))
         self.async_write_ha_state()

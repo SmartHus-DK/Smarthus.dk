@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.36.1";
+const SMARTHUS_CARD_VERSION = "1.37.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -99,7 +99,9 @@ const socT = (a) => `${a.soc_estimated ? "ca. " : ""}${nf(a.soc, 0)} %`;
 /** Et felt pr. elbil. Bilens id er fx "ev" eller "ev_tesla". */
 function carModule(cid, name, first) {
   const groups = [
-    { title: null, items: [`${cid}_target_soc`, `${cid}_ready_hour`, { day: cid }, `${cid}_hours`] },
+    { title: null, items: [`${cid}_manual_soc`, `${cid}_target_soc`, `${cid}_ready_hour`, { day: cid }, `${cid}_hours`] },
+    { title: "Lademål i bilen", items: [{ sw: `${cid}_car_target`, label: "Bilen stopper selv ved lademålet",
+      note: "Laderen holdes tændt lidt længere end beregnet, og bilen stopper selv" }, `${cid}_extra_hours`] },
     { title: "Bil og lader", items: [`${cid}_battery_capacity`, `${cid}_charge_power`] },
     { title: "Solcelleladning", items: [{ sw: `${cid}_solar`, label: "Lad med solcelleoverskud",
       note: "Ladestrømmen følger overskuddet, 1 A ad gangen" }, `${cid}_solar_start_kw`, `${cid}_solar_min_a`, `${cid}_solar_max_a`] },
@@ -109,6 +111,8 @@ function carModule(cid, name, first) {
 }
 
 const EV_LABELS = {
+  manual_soc: "Batteriniveau nu",
+  extra_hours: "Ekstra ladetid",
   solar_start_kw: "Start ved sol over",
   solar_min_a: "Mindste ladestrøm",
   solar_max_a: "Største ladestrøm",
@@ -1022,6 +1026,9 @@ class SmartHusCard extends HTMLElement {
     const on = (key) => this._st("switch", key)?.state === "on";
     if (m.car) {
       const c = m.id;
+      const a = this._st("sensor", `${c}_smart_saving`)?.attributes || {};
+      if (a.soc_sensor && [`${c}_manual_soc`, `${c}_car_target`, `${c}_extra_hours`].includes(k)) return true;
+      if (k === `${c}_extra_hours` && !on(`${c}_car_target`)) return true;
       if (evHasSoc && k === `${c}_hours`) return true;                         // SoC-sensor: lad til %, ikke timer
       if (!evHasSoc && [`${c}_target_soc`, `${c}_battery_capacity`].includes(k)) return true;
       if (k === `${c}_ready_hour` && this._st("select", `${c}_ready_day`)?.attributes?.uses_ready_hour === false) return true;
@@ -1579,10 +1586,11 @@ class SmartHusCard extends HTMLElement {
     const s = this._st("number", key);
     const v = parseFloat(s.state);
     const unit = s.attributes.unit_of_measurement || "";
+    const blank = isNaN(v);       // fx batteriniveau, der ikke er tastet ind endnu
     const step = s.attributes.step || 1;
     const dec = step < 0.1 ? 2 : step < 1 ? (step % 0.5 === 0 ? 1 : 2) : 0;
     const trim = (x) => Number(x.toFixed(2)).toLocaleString("da-DK", { maximumFractionDigits: 2 });
-    const shown =
+    const shown = blank ? "Ukendt" :
       unit === "kl." ? `kl. ${String(v).padStart(2, "0")}` :
       unit === "h" ? `${trim(v)} t` :
       `${nf(v, dec)} ${esc(unit)}`;
@@ -1590,7 +1598,7 @@ class SmartHusCard extends HTMLElement {
     const unused = autoHeat || (key.endsWith("_ready_hour") && this._st("select", key.replace("_ready_hour", "_ready_day"))?.attributes?.uses_ready_hour === false);
     return `
       <div class="step${unused ? " unused" : ""}">
-        <span class="step-lbl">${esc(this._label(key))}${autoHeat ? `<span class="win-note">Vælges automatisk ud fra dagens priser</span>` : unused ? `<span class="win-note">Bruges ikke – perioden er valgt nedenfor</span>` : ""}${key === "ev_max_total_power" ? `<span class="win-note">0 = ingen grænse</span>` : key === "hotwater_surplus_kw" ? `<span class="win-note">0 = fra · eksport lige nu ${nf(this._st("binary_sensor", "hotwater_now")?.attributes?.export_kw, 1)} kW</span>` : key === "heating_min_indoor" ? `<span class="win-note">Frostsikring – koldere end dette inde, springes sparetimerne over</span>` : key === "hotwater_watch_temp" ? `<span class="win-note">0 = fra · varm op i en billig time, før vandet når den laveste temperatur</span>` : key === "hotwater_min_temp" ? `<span class="win-note">Varm op, før vandet når hertil – fx varmepumpens egen grænse</span>` : key === "heating_boost_degrees" || key === "heating_reduce_degrees" ? `<span class="win-note">0 = fra</span>` : ""}</span>
+        <span class="step-lbl">${esc(this._label(key))}${autoHeat ? `<span class="win-note">Vælges automatisk ud fra dagens priser</span>` : unused ? `<span class="win-note">Bruges ikke – perioden er valgt nedenfor</span>` : ""}${key === "ev_max_total_power" ? `<span class="win-note">0 = ingen grænse</span>` : key === "hotwater_surplus_kw" ? `<span class="win-note">0 = fra · eksport lige nu ${nf(this._st("binary_sensor", "hotwater_now")?.attributes?.export_kw, 1)} kW</span>` : key === "heating_min_indoor" ? `<span class="win-note">Frostsikring – koldere end dette inde, springes sparetimerne over</span>` : key === "hotwater_watch_temp" ? `<span class="win-note">0 = fra · varm op i en billig time, før vandet når den laveste temperatur</span>` : key === "hotwater_min_temp" ? `<span class="win-note">Varm op, før vandet når hertil – fx varmepumpens egen grænse</span>` : key === "heating_boost_degrees" || key === "heating_reduce_degrees" ? `<span class="win-note">0 = fra</span>` : key.endsWith("_manual_soc") ? `<span class="win-note">${blank ? "Uden måler: tast bilens niveau ind, så beregnes ladetiden" : "Skønnes videre, mens bilen lader · glemmes, når bilen kobles fra"}</span>` : key.endsWith("_extra_hours") ? `<span class="win-note">Ud over den beregnede ladetid</span>` : ""}</span>
         <span class="step-ctl">
           <button data-action="step" data-entity="${s.entity_id}" data-dir="-1" aria-label="Mindre ${esc(this._label(key))}">−</button>
           <span class="step-val">${shown}</span>
@@ -1665,7 +1673,9 @@ class SmartHusCard extends HTMLElement {
       const step = s.attributes.step || 1;
       const min = s.attributes.min ?? -Infinity;
       const max = s.attributes.max ?? Infinity;
-      let v = parseFloat(s.state) + step * parseInt(el.dataset.dir, 10);
+      const cur = parseFloat(s.state);
+      let v = isNaN(cur) ? (isFinite(min) && isFinite(max) ? (min + max) / 2 : 0)   // ukendt: start midt i
+        : cur + step * parseInt(el.dataset.dir, 10);
       if (s.attributes.unit_of_measurement === "kl." && isFinite(min) && isFinite(max)) {
         // Klokkeslæt går rundt: 23 → 00 og 00 → 23
         if (v > max) v = min;
@@ -2172,7 +2182,7 @@ class SmartHusEvCard extends SmartHusCard {
         ${prices}
         ${this._config.car ? "" : this._connectedPicker()}
         ${warn}
-        <div class="ev-rows">${step(`${cid}_target_soc`)}${this._st("select", `${cid}_ready_day`)?.attributes?.uses_ready_hour === false ? "" : step(`${cid}_ready_hour`)}${this._readyDayRow(cid)}</div>
+        <div class="ev-rows">${a.soc_sensor ? "" : step(`${cid}_manual_soc`)}${step(`${cid}_target_soc`)}${this._st("select", `${cid}_ready_day`)?.attributes?.uses_ready_hour === false ? "" : step(`${cid}_ready_hour`)}${this._readyDayRow(cid)}${!a.soc_sensor && this._st("switch", `${cid}_car_target`) ? this._switchRow({ sw: `${cid}_car_target`, label: "Bilen stopper selv ved lademålet", note: "Laderen holdes tændt lidt længere end beregnet" }) + (this._st("switch", `${cid}_car_target`).state === "on" ? step(`${cid}_extra_hours`) : "") : ""}</div>
         ${action}
         ${more}
       </div>`;

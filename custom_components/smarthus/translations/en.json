@@ -557,6 +557,9 @@
       "ev_force": {
         "name": "Charge {car} now"
       },
+      "ev_car_target": {
+        "name": "{car}: car stops at its own charge limit"
+      },
       "ev_solar": {
         "name": "{car}: charge with solar surplus"
       },
@@ -621,6 +624,12 @@
       },
       "ev_battery_capacity": {
         "name": "{car}: battery size"
+      },
+      "ev_extra_hours": {
+        "name": "{car}: extra charging time"
+      },
+      "ev_manual_soc": {
+        "name": "{car}: current battery level"
       },
       "ev_charge_power": {
         "name": "{car}: charging power"

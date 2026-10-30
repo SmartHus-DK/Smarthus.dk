@@ -266,6 +266,7 @@ EV_DEFAULTS = {
     "solar_min_a": 6.0,
     "solar_max_a": 16.0,
     "solar_start_kw": 4.0,
+    "extra_hours": 2.0,
 }
 
 
@@ -286,6 +287,7 @@ class CarInput:
     earliest: datetime | None = None  # tidligste start (fx "i morgen" = fra midnat)
     deadline: datetime | None = None  # fast slutning på perioden (i dag/i morgen/begge dage) – erstatter klar kl.
     horizon: bool = False  # "billigste i sigte": ingen deadline – alle kendte priser
+    extra_h: float = 0.0   # ekstra ladetid, når bilen selv stopper ved sit lademål (sikkerhedsmargin)
 
 
 @dataclass
@@ -622,15 +624,15 @@ def plan_cars(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
         if car.soc is None:
             # Uden batteriniveau: lad det antal timer, der mangler frem mod det næste klar-tidspunkt
             # (fra nu – timer der allerede er gået, kan ikke bruges)
-            wanted = max(cs["hours"] - car.charged_h, 0.0)
+            wanted = max(cs["hours"] + car.extra_h - car.charged_h, 0.0)
             ep.slots = ev_plan(slots, now, tz, wanted, int(cs["ready_hour"]), from_now=True,
                                available=available, ready_at=ready, earliest=earliest) if wanted >= 0.125 else []
         else:
             ep.hours_needed = ev_hours_needed(car.soc, cs)
-            ep.target_reached = ep.hours_needed <= 0
-            wanted = ep.hours_needed
+            wanted = round(ep.hours_needed + max(car.extra_h, 0.0), 2)
+            ep.target_reached = wanted <= 0
             if not ep.target_reached:
-                ep.slots = ev_plan(slots, now, tz, ep.hours_needed, int(cs["ready_hour"]),
+                ep.slots = ev_plan(slots, now, tz, wanted, int(cs["ready_hour"]),
                                    from_now=True, available=available, ready_at=ready, earliest=earliest)
                 # Er der tid nok til klar-tidspunktet? Ellers lades der hele tiden, og vi
                 # fortæller, hvor langt bilen når
@@ -645,7 +647,8 @@ def plan_cars(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
         for s in ep.slots:
             used[s.start] = used.get(s.start, 0.0) + kw
         if ep.slots and not ep.target_reached:
-            ep.done_at = max(s.end for s in ep.slots)
+            ep.done_at = _done_at(ep.slots, now, (ep.hours_needed if ep.hours_needed is not None
+                                                  else max(cs["hours"] - car.charged_h, 0.0)) if car.extra_h > 0 else None)
         elif not ep.slots and wanted > 0 and not ep.target_reached and slots:
             # Ingen plan endnu: perioden rækker ud over de kendte priser (fx morgendagens før kl. 13)
             ep.waiting_for_prices = max(s.end for s in slots) < ready
@@ -654,6 +657,23 @@ def plan_cars(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
         result[car.cid] = ep
     # Bevar bilernes oprindelige rækkefølge
     return {c.cid: result[c.cid] for c in cars}
+
+
+def _done_at(plan: list[Slot], now: datetime, hours: float | None) -> datetime | None:
+    """Hvornår målet forventes nået: når de første `hours` timer af planen er ladet
+    (ekstra sikkerhedstid lægges efter og tæller ikke med). None = slutningen af planen."""
+    seq = sorted(plan, key=lambda s: s.start)
+    if hours is None:
+        return seq[-1].end
+    if hours <= 0:
+        return None          # målet er (skønsmæssigt) nået – kun sikkerhedstiden er tilbage
+    left = hours
+    for s in seq:
+        h = (s.end - max(s.start, now)).total_seconds() / 3600 if s.end > now else 0.0
+        if h >= left - 1e-6:
+            return max(s.start, now) + timedelta(hours=left) if h > left + 1e-6 else s.end
+        left -= h
+    return seq[-1].end
 
 
 def charge_cost(seq: list[Slot], energy: float, kw: float) -> float | None:

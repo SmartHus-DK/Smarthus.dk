@@ -514,3 +514,48 @@ async def main():
 
 def test_controller_control():
     asyncio.run(main())
+
+
+def test_manual_soc():
+    """Bil uden SoC-sensor: indtastet batteriniveau, skøn under opladning, ekstra tid og 'bilen er fuld'."""
+    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+    car = {"id": "ev", "name": "Bil", "charger": "switch.lader", "power": "sensor.ladeeffekt"}
+    states = {"switch.lader": State("on"), "sensor.ladeeffekt": State("11", unit_of_measurement="kW")}
+    c, h = make({}, states)
+    c.cars, c.manual_soc, c._ev_idle, c._ev_full_key = [car], {}, {}, {}
+    c.connected, c.connected_source = {"ev": True}, {"ev": "sensor"}
+    ready = _dt.now(_tz.utc) + _td(hours=8)
+    c.ready_at = lambda cid: ready
+    c.recalculate = lambda: None
+    c.settings.update({"ev_target_soc": 80.0, "ev_battery_capacity": 60.0, "ev_charge_power": 11.0, "ev_extra_hours": 2.0})
+    assert c.car_soc(car) is None and c._extra_hours(car) == 0.0     # intet tastet: timer-tilstand som før
+    c.set_manual_soc("ev", 40)
+    assert c.car_soc(car) == 40.0
+    # 1 time ved 11 kW → 11 kWh · 0,9 / 60 kWh = +16,5 %
+    for _ in range(120):
+        c._track_soc()
+    assert abs(c.car_soc(car) - 56.5) < 0.2, c.car_soc(car)
+    assert c._extra_hours(car) == 0.0                                 # "bilen stopper selv" er slået fra
+    c.flags["ev_car_target"] = True
+    assert c._extra_hours(car) == 2.0
+    # Bilen holder op med at trække strøm i et kvarter → fuld, ingen ekstra tid tilbage
+    states["sensor.ladeeffekt"] = State("0.0", unit_of_measurement="kW")
+    c._track_soc()
+    c._ev_idle["ev"] -= ctl_mod.EV_FULL_IDLE_SEC + 1
+    c._track_soc()
+    assert c.manual_soc["ev"]["done"] and c.car_soc(car) == 80.0 and c._extra_hours(car) == 0.0
+    # Bilen kobles fra → det indtastede tal glemmes
+    c.connected["ev"] = False
+    c._track_soc()
+    assert c.car_soc(car) is None
+    # Planen: ekstra tid lægges oven i, men "klar" og prisen regnes kun til målet
+    n = _dt(2026, 10, 30, 12, 0, tzinfo=_tz.utc)
+    slots = [planner.Slot(n + _td(hours=i), n + _td(hours=i + 1), 1.0 + (i % 3) * 0.1, 1.0, 0.4) for i in range(24)]
+    st = {**c.settings, "ev_ready_hour": 23.0}
+    base = planner.build_plan(slots, n, c.tz, st, cars=[planner.CarInput("ev", soc=62.0)]).evs["ev"]
+    more = planner.build_plan(slots, n, c.tz, st, cars=[planner.CarInput("ev", soc=62.0, extra_h=2.0)]).evs["ev"]
+    assert base.hours_needed == more.hours_needed and base.energy == more.energy
+    assert sum(s.hours for s in more.slots) > sum(s.hours for s in base.slots) + 1.9
+    assert more.done_at is not None and more.done_at <= max(s.end for s in more.slots)
+    full = planner.build_plan(slots, n, c.tz, st, cars=[planner.CarInput("ev", soc=80.0, extra_h=1.0)]).evs["ev"]
+    assert not full.target_reached and full.slots          # målet skønsmæssigt nået: sikkerhedstiden køres

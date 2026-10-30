@@ -569,6 +569,9 @@
       "ev_force": {
         "name": "Lad {car} nu"
       },
+      "ev_car_target": {
+        "name": "{car}: bilen stopper selv ved lademålet"
+      },
       "ev_solar": {
         "name": "{car}: lad med solcelleoverskud"
       },
@@ -633,6 +636,12 @@
       },
       "ev_battery_capacity": {
         "name": "{car}: batteristørrelse"
+      },
+      "ev_extra_hours": {
+        "name": "{car}: ekstra ladetid"
+      },
+      "ev_manual_soc": {
+        "name": "{car}: batteriniveau nu"
       },
       "ev_charge_power": {
         "name": "{car}: ladeeffekt"
