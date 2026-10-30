@@ -5,20 +5,25 @@ from __future__ import annotations
 NONE = "none"   # manuelt valg: ingen bil i laderen
 _UNKNOWN = {"unknown", "unavailable", "none", ""}
 _NO = {"off", "false", "no", "0", "disconnected", "unplugged", "not_connected", "notconnected",
-       "not connected", "not_plugged", "available", "idle_disconnected"}
+       "not connected", "not_plugged", "available", "idle_disconnected",
+       "idle", "no car", "no_car", "no_ev_connected", "search_comm"}   # go-e/Wattpilot: Idle = ingen bil
 
 
-def plug_state(state: str | None) -> bool | None:
-    """Fortolk en 'ladekabel tilsluttet'-sensor. True/False, eller None hvis ukendt."""
+def plug_state(state: str | None, off: tuple | list = ()) -> bool | None:
+    """Fortolk en 'ladekabel tilsluttet'-sensor. True/False, eller None hvis ukendt.
+    `off` er ekstra tilstande, der betyder "ingen bil" for netop denne lader (fx Wallbox' "Ready")."""
     if state is None:
         return None
     s = str(state).strip().lower()
     if s in _UNKNOWN:
         return None
+    if s in {str(x).lower() for x in off or ()}:
+        return False
     if s in _NO or "disconnect" in s or "unplug" in s or "not connected" in s or "not_connected" in s:
         return False
     if s in {"on", "true", "yes", "1"} or any(w in s for w in ("connect", "plug", "charg", "complete",
-                                                                  "ready", "awaiting", "paused", "finished")):
+                                                                  "ready", "awaiting", "paused", "finished", "wait", "preparing",
+                                                                  "suspended", "finishing", "occupied")):
         return True
     return None
 

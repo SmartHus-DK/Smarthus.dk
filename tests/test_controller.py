@@ -559,3 +559,22 @@ def test_manual_soc():
     assert more.done_at is not None and more.done_at <= max(s.end for s in more.slots)
     full = planner.build_plan(slots, n, c.tz, st, cars=[planner.CarInput("ev", soc=80.0, extra_h=1.0)]).evs["ev"]
     assert not full.target_reached and full.slots          # målet skønsmæssigt nået: sikkerhedstiden køres
+
+
+def test_select_charger():
+    """Lader styret med rullemenu (fx go-e 'Force state'): tænd/sluk via mulighederne."""
+    car = {"id": "ev", "name": "Bil", "charger": "select.goe_frc", "charger_on": "2", "charger_off": "1"}
+    states = {"select.goe_frc": State("1", options=["0", "1", "2"])}
+    c, h = make({}, states)
+    c.cars = [car]
+    assert not c._charger_on(car)
+    asyncio.run(c._set_charger(car, True, True))
+    assert h.services.calls[-1] == ("select", "select_option", {"entity_id": "select.goe_frc", "option": "2"})
+    states["select.goe_frc"] = State("2", options=["0", "1", "2"])
+    assert c._charger_on(car)
+    asyncio.run(c._set_charger(car, False, True))
+    assert h.services.calls[-1] == ("select", "select_option", {"entity_id": "select.goe_frc", "option": "1"})
+    sw = {"id": "ev2", "charger": "switch.lader"}
+    states["switch.lader"] = State("off")
+    asyncio.run(c._set_charger(sw, True, True))
+    assert h.services.calls[-1] == ("switch", "turn_on", {"entity_id": "switch.lader"})

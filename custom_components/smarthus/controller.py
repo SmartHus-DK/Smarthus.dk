@@ -1018,7 +1018,7 @@ class SmartHusController:
     def _track_manual(self, car: dict, now: datetime) -> None:
         cid = car["id"]
         st = self.manual_soc.get(cid)
-        charger_on = bool(car.get("charger")) and self._is_on(car["charger"])
+        charger_on = self._charger_on(car)
         plugged = self.connected.get(cid, True)
         kw = self._power_kw(car.get("power")) if car.get("power") else None
         if st is not None:
@@ -1062,8 +1062,7 @@ class SmartHusController:
             if last_key != key:
                 hours = 0.0
             ep = self.plan.evs.get(cid)
-            st = self.hass.states.get(car["charger"]) if car.get("charger") else None
-            if ep and ep.on and st is not None and st.state == STATE_ON:
+            if ep and ep.on and self._charger_on(car):
                 hours += TICK_SECONDS / 3600
             self._ev_charged[cid] = (key, hours)
 
@@ -1149,11 +1148,11 @@ class SmartHusController:
         cid = car["id"]
         if self.ev_force.get(cid) and ep.connected and not ep.target_reached:
             self._ev_manual[cid] = True
-            await self._ensure_switch(car["charger"], True, force)
+            await self._set_charger(car, True, force)
             if self.has_current_control(car):
                 await self._apply_current(car, int(car_settings(self.settings, cid)["solar_max_a"]), force)
         elif self._ev_manual.pop(cid, False):
-            await self._ensure_switch(car["charger"], False, True)
+            await self._set_charger(car, False, True)
 
     def ev_slots_shown(self, cid: str) -> list[str]:
         """Elbilens kvarterer til grafen: det der var planlagt (også overståede) + den kommende plan."""
@@ -1172,7 +1171,7 @@ class SmartHusController:
         cid, entity_id = car["id"], car["charger"]
         st = self.hass.states.get(entity_id)
         kw = self._power_kw(car.get("power")) if car.get("power") else None
-        if on or kw is None or kw < EV_STRAY_KW or st is None or st.state == STATE_ON:
+        if on or kw is None or kw < EV_STRAY_KW or st is None or self._charger_on(car):
             self._ev_stray[cid] = 0
             return
         self._ev_stray[cid] = self._ev_stray.get(cid, 0) + 1
@@ -1181,8 +1180,11 @@ class SmartHusController:
             _LOGGER.warning("SmartHus: %s er slukket, men der lades stadig med %.1f kW – sender sluk igen",
                             entity_id, kw)
             domain = entity_id.split(".")[0]
-            await self._call(domain if domain in ("switch", "input_boolean") else "homeassistant",
-                             "turn_off", {"entity_id": entity_id})
+            if domain in ("select", "input_select"):
+                await self._call(domain, "select_option", {"entity_id": entity_id, "option": car.get("charger_off")})
+            else:
+                await self._call(domain if domain in ("switch", "input_boolean") else "homeassistant",
+                                 "turn_off", {"entity_id": entity_id})
             if car.get("easee_device"):
                 # Easee: sæt også opladningen på pause direkte (kontakten alene virker ikke altid)
                 try:
@@ -1222,6 +1224,28 @@ class SmartHusController:
         cap = max(float(car_settings(self.settings, car["id"])["battery_capacity"]), 1.0)
         est = st["base"] + st["kwh"] * CHARGE_EFFICIENCY / cap * 100
         return round(min(max(rep, est), 100.0), 1)
+
+    @staticmethod
+    def _charger_is_select(car: dict) -> bool:
+        return (car.get("charger") or "").split(".")[0] in ("select", "input_select")
+
+    def _charger_on(self, car: dict) -> bool:
+        """Er laderen tændt? En lader kan styres med en kontakt eller en rullemenu (fx go-e, Wattpilot, Garo)."""
+        entity_id = car.get("charger")
+        if not entity_id:
+            return False
+        if self._charger_is_select(car):
+            st = self.hass.states.get(entity_id)
+            return st is not None and st.state == car.get("charger_on")
+        return self._is_on(entity_id)
+
+    async def _set_charger(self, car: dict, on: bool, force: bool = False) -> None:
+        if self._charger_is_select(car):
+            option = car.get("charger_on") if on else car.get("charger_off")
+            if option:
+                await self._ensure_option(car["charger"], option, force)
+            return
+        await self._ensure_switch(car["charger"], on, force)
 
     def _is_on(self, entity_id: str) -> bool:
         st = self.hass.states.get(entity_id)
@@ -1456,9 +1480,9 @@ class SmartHusController:
                 on, current = self._ev_target(car, ep, solar_car, step=not force)
                 if self.ev_solar.get(car["id"]) and self.ev_solar[car["id"]].active:
                     solar_car = car["id"]
-                if on and self.ev_on_hold(car["id"]) and not self._is_on(car["charger"]):
+                if on and self.ev_on_hold(car["id"]) and not self._charger_on(car):
                     continue        # brugeren er ved at ændre klar-tidspunktet – start ikke endnu
-                await self._ensure_switch(car["charger"], on, force)
+                await self._set_charger(car, on, force)
                 if on and current is not None:
                     await self._apply_current(car, current, force)
                 await self._ev_verify_off(car, on)
@@ -1560,7 +1584,7 @@ class SmartHusController:
         if not entity_id:
             return None
         st = self.hass.states.get(entity_id)
-        return plug_state(st.state if st else None)
+        return plug_state(st.state if st else None, car.get("plug_off") or ())
 
     def _update_connected(self) -> None:
         """Find ud af, hvilke biler der sidder i laderen."""
@@ -2016,7 +2040,7 @@ class SmartHusController:
             if car["charger"] in self.shared_chargers and any(
                     self.active(c) and self.connected.get(c, True) for c in self.shared_chargers[car["charger"]] if c != module):
                 return                     # en anden bil i samme lader styres stadig af SmartHus
-            await self._ensure_switch(car["charger"], False, True)
+            await self._set_charger(car, False, True)
         elif module == MODULE_HOTWATER and self.has(CONF_HOTWATER_ENTITY):
             entity_id = self.config[CONF_HOTWATER_ENTITY]
             if entity_id.split(".")[0] in ("water_heater", "climate"):

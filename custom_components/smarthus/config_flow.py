@@ -9,12 +9,14 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import section
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import selector
 from homeassistant.util import slugify
 
 from .pricing import parse_price_list
 from . import presets as pz
+from . import chargers as cz
 
 from .tariffs import GRID_COMPANIES
 from .const import (
@@ -172,6 +174,12 @@ CAR_PLUG = "ev_plug_sensor"
 CAR_POWER = "ev_power_sensor"
 PLUG = selector.EntitySelector(selector.EntitySelectorConfig(domain=["binary_sensor", "sensor"]))
 CURRENT = selector.EntitySelector(selector.EntitySelectorConfig(domain=["number", "input_number"]))
+# Laderen tændes/slukkes med en kontakt – eller en rullemenu (fx go-e, Wattpilot, Garo)
+CHARGER = selector.EntitySelector(selector.EntitySelectorConfig(domain=["switch", "input_boolean", "select", "input_select"]))
+CAR_CHARGER_ON = "ev_charger_on_option"
+CAR_CHARGER_OFF = "ev_charger_off_option"
+CHARGER_TYPE = "charger_type"
+CHARGER_MANUAL = "manual"
 
 
 def _new_car_id(name: str, cars: list[dict]) -> str:
@@ -523,13 +531,13 @@ class SmartHusOptionsFlow(OptionsFlow):
         cars = self._cars()
         if not cars:
             self._car_id = NEW_CAR
-            return await self.async_step_ev_car()
+            return await self.async_step_ev_charger()
         if user_input is not None:
             choice = user_input[CAR_CHOICE]
             if user_input.get(CAR_REMOVE) and choice != NEW_CAR:
                 return self._save_cars([c for c in cars if c["id"] != choice])
             self._car_id = choice
-            return await self.async_step_ev_car()
+            return await self.async_step_ev_charger()
         options = [{"value": c["id"], "label": c.get("name") or "Elbil"} for c in cars]
         options.append({"value": NEW_CAR, "label": "+ Tilføj ny elbil"})
         schema = vol.Schema({
@@ -540,12 +548,109 @@ class SmartHusOptionsFlow(OptionsFlow):
         })
         return self.async_show_form(step_id="ev", data_schema=schema)
 
+    # --- Ladestander: færdig opsætning for kendte ladere -----------------------------
+    _charger_found: tuple | None = None        # (ChargerMatch, device_id) fra den valgte ladestander
+    _charger_preset: str | None = None
+
+    async def async_step_ev_charger(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Vælg ladestander – SmartHus finder selv laderens entiteter – eller vælg dem selv."""
+        errors: dict[str, str] = {}
+        placeholders = {"integration": "", "url": ""}
+        current = next((c for c in self._cars() if c["id"] == self._car_id), None) or {}
+        self._charger_found = None
+        if user_input is not None:
+            key = user_input[CHARGER_TYPE]
+            if key == CHARGER_MANUAL:
+                return await self.async_step_ev_car()
+            p = cz.CHARGERS[key]
+            devices = self._charger_devices(p)
+            if not self.hass.config_entries.async_entries(p.domain):
+                errors["base"] = "preset_integration_missing"
+                placeholders = {"integration": p.integration, "url": p.url}
+            elif not devices:
+                errors["base"] = "charger_not_found"
+                placeholders = {"integration": p.integration, "url": p.url}
+            else:
+                self._charger_preset = key
+                if len(devices) == 1:
+                    return await self._charger_matched(devices[0][0])
+                return await self.async_step_ev_charger_device()
+        options = [selector.SelectOptionDict(value=CHARGER_MANUAL, label="Vælg entiteterne selv")]
+        options += [selector.SelectOptionDict(value=c.key, label=f"{c.name} – {c.integration}") for c in cz.CHARGERS.values()]
+        default = current.get("charger_preset") if current.get("charger_preset") in cz.CHARGERS else CHARGER_MANUAL
+        schema = vol.Schema({vol.Required(CHARGER_TYPE, default=default): selector.SelectSelector(
+            selector.SelectSelectorConfig(options=options, mode=selector.SelectSelectorMode.DROPDOWN))})
+        return self.async_show_form(step_id="ev_charger", data_schema=schema, errors=errors,
+                                    description_placeholders=placeholders)
+
+    async def async_step_ev_charger_device(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        p = cz.CHARGERS[self._charger_preset]
+        if user_input is not None:
+            return await self._charger_matched(user_input["device"])
+        options = [selector.SelectOptionDict(value=d, label=name) for d, name in self._charger_devices(p)]
+        schema = vol.Schema({vol.Required("device"): selector.SelectSelector(
+            selector.SelectSelectorConfig(options=options, mode=selector.SelectSelectorMode.LIST))})
+        return self.async_show_form(step_id="ev_charger_device", data_schema=schema,
+                                    description_placeholders={"integration": p.integration})
+
+    def _registry_entries(self, device_id: str | None = None, entry_id: str | None = None) -> list[pz.Entry]:
+        reg = er.async_get(self.hass)
+        src = (er.async_entries_for_device(reg, device_id, include_disabled_entities=True) if device_id
+               else er.async_entries_for_config_entry(reg, entry_id))
+        return [pz.Entry(e.entity_id, e.unique_id or "", e.device_id, e.disabled_by is not None) for e in src]
+
+    def _charger_devices(self, p: cz.ChargerPreset) -> list[tuple[str, str]]:
+        """Enheder i integrationen, der har en tænd/sluk-entitet – dvs. selve laderne."""
+        devreg = dr.async_get(self.hass)
+        out = []
+        for entry in self.hass.config_entries.async_entries(p.domain):
+            for dev in dr.async_entries_for_config_entry(devreg, entry.entry_id):
+                if cz.find(self._registry_entries(device_id=dev.id), p.roles["charger"]) is not None:
+                    out.append((dev.id, dev.name_by_user or dev.name or p.name))
+        return out
+
+    async def _charger_matched(self, device_id: str) -> ConfigFlowResult:
+        p = cz.CHARGERS[self._charger_preset]
+        dev = dr.async_get(self.hass).async_get(device_id)
+        entry_entries: list[pz.Entry] = []
+        for entry_id in (dev.config_entries if dev else ()):
+            entry_entries += self._registry_entries(entry_id=entry_id)
+        m = cz.match(p, self._registry_entries(device_id=device_id), entry_entries)
+        self._charger_found = (m, device_id)
+        return await self.async_step_ev_car()
+
+    def _charger_summary(self) -> str:
+        if not self._charger_found:
+            return ""
+        m, _dev = self._charger_found
+        p = m.preset
+        lines = [f"**{p.name}** fundet via **{p.integration}** – felterne herunder er udfyldt:"]
+        found = [r for r in p.roles if r not in m.missing]
+        if found:
+            lines.append(", ".join(cz.ROLE_NAMES[r] for r in found) + ".")
+        if p.easee:
+            lines.append("Ladestrømmen styres via Easee-laderen.")
+        if m.disabled:
+            lines.append("**Deaktiverede entiteter (slå dem til og vælg igen):** " + ", ".join(f"`{e}`" for e in m.disabled))
+        if m.missing:
+            lines.append("**Ikke fundet:** " + ", ".join(cz.ROLE_NAMES[r] for r in m.missing) + ".")
+        if p.note:
+            lines.append(f"ℹ️ {p.note}")
+        lines.append("Vælg selv **bilens batteriniveau** og evt. **ladekabel tilsluttet** fra bilens integration.")
+        return "\n\n".join(lines) + "\n\n"
+
     async def async_step_ev_car(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Navn, lader, SoC og energimåler for én elbil."""
         cars = self._cars()
         current = next((c for c in cars if c["id"] == self._car_id), None)
         if user_input is not None:
             name = (user_input.get(CAR_NAME) or "Elbil").strip()
+            extra: dict = {}
+            if self._charger_found:
+                m, dev_id = self._charger_found
+                extra = {k: v for k, v in cz.car_fields(m, dev_id).items() if k not in cz.ROLE_FIELDS.values()}
+            elif current and current.get("charger") != user_input[CONF_EV_SWITCH]:
+                extra = {"charger_preset": None, "plug_off": None}     # en anden lader: ikke længere den kendte
             data = {
                 "name": name,
                 "charger": user_input[CONF_EV_SWITCH],
@@ -556,17 +661,29 @@ class SmartHusOptionsFlow(OptionsFlow):
                 "easee_device": user_input.get(CAR_EASEE_DEVICE) or None,
                 "plug": user_input.get(CAR_PLUG) or None,
                 "power": user_input.get(CAR_POWER) or None,
+                **extra,
             }
+            if user_input[CONF_EV_SWITCH].split(".")[0] in ("select", "input_select"):
+                data["charger_on"] = user_input.get(CAR_CHARGER_ON) or extra.get("charger_on")
+                data["charger_off"] = user_input.get(CAR_CHARGER_OFF) or extra.get("charger_off")
+            else:
+                data["charger_on"] = data["charger_off"] = None
+            self._charger_found = None
             if current:
                 current.update(data)
             else:
                 cars.append({"id": _new_car_id(name, cars), **data})
             return self._save_cars(cars)
-        cur = current or {}
+        cur = dict(current or {})
+        if self._charger_found:
+            m, dev_id = self._charger_found
+            cur.update(cz.car_fields(m, dev_id))      # fundne entiteter fylder felterne ud
         default_name = cur.get("name") or ("Elbil" if not cars else f"Elbil {len(cars) + 1}")
         schema = vol.Schema({
             vol.Required(CAR_NAME, default=default_name): TEXT,
-            vol.Required(CONF_EV_SWITCH, **({"default": cur["charger"]} if cur.get("charger") else {})): ONOFF,
+            vol.Required(CONF_EV_SWITCH, **({"default": cur["charger"]} if cur.get("charger") else {})): CHARGER,
+            _opt(CAR_CHARGER_ON, {CAR_CHARGER_ON: cur.get("charger_on")}, TEXT)[0]: TEXT,
+            _opt(CAR_CHARGER_OFF, {CAR_CHARGER_OFF: cur.get("charger_off")}, TEXT)[0]: TEXT,
             _opt(CONF_EV_SOC, {CONF_EV_SOC: cur.get("soc")}, SOC)[0]: SOC,
             _opt(CAR_PLUG, {CAR_PLUG: cur.get("plug")}, PLUG)[0]: PLUG,
             _opt(CAR_POWER, {CAR_POWER: cur.get("power")}, POWER)[0]: POWER,
@@ -576,7 +693,7 @@ class SmartHusOptionsFlow(OptionsFlow):
             _opt(CAR_CURRENT_SCRIPT, {CAR_CURRENT_SCRIPT: cur.get("current_script")}, SCRIPT)[0]: SCRIPT,
         })
         return self.async_show_form(step_id="ev_car", data_schema=schema,
-                                    description_placeholders={"car": default_name})
+                                    description_placeholders={"car": default_name, "found": self._charger_summary()})
 
     async def async_step_hotwater(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:

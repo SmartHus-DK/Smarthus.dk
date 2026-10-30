@@ -262,17 +262,19 @@
       },
       "ev_car": {
         "title": "EV: {car}",
-        "description": "The charger is enabled in the cheapest hours before the car's ready time. With the car's battery level (SoC) selected, it only charges to the target SoC.",
+        "description": "{found}The charger is enabled in the cheapest hours before the car's ready time. With the car's battery level (SoC) selected, it only charges to the target SoC.",
         "data": {
           "car_name": "Car name",
-          "ev_charger_entity": "Switch: allow charging",
+          "ev_charger_entity": "Charging on/off (switch or select)",
           "ev_soc_sensor": "Car battery level (SoC %)",
           "ev_plug_sensor": "Charging cable connected (from the car) – optional",
           "ev_energy_sensor": "Charger energy meter (kWh)",
           "ev_current_entity": "Charging current: number entity (A) – optional",
           "ev_current_script": "Charging current: script – optional",
           "ev_easee_device": "Charging current: Easee charger – optional",
-          "ev_power_sensor": "Charging power right now (W or kW) – optional"
+          "ev_power_sensor": "Charging power right now (W or kW) – optional",
+          "ev_charger_on_option": "Select: option to 'charge' – select only",
+          "ev_charger_off_option": "Select: option to 'stop' – select only"
         },
         "data_description": {
           "car_name": "Shown on the card and in entity names.",
@@ -283,7 +285,9 @@
           "ev_current_script": "Only for chargers that are neither Easee nor have a number entity. The script gets 'current' (A).",
           "ev_easee_device": "For an Easee charger: pick it here and SmartHus controls the current without a script.",
           "ev_plug_sensor": "Sensor from the car's integration showing if the cable is plugged in. With several cars on one charger, SmartHus only controls the connected car. Without it, pick the connected car on the card.",
-          "ev_power_sensor": "The charger's current power, e.g. Easee sensor.[charger]_power. Used for the energy flow and to check that the charger really stops (the stop is resent if it keeps charging)."
+          "ev_power_sensor": "The charger's current power, e.g. Easee sensor.[charger]_power. Used for the energy flow and to check that the charger really stops (the stop is resent if it keeps charging).",
+          "ev_charger_on_option": "If the charger is controlled with a select (e.g. go-e 'Force state'), enter the option that starts charging. Filled in automatically for known chargers.",
+          "ev_charger_off_option": "The select option that stops charging."
         }
       },
       "preset": {
@@ -303,6 +307,20 @@
       "preset_confirm": {
         "title": "Save setup",
         "description": "{summary}"
+      },
+      "ev_charger": {
+        "title": "Charger",
+        "description": "Pick your charger and SmartHus finds its on/off, power, energy meter, cable connected and charging current. The integration must be installed and set up first (most via HACS). You can adjust the fields afterwards.",
+        "data": {
+          "charger_type": "Charger"
+        }
+      },
+      "ev_charger_device": {
+        "title": "Pick the charger",
+        "description": "There are several chargers in {integration}. Pick the one the car charges at.",
+        "data": {
+          "device": "Charger"
+        }
       }
     },
     "error": {
@@ -311,7 +329,8 @@
       "export_select_options": "You chose a drop-down – fill in both option names.",
       "export_number_values": "You chose a number – fill in both values.",
       "export_scripts_pair": "Choose both a stop script and a start script.",
-      "preset_integration_missing": "The integration **{integration}** is not installed. Install it first: {url}"
+      "preset_integration_missing": "The integration **{integration}** is not installed. Install it first: {url}",
+      "charger_not_found": "No charger was found in **{integration}**. Check that the integration is set up and the charger's entities are enabled ({url})."
     }
   },
   "selector": {

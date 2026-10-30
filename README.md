@@ -65,12 +65,23 @@ Batteristyringen fra "Vælg dit anlæg" er bygget ud fra integrationernes kildek
 
 ### Ladeboks
 
-| Mærke | Integration | Hvor | Opsætning i SmartHus |
+Vælg **SmartHus → Konfigurer → Elbiler → bilen → Ladestander**, så finder SmartHus selv laderens tænd/sluk, effekt, energimåler, "kabel tilsluttet" og ladestrøm (til solcelleladning) i integrationen. Bilens batteriniveau vælger du selv fra bilens integration.
+
+| Mærke | Integration | Hvor | Det finder SmartHus |
 |---|---|---|---|
-| Easee | [Easee](https://github.com/nordicopen/easee_hass) | HACS | **Indbygget** – vælg bare laderen. Også solcelleladning. |
-| Zaptec | [Zaptec](https://github.com/custom-components/zaptec) | HACS | Kontakt + tal for ladestrøm ("Available current") |
-| Wallbox | [Wallbox](https://www.home-assistant.io/integrations/wallbox/) | Indbygget | Kontakt + tal for ladestrøm |
-| Andre | Ladeboksens egen integration | – | En kontakt til at starte/stoppe – evt. et script til ladestrøm |
+| Easee | [Easee](https://github.com/nordicopen/easee_hass) | HACS | Alt – ladestrømmen styres direkte via Easee |
+| Zaptec | [Zaptec](https://github.com/custom-components/zaptec) | HACS | Alt – ladestrøm via installationens "Available current" (gælder alle ladere i installationen) |
+| Wallbox | [Wallbox](https://www.home-assistant.io/integrations/wallbox/) | Indbygget | Alt – energimåleren tæller pr. opladning |
+| Fronius Wattpilot | [Wattpilot](https://github.com/mk-maddin/wattpilot-HA) | HACS | Alt – slå entiteten *Force State* til først |
+| go-e Charger | [go-e Charger API v2](https://github.com/marq24/ha-goecharger-api2) | HACS | Alt |
+| Garo | [Garo Wallbox](https://github.com/sockless-coding/garo_wallbox) | HACS | Alt |
+| Charge Amps | [Charge Amps](https://github.com/kirei/hass-chargeamps) | HACS | Alt |
+| Alfen | [Alfen Wallbox](https://github.com/leeyuentuen/alfen_wallbox) | HACS | Tænd/sluk, effekt, energi og kabel – ikke solcelleladning |
+| Monta | [Monta](https://github.com/nickknissen/hass-monta) | HACS | Tænd/sluk, energi og kabel – ingen effektmåler |
+| ABB, Etrel, CTEK, Kempower m.fl. | [OCPP](https://github.com/lbbrhzn/ocpp) | HACS | Alt via OCPP |
+| Andre | Ladeboksens egen integration | – | Vælg selv en kontakt (eller rullemenu) til at starte/stoppe – evt. et script til ladestrøm |
+
+Ladestanderne er sat op ud fra integrationernes kildekode og **ikke afprøvet på alle modeller** – tjek, at laderen starter og stopper, før styringen slås til.
 
 ### Elbil (valgfrit – giver batteriniveau og "kabel tilsluttet")
 

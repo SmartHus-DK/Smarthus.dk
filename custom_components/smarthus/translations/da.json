@@ -274,17 +274,19 @@
       },
       "ev_car": {
         "title": "Elbil: {car}",
-        "description": "Laderen tændes i de billigste timer før bilens klar-tidspunkt. Vælger du bilens batteriniveau (SoC), lades der kun til mål-SoC.",
+        "description": "{found}Laderen tændes i de billigste timer før bilens klar-tidspunkt. Vælger du bilens batteriniveau (SoC), lades der kun til mål-SoC.",
         "data": {
           "car_name": "Navn på bilen",
-          "ev_charger_entity": "Kontakt: tillad opladning",
+          "ev_charger_entity": "Tænd/sluk opladning (kontakt eller rullemenu)",
           "ev_soc_sensor": "Bilens batteriniveau (SoC %)",
           "ev_plug_sensor": "Ladekabel tilsluttet (fra bilen) – valgfri",
           "ev_energy_sensor": "Energimåler for laderen (kWh)",
           "ev_current_entity": "Ladestrøm: tal-entitet (A) – valgfri",
           "ev_current_script": "Ladestrøm: script – valgfri",
           "ev_easee_device": "Ladestrøm: Easee-lader – valgfri",
-          "ev_power_sensor": "Ladeeffekt lige nu (W eller kW) – valgfri"
+          "ev_power_sensor": "Ladeeffekt lige nu (W eller kW) – valgfri",
+          "ev_charger_on_option": "Rullemenu: mulighed for 'lad' – kun ved rullemenu",
+          "ev_charger_off_option": "Rullemenu: mulighed for 'stop' – kun ved rullemenu"
         },
         "data_description": {
           "car_name": "Vises på kortet og i entiteternes navne, fx 'Tesla' eller 'Firmabil'.",
@@ -295,7 +297,9 @@
           "ev_current_script": "Kun til ladebokse, der hverken er Easee eller har en tal-entitet. Scriptet får variablen 'current' (A).",
           "ev_easee_device": "Har kunden en Easee-lader, så vælg den her – så kan SmartHus styre ladestrømmen ved solcelleladning uden script.",
           "ev_plug_sensor": "Sensor fra bilens egen integration, der viser om ladekablet sidder i – fx Tesla binary_sensor.[bil]_charger, Kia/Hyundai binary_sensor.[bil]_ev_plugged_in, VW sensor.[bil]_plug_status. Deler flere biler samme lader, styrer SmartHus kun den bil, der er tilsluttet. Uden sensor vælger du den tilsluttede bil på kortet.",
-          "ev_power_sensor": "Laderens effekt lige nu, fx Easee sensor.[lader]_power. Bruges til energiflowet og til at tjekke, at laderen faktisk stopper (sendes sluk igen, hvis den lader videre)."
+          "ev_power_sensor": "Laderens effekt lige nu, fx Easee sensor.[lader]_power. Bruges til energiflowet og til at tjekke, at laderen faktisk stopper (sendes sluk igen, hvis den lader videre).",
+          "ev_charger_on_option": "Styres laderen med en rullemenu (fx go-e 'Force state'), skriv den mulighed, der starter opladningen. Udfyldes automatisk for kendte ladere.",
+          "ev_charger_off_option": "Den mulighed i rullemenuen, der stopper opladningen."
         }
       },
       "preset": {
@@ -315,6 +319,20 @@
       "preset_confirm": {
         "title": "Gem opsætningen",
         "description": "{summary}"
+      },
+      "ev_charger": {
+        "title": "Ladestander",
+        "description": "Vælg din ladestander, så finder SmartHus selv laderens tænd/sluk, effekt, energimåler, kabel tilsluttet og ladestrøm. Integrationen skal være installeret og sat op først (de fleste via HACS). Felterne kan rettes bagefter.",
+        "data": {
+          "charger_type": "Ladestander"
+        }
+      },
+      "ev_charger_device": {
+        "title": "Vælg laderen",
+        "description": "Der er flere ladere i {integration}. Vælg den, bilen lader ved.",
+        "data": {
+          "device": "Lader"
+        }
       }
     },
     "error": {
@@ -323,7 +341,8 @@
       "export_select_options": "Du har valgt en rullemenu – udfyld begge navne ('stop eksport' og 'normal eksport').",
       "export_number_values": "Du har valgt et tal – udfyld begge værdier (ved stop og ved normal eksport).",
       "export_scripts_pair": "Vælg både et script til at stoppe og et til at starte eksporten igen.",
-      "preset_integration_missing": "Integrationen **{integration}** er ikke installeret. Installér den først: {url}"
+      "preset_integration_missing": "Integrationen **{integration}** er ikke installeret. Installér den først: {url}",
+      "charger_not_found": "Der blev ikke fundet en lader i **{integration}**. Tjek at integrationen er sat op, og at laderens entiteter er slået til ({url})."
     }
   },
   "selector": {
