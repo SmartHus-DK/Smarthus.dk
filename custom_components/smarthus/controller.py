@@ -43,6 +43,10 @@ from .const import (
     S_BATTERY_MAX_SOC,
     BATTERY_SCRIPTS,
     CONF_HUAWEI_DEVICE,
+    CONF_GROWATT_DEVICE,
+    CONF_GROWATT_POWER,
+    CONF_GROWATT_TYPE,
+    DEFAULT_GROWATT_POWER,
     CONF_HUAWEI_POWER,
     CONF_BATTERY_POWER,
     CONF_BATTERY_POWER_SIGN,
@@ -116,6 +120,7 @@ from .const import (
     SIGNAL_TICK,
 )
 from .coordinator import SmartHusPriceCoordinator
+from . import growatt as gw
 from .planner import CHARGE_EFFICIENCY, CarInput, Plan, build_plan, car_ready, car_settings, heating_outdoor_ok
 from .profile import (EFFICIENCY, LEARN_DAYS, SUN_END, SUN_START, Profile, Reserve, build_profile, calc_reserve,
                       expected_load, grid_charge_target, solar_surplus)
@@ -825,6 +830,7 @@ class SmartHusController:
     @property
     def has_battery_control(self) -> bool:
         return (bool(self.config.get(CONF_BATTERY_MODE_ENTITY)) or bool(self.config.get(CONF_HUAWEI_DEVICE))
+                or bool(self.config.get(CONF_GROWATT_DEVICE))
                 or bool(self.config.get(CONF_BATTERY_ACTIONS)) or any(self.config.get(k) for k in BATTERY_SCRIPTS))
 
     @property
@@ -1351,6 +1357,9 @@ class SmartHusController:
         if self.config.get(CONF_HUAWEI_DEVICE):
             await self._apply_huawei(action, force)
             return
+        if self.config.get(CONF_GROWATT_DEVICE):
+            await self._apply_growatt(action, force)
+            return
         if self.config.get(CONF_BATTERY_MODE_ENTITY):
             await self._ensure_option(self.config[CONF_BATTERY_MODE_ENTITY], self._battery_option(action), force)
 
@@ -1436,6 +1445,39 @@ class SmartHusController:
         else:
             await self._service_once("battery", action, force, "huawei_solar", "stop_forcible_charge",
                                      {"device_id": device})
+
+    async def _apply_growatt(self, action: str, force: bool) -> None:
+        """Growatt via skyen: skriv lade-/afladetidsrummet for den aktuelle blok – kun når blokken skifter.
+
+        Tilstanden huskes først, når Growatt har taget imod alle kald; fejler et kald, prøves der igen
+        næste gang (højst hvert 90. sekund), så en kortvarig fejl i skyen ikke efterlader en halv opsætning.
+        """
+        if action not in (ACTION_CHARGE, ACTION_DISCHARGE):
+            action = ACTION_NORMAL        # "sælg sol" findes ikke via skyen
+        window = None
+        cur = self.plan.current if getattr(self, "plan", None) else None
+        if action != ACTION_NORMAL and cur is not None:
+            slots = self.plan.battery_charge if action == ACTION_CHARGE else self.plan.battery_discharge
+            window = gw.block_window(slots, cur, self.tz)
+        state = f"{action}@{window[0]}-{window[1]}" if window else action
+        if not force and self._script_state.get("battery") == state:
+            return
+        if not force and not self._rate_ok("battery:growatt"):
+            return
+        self._last_cmd["battery:growatt"] = time.monotonic()
+        cmds = gw.commands(self.config.get(CONF_GROWATT_TYPE) or gw.TYPE_SPH, self.config[CONF_GROWATT_DEVICE],
+                           action, window, int(self.settings.get("battery_max_soc", 95)),
+                           int(self.settings.get("battery_min_soc", 15)),
+                           int(float(self.config.get(CONF_GROWATT_POWER) or DEFAULT_GROWATT_POWER)))
+        for service, data in cmds:
+            try:
+                await self.hass.services.async_call(gw.DOMAIN, service, data, blocking=True)
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.warning("SmartHus: Growatt %s fejlede (%s) – prøver igen om lidt", service, err)
+                self._script_state.pop("battery", None)
+                return
+        self._script_state["battery"] = state
+        _LOGGER.info("SmartHus: Growatt batteri → %s", state)
 
     def _battery_option(self, action: str) -> str:
         key = {

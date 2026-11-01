@@ -19,6 +19,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from . import growatt as gw
+
 KEEP = "__keep__"
 
 # Roller → SmartHus' egne opsætningsnøgler (const.py)
@@ -61,6 +63,7 @@ class Preset:
     grid_sign: str | None = None                                # export_positive / import_positive
     control: tuple = ()            # varianter: ({tilstand: [trin]}, ...) – den første, der passer, bruges
     huawei: bool = False           # Huawei: indbygget styring via batteriets enhed
+    growatt_cloud: bool = False    # Growatt Server (sky): styring via tidsrum på inverterens enhed
     export: tuple[str, float] | None = None                     # ("number:nøgle", værdi ved stop)
     note: str = ""
 
@@ -253,6 +256,25 @@ PRESETS: dict[str, Preset] = {p.key: p for p in (
         battery_sign="charge_positive", grid_sign="export_positive",
         huawei=True,
     ),
+    Preset(
+        "growatt_cloud", "Growatt (sky – Growatt Server)", "growatt_server", "Growatt Server (indbygget, API-token)",
+        "https://www.home-assistant.io/integrations/growatt_server/",
+        roles={
+            "soc": "sensor:mix_statement_of_charge|tlx_statement_of_charge",
+            "solar_power": "sensor:mix_wattage_pv_all",
+            "battery_charge_energy": "sensor:mix_battery_charge_lifetime|tlx_all_batteries_charge_total",
+            "battery_discharge_energy": "sensor:mix_battery_discharge_lifetime|tlx_all_batteries_discharge_total",
+            "import_energy": "sensor:mix_import_from_grid_today|tlx_import_from_grid_total",
+            "export_energy": "sensor:mix_export_to_grid_lifetime|tlx_export_to_grid_total",
+            "solar_energy": "sensor:mix_solar_generation_lifetime|tlx_solar_generation_total",
+            "house_energy": "sensor:mix_load_consumption_lifetime|mix_load_consumption_total",
+        },
+        growatt_cloud=True,
+        note="Styringen går via Growatts sky: ændringer slår igennem efter et minut eller to, og data "
+             "opdateres ca. hvert 5. minut. Kræver at Growatt Server er sat op med API-token. "
+             "SPH: SmartHus skriver lade-/afladetidsrum. MIN TL-XH: tidsrum 1 bruges, og AC-opladning "
+             "skal være slået til i inverteren, for at den kan lade fra nettet.",
+    ),
 )}
 
 
@@ -268,10 +290,13 @@ class Entry:
 def _find(entries: list[Entry], spec: str) -> Entry | None:
     """Find entiteten for "platform:nøgle". unique_id slutter på nøglen; ved flere (fx
     "_battery_sensor" og "_total_battery_sensor") er den korteste den rigtige."""
-    platform, key = spec.split(":", 1)
-    hits = [e for e in entries if e.entity_id.split(".")[0] == platform
-            and (e.unique_id == key or e.unique_id.endswith("_" + key) or e.unique_id.endswith("-" + key))]
-    return min(hits, key=lambda e: len(e.unique_id)) if hits else None
+    platform, keys = spec.split(":", 1)
+    for key in keys.split("|"):            # "a|b": den første nøgle, der findes
+        hits = [e for e in entries if e.entity_id.split(".")[0] == platform
+                and (e.unique_id == key or e.unique_id.endswith("_" + key) or e.unique_id.endswith("-" + key))]
+        if hits:
+            return min(hits, key=lambda e: len(e.unique_id))
+    return None
 
 
 @dataclass
@@ -284,6 +309,8 @@ class Match:
     control_missing: list[str]                  # entiteter, styringen mangler
     huawei_device: str | None = None
     export: tuple[str, float] | None = None     # (entity_id, værdi ved stop)
+    growatt_device: str | None = None
+    growatt_type: str | None = None             # "sph" eller "min"
 
 
 def match(preset: Preset, entries: list[Entry]) -> Match:
@@ -328,7 +355,11 @@ def match(preset: Preset, entries: list[Entry]) -> Match:
         if e is not None and not e.disabled:
             export = (e.entity_id, preset.export[1])
     huawei_device = found_soc.device_id if preset.huawei and found_soc else None
-    return Match(preset, roles, disabled, missing, actions, control_missing, huawei_device, export)
+    growatt_device = growatt_type = None
+    if preset.growatt_cloud and found_soc:
+        growatt_device, growatt_type = found_soc.device_id, gw.device_type(found_soc.unique_id)
+    return Match(preset, roles, disabled, missing, actions, control_missing, huawei_device, export,
+                 growatt_device, growatt_type)
 
 
 def fill_keep(actions: dict[str, list[dict]], current: dict[str, str | None], fallback: dict[str, str]) -> dict:

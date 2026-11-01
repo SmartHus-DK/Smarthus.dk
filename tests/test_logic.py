@@ -1023,6 +1023,67 @@ def test_preset_huawei_uses_battery_device_and_skips_disabled():
     assert "sensor.inverter_input_power" in m.disabled and "solar_power" not in m.roles
 
 
+def test_preset_growatt_cloud_sph_and_min():
+    """Growatt Server (sky): inverteren findes via SOC-sensoren, typen af nøglerne."""
+    reg = [presets.Entry("sensor.omc_state_of_charge", "OMC123-mix_statement_of_charge", "inv-dev"),
+           presets.Entry("sensor.omc_lifetime_solar_energy", "OMC123-mix_solar_generation_lifetime", "inv-dev"),
+           presets.Entry("sensor.omc_ac_frequency", "OMC123-sph_grid_frequency", "inv-dev", disabled=True),
+           presets.Entry("sensor.plant_total_energy_today", "1485033-total_energy_today", None)]
+    m = presets.match(presets.PRESETS["growatt_cloud"], reg)
+    assert (m.growatt_device, m.growatt_type) == ("inv-dev", "sph") and m.huawei_device is None
+    assert m.roles["soc"] == "sensor.omc_state_of_charge" and m.roles["solar_energy"] == "sensor.omc_lifetime_solar_energy"
+    # MIN TL-XH: alternative nøgler ("a|b") findes
+    reg2 = [presets.Entry("sensor.min_soc", "MIN9-tlx_statement_of_charge", "min-dev"),
+            presets.Entry("sensor.min_house", "MIN9-mix_load_consumption_total", "min-dev")]
+    m2 = presets.match(presets.PRESETS["growatt_cloud"], reg2)
+    assert (m2.growatt_device, m2.growatt_type) == ("min-dev", "min") and m2.roles["house_energy"] == "sensor.min_house"
+    # Uden SOC: ingen styring
+    assert presets.match(presets.PRESETS["growatt_cloud"], reg[1:]).growatt_device is None
+
+
+def test_growatt_block_window_and_commands():
+    from datetime import datetime, timedelta, timezone
+    from zoneinfo import ZoneInfo
+    gw = sys.modules["smarthus.growatt"]
+    tz = ZoneInfo("Europe/Copenhagen")
+    q = timedelta(minutes=15)
+    def slots(start_local, n):
+        t0 = start_local.astimezone(timezone.utc)
+        return [planner.Slot(t0 + i * q, t0 + (i + 1) * q, 1.0, 1.0, 0.5) for i in range(n)]
+    # Ladeblok 02:00–05:00 (vintertid) – midt i blokken: hele blokken sendes
+    ch = slots(datetime(2026, 11, 2, 2, 0, tzinfo=tz), 12)
+    assert gw.block_window(ch, ch[5], tz) == ("02:00", "05:00")
+    # To adskilte blokke: kun den, vi står i
+    other = slots(datetime(2026, 11, 2, 13, 0, tzinfo=tz), 4)
+    assert gw.block_window(ch + other, other[1], tz) == ("13:00", "14:00")
+    # Hen over midnat: klippes ved 23:59 / starter 00:00 næste døgn
+    night = slots(datetime(2026, 11, 2, 23, 0, tzinfo=tz), 8)
+    assert gw.block_window(night, night[0], tz) == ("23:00", "23:59")
+    assert gw.block_window(night, night[5], tz) == ("00:00", "01:00")
+    # Ikke i blokken (lav salgspris): kun det aktuelle kvarter
+    lone = slots(datetime(2026, 11, 2, 12, 15, tzinfo=tz), 1)[0]
+    assert gw.block_window(ch, lone, tz) == ("12:15", "12:30")
+
+    assert gw.device_type("X-mix_statement_of_charge") == "sph" and gw.device_type("X-tlx_bms_soc") == "min"
+    assert gw.device_type("1485033-total_energy_today") is None
+    c = gw.commands("sph", "dev", "charge", ("02:00", "05:00"), 95, 15, 80)
+    assert [x[0] for x in c] == ["write_ac_discharge_times", "write_ac_charge_times"]     # aflad slås fra først
+    assert c[0][1] == {"device_id": "dev", "period_1_enabled": False, "period_2_enabled": False, "period_3_enabled": False}
+    assert c[1][1] == {"device_id": "dev", "charge_power": 80, "charge_stop_soc": 95, "mains_enabled": True,
+                       "period_1_start": "02:00", "period_1_end": "05:00", "period_1_enabled": True,
+                       "period_2_enabled": False, "period_3_enabled": False}
+    d = gw.commands("sph", "dev", "discharge", ("17:00", "19:00"), 95, 15, 100)
+    assert [x[0] for x in d] == ["write_ac_charge_times", "write_ac_discharge_times"]
+    assert d[0][1]["mains_enabled"] is False and d[1][1]["discharge_stop_soc"] == 15
+    n = gw.commands("sph", "dev", "normal", None, 95, 15, 100)
+    assert [x[0] for x in n] == ["write_ac_charge_times", "write_ac_discharge_times"]
+    assert not any(v for k, v in n[0][1].items() if k.endswith("_enabled"))
+    mn = gw.commands("min", "dev", "discharge", ("17:00", "19:00"), 95, 15, 100)
+    assert mn == [("update_time_segment", {"device_id": "dev", "segment_id": 1, "batt_mode": "grid_first",
+                                           "start_time": "17:00", "end_time": "19:00", "enabled": True})]
+    assert gw.commands("min", "dev", "normal", None, 95, 15, 100)[0][1]["enabled"] is False
+
+
 def test_preset_fronius_dash_ids_and_storage_control():
     """Fronius (indbygget): unique_id med "-", lagerstyring via Modbus-grænser."""
     reg = [presets.Entry("sensor.byd_soc", "BYD123-state_of_charge"),

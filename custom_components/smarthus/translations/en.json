@@ -75,7 +75,7 @@
       },
       "battery": {
         "title": "Battery / inverter",
-        "description": "Choose one: A) drop-down (SigEnergy, FoxESS, SolaX), B) Huawei – just pick the battery, or C) scripts for other brands.",
+        "description": "Choose one: A) drop-down (SigEnergy, FoxESS, SolaX), B) Huawei – just pick the battery, C) scripts for other brands, or D) Growatt via cloud (Growatt Server) – just pick the inverter.",
         "data": {
           "battery_mode_entity": "A) Drop-down: inverter operating mode",
           "battery_option_charge": "A) Mode name: charge from grid",
@@ -93,7 +93,9 @@
           "battery_power_sensor": "Battery power right now (W or kW) – optional",
           "battery_power_sign": "What does a positive battery value mean?",
           "battery_option_sell_solar": "A) Mode name: sell solar (optional)",
-          "battery_script_sell_solar": "C) Script: sell solar (optional)"
+          "battery_script_sell_solar": "C) Script: sell solar (optional)",
+          "battery_growatt_device": "D) Growatt via cloud: the inverter (Growatt Server)",
+          "battery_growatt_power": "D) Growatt: charge/discharge power (%)"
         },
         "data_description": {
           "house_energy_sensor": "Increasing energy meter (kWh) of the house consumption – e.g. from the inverter ('Load consumption total'), a P1 meter or an electricity meter. Every night SmartHus learns the hourly consumption from the last 14 days (weekdays and weekends separately) and keeps enough in the battery for the house until power is cheap again. Only the surplus is sold. Requires long-term statistics. The reserve is used after 2 days of history.",
@@ -110,7 +112,9 @@
           "battery_power_sensor": "Only used for the energy flow at the top of the card.",
           "battery_power_sign": "Huawei and SigEnergy usually show charging as positive.",
           "battery_option_sell_solar": "Optional. A mode where solar power is exported and the battery is not charged by the panels. SmartHus then sells solar when the sale price beats charging cheaply from the grid later. Only used when the battery already holds the house reserve. Leave empty to disable.",
-          "battery_script_sell_solar": "Optional. Runs when solar should be sold instead of charging the battery (e.g. set max charge power to 0). The normal script runs afterwards."
+          "battery_script_sell_solar": "Optional. Runs when solar should be sold instead of charging the battery (e.g. set max charge power to 0). The normal script runs afterwards.",
+          "battery_growatt_device": "For Growatt without local Modbus, use the Growatt Server integration (API token). Pick the inverter – SmartHus writes charge/discharge time periods itself. Changes take a minute or two.",
+          "battery_growatt_power": "Charge/discharge power as a percentage of the inverter's maximum. Default 100%."
         }
       },
       "solar": {

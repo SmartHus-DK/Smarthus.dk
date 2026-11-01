@@ -80,7 +80,7 @@
       },
       "battery": {
         "title": "Batteri / inverter",
-        "description": "SmartHus styrer batteriet i tre tilstande: **lad fra nettet** (billigste timer), **aflad** (dyreste timer) og **normal drift**.\n\nVælg den måde, der passer til inverteren – kun én af dem skal udfyldes:\n\n**A) Rullemenu** – SigEnergy, FoxESS og SolaX m.fl.: vælg inverterens driftstilstand og skriv navnene på de tre tilstande.\n\n**B) Huawei** – vælg bare batteriet. SmartHus klarer resten.\n\n**C) Scripts** – til andre mærker (fx Deye, Growatt, Solplanet). Se skabeloner i vejledningen på GitHub.\n\nFelterne under A er udfyldt med navnene fra SigEnergy som eksempel.",
+        "description": "SmartHus styrer batteriet i tre tilstande: **lad fra nettet** (billigste timer), **aflad** (dyreste timer) og **normal drift**.\n\nVælg den måde, der passer til inverteren – kun én af dem skal udfyldes:\n\n**A) Rullemenu** – SigEnergy, FoxESS og SolaX m.fl.: vælg inverterens driftstilstand og skriv navnene på de tre tilstande.\n\n**B) Huawei** – vælg bare batteriet. SmartHus klarer resten.\n\n**C) Scripts** – til andre mærker (fx Deye, Growatt, Solplanet). Se skabeloner i vejledningen på GitHub.\n\n**D) Growatt via skyen** – har kunden kun Growatt-donglen (ingen lokal Modbus), vælg inverteren fra Growatt Server. SmartHus skriver selv lade- og afladetidsrum.\n\nFelterne under A er udfyldt med navnene fra SigEnergy som eksempel.",
         "data": {
           "battery_mode_entity": "A) Rullemenu: inverterens driftstilstand",
           "battery_option_charge": "A) Navn på tilstanden: lad fra nettet",
@@ -98,7 +98,9 @@
           "battery_power_sensor": "Batteriets effekt lige nu (W eller kW) – valgfri",
           "battery_power_sign": "Hvad betyder et positivt tal for batteriet?",
           "battery_option_sell_solar": "A) Navn på tilstanden: sælg solstrøm (valgfri)",
-          "battery_script_sell_solar": "C) Script: sælg solstrøm (valgfri)"
+          "battery_script_sell_solar": "C) Script: sælg solstrøm (valgfri)",
+          "battery_growatt_device": "D) Growatt via skyen: inverteren (Growatt Server)",
+          "battery_growatt_power": "D) Growatt: effekt ved lad/aflad (%)"
         },
         "data_description": {
           "house_energy_sensor": "En stigende energimåler (kWh) for husets forbrug – fx fra inverteren ('Load consumption total'), en P1-måler (HAN-port) eller en elmåler. SmartHus lærer ud fra de seneste 14 dage, hvor meget huset bruger time for time, og holder så meget i batteriet, at huset klarer sig til strømmen bliver billig igen. Kun det overskydende sælges. Kræver langtidsstatistik (står den i Energi-dashboardet, har den det). Reserven bruges efter 2 dages historik.",
@@ -117,7 +119,9 @@
           "battery_power_sensor": "Bruges kun til energiflowet øverst på kortet – fx Huawei sensor.battery_charge_discharge_power eller SigEnergy sensor.sigen_plant_battery_power.",
           "battery_power_sign": "Huawei og SigEnergy viser typisk opladning som positiv. Tjek ved at se sensoren, mens batteriet lader.",
           "battery_option_sell_solar": "Valgfri. En tilstand hvor solcellernes strøm sælges til nettet, og batteriet ikke lades af solcellerne (huset må gerne bruge batteriet). Så kan SmartHus sælge solstrømmen, når salgsprisen er højere end prisen for at lade batteriet billigt fra nettet senere. Bruges kun, når batteriet allerede har reserven til huset. Lad feltet stå tomt for at slå det fra.",
-          "battery_script_sell_solar": "Valgfri. Køres når solstrømmen skal sælges i stedet for at lade batteriet (fx sæt maks. ladeeffekt til 0). Script til normal drift køres bagefter."
+          "battery_script_sell_solar": "Valgfri. Køres når solstrømmen skal sælges i stedet for at lade batteriet (fx sæt maks. ladeeffekt til 0). Script til normal drift køres bagefter.",
+          "battery_growatt_device": "Har kunden Growatt uden lokal Modbus, kan integrationen Growatt Server (med API-token) bruges. Vælg inverteren – så skriver SmartHus selv lade- og afladetidsrum i Growatt. Ændringer slår igennem efter et minut eller to.",
+          "battery_growatt_power": "Hvor hårdt batteriet lades/aflades i procent af inverterens maks. Standard 100 %."
         }
       },
       "solar": {

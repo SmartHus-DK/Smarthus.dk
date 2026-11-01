@@ -58,6 +58,7 @@ Installér integrationen til dit anlæg, og vælg derefter **SmartHus → Konfig
 | SolaX | [SolaX Modbus](https://github.com/wills106/homeassistant-solax-modbus) | HACS | Målere, batteristyring (Manual Mode, Gen4+) og eksportgrænse |
 | FoxESS | [FoxESS Modbus](https://github.com/nathanmarlor/foxess_modbus) | HACS | Målere og batteristyring (Force Charge/Discharge – slå *Remote control* til i integrationen) |
 | Growatt | [SolaX Modbus](https://github.com/wills106/homeassistant-solax-modbus) (Growatt-plugin) | HACS | Batteriniveau, sol og batteristyring (MOD/TL-XH: tidsrum 1 · SPH: prioritet) |
+| Growatt (kun Shine-dongle) | [Growatt Server](https://www.home-assistant.io/integrations/growatt_server/) med API-token | Indbygget | Målere og batteristyring via skyen (SPH: lade-/afladetidsrum · MIN TL-XH: tidsrum 1). Ændringer tager 1–2 minutter |
 | Fronius | [Fronius](https://www.home-assistant.io/integrations/fronius/) | Indbygget | Målere og batteristyring (Gen24/Tauro/Verto – kræver Modbus TCP og *Inverter control via Modbus*). Slå sensorerne *Power battery* og *Power grid* til
 | Solplanet | [Solplanet](https://github.com/calvinbui/home-assistant-solplanet) | HACS | Batteriniveau – batteriet styres med scripts (skabelon nedenfor) |
 
@@ -117,7 +118,7 @@ Klik **Konfigurer** på SmartHus. Under hvert felt står en kort forklaring. Du 
 | Menu | Det vigtigste at vælge |
 |---|---|
 | **Elpris og tariffer** | Vælg **Strømligning**, hvis du har den – så er du færdig. Ellers: tillæg og nettarif fra din elregning. |
-| **Batteri / inverter** | Huawei: vælg batteriet. Andre: inverterens rullemenu for driftstilstand og batteriniveau (%). |
+| **Batteri / inverter** | Huawei: vælg batteriet. Growatt via skyen: vælg inverteren. Andre: inverterens rullemenu for driftstilstand og batteriniveau (%). |
 | **Solceller** | **Effekt til/fra nettet lige nu** (giver energiflow og overskud), solcelleproduktion lige nu og "stop eksport"-entiteten. Vælg også **købt fra nettet (kWh)**, så kortet viser, hvor meget strøm du har købt, hvad den kostede og din snitpris. |
 | **Elbiler** | Pr. bil: navn, laderens kontakt, bilens batteriniveau. Easee: vælg bare laderen. Flere biler på samme lader: vælg samme lader til begge. |
 | **Varmt vand** | Varmepumpens kontakt eller knap til varmt vand (fx "Charge") – eller kontakten til elpatronen. Gerne også en temperaturføler i vandet. |
@@ -204,10 +205,11 @@ Vælg prisområde (**DK1** = Jylland og Fyn, **DK2** = Sjælland, øerne og Born
 Navnene skal stå **præcis** som i rullemenuen. Husk at slå "Remote EMS" til på anlægget.
 </details>
 
-<details><summary><b>Batteri: rullemenu, Huawei eller scripts</b></summary>
+<details><summary><b>Batteri: rullemenu, Huawei, Growatt (sky) eller scripts</b></summary>
 
 - **A) Rullemenu** – inverteren har én `select` med tilstande (SigEnergy, ofte FoxESS og SolaX). Skriv navnene præcis som i rullemenuen.
 - **B) Huawei (indbygget)** – vælg batteriet. SmartHus kalder selv `forcible_charge_soc`, `forcible_discharge_soc` og `stop_forcible_charge`.
+- **D) Growatt via skyen** – til Growatt med den almindelige Shine-dongle (ingen lokal Modbus). Kræver Growatt Server sat op med **API-token**. Vælg inverteren; SmartHus skriver selv tidsrummet for den aktuelle lade- eller afladeblok (`write_ac_charge_times`/`write_ac_discharge_times` på SPH, `update_time_segment` på MIN TL-XH) og slår tidsrummene fra i normal drift. Fordi sluttidspunktet ligger i inverteren, stopper den også til tiden, hvis Home Assistant går ned. "Sælg sol" findes ikke via skyen.
 - **C) Scripts** – virker med alle invertere. Lav tre scripts (lad, aflad, normal). Et script bruges i stedet for rullemenuen for den tilstand.
 
 Scripts køres kun, når tilstanden skifter, og "normal" køres også, når styringen slås fra. Variabler: `smarthus_state` (`charge`/`discharge`/`normal`), `price`, `sale_price`, `min_soc`, `max_soc`.

@@ -38,6 +38,9 @@ from .const import (
     CONF_BATTERY_SCRIPT_SELL_SOLAR,
     CONF_HUAWEI_DEVICE,
     CONF_HUAWEI_POWER,
+    CONF_GROWATT_DEVICE,
+    CONF_GROWATT_POWER,
+    CONF_GROWATT_TYPE,
     CONF_BATTERY_POWER,
     CONF_BATTERY_POWER_SIGN,
     SIGN_CHARGE_POSITIVE,
@@ -168,6 +171,10 @@ HUAWEI_DEVICE = selector.DeviceSelector(selector.DeviceSelectorConfig(integratio
 HUAWEI_POWER = selector.NumberSelector(selector.NumberSelectorConfig(min=100, max=20000, step=100,
                                                                     mode=selector.NumberSelectorMode.BOX,
                                                                     unit_of_measurement="W"))
+GROWATT_DEVICE = selector.DeviceSelector(selector.DeviceSelectorConfig(integration="growatt_server"))
+GROWATT_POWER = selector.NumberSelector(selector.NumberSelectorConfig(min=10, max=100, step=5,
+                                                                     mode=selector.NumberSelectorMode.SLIDER,
+                                                                     unit_of_measurement="%"))
 EASEE_DEVICE = selector.DeviceSelector(selector.DeviceSelectorConfig(integration="easee"))
 CAR_EASEE_DEVICE = "ev_easee_device"
 CAR_PLUG = "ev_plug_sensor"
@@ -321,6 +328,11 @@ def _preset_summary(m: pz.Match) -> str:
         lines += ["", f"**Batteristyring:** lad fra nettet, aflad og normal drift ({n} trin) – erstatter tidligere rullemenu/scripts."]
     elif m.huawei_device:
         lines += ["", "**Batteristyring:** Huawei – indbygget styring af batteriet."]
+    elif m.growatt_device:
+        kind = {"sph": "SPH", "min": "MIN TL-XH"}.get(m.growatt_type or "", "ukendt model – behandles som SPH")
+        lines += ["", f"**Batteristyring:** Growatt via skyen ({kind}) – SmartHus skriver lade- og afladetidsrum."]
+    elif p.growatt_cloud:
+        lines += ["", "**Batteristyring:** ikke fundet – batteriets niveau (SOC) mangler, så inverteren kan ikke findes."]
     elif p.control:
         lines += ["", "**Batteristyring:** ikke fundet – mangler: " + ", ".join(f"`{x}`" for x in m.control_missing)
                   + ". Den nuværende styring beholdes."]
@@ -427,7 +439,8 @@ class SmartHusOptionsFlow(OptionsFlow):
         if "grid_power" in m.roles and p.grid_sign:
             new[CONF_GRID_POWER_SIGN] = p.grid_sign
         control_keys = [CONF_BATTERY_MODE_ENTITY, CONF_BATTERY_OPT_CHARGE, CONF_BATTERY_OPT_DISCHARGE,
-                        CONF_BATTERY_OPT_NORMAL, CONF_BATTERY_OPT_SELL_SOLAR, CONF_HUAWEI_DEVICE, *BATTERY_SCRIPTS,
+                        CONF_BATTERY_OPT_NORMAL, CONF_BATTERY_OPT_SELL_SOLAR, CONF_HUAWEI_DEVICE,
+                        CONF_GROWATT_DEVICE, CONF_GROWATT_TYPE, *BATTERY_SCRIPTS,
                         CONF_BATTERY_SCRIPT_SELL_SOLAR]
         if m.actions:
             current = {s["entity_id"]: (st.state if (st := self.hass.states.get(s["entity_id"])) else None)
@@ -441,6 +454,13 @@ class SmartHusOptionsFlow(OptionsFlow):
                 new.pop(k, None)
             new.pop(CONF_BATTERY_ACTIONS, None)
             new[CONF_HUAWEI_DEVICE] = m.huawei_device
+            new[CONF_BATTERY_PRESET] = p.key
+        elif m.growatt_device:
+            for k in control_keys:
+                new.pop(k, None)
+            new.pop(CONF_BATTERY_ACTIONS, None)
+            new[CONF_GROWATT_DEVICE] = m.growatt_device
+            new[CONF_GROWATT_TYPE] = m.growatt_type or "sph"
             new[CONF_BATTERY_PRESET] = p.key
         elif new.get(CONF_BATTERY_PRESET) and new.get(CONF_BATTERY_PRESET) != p.key:
             new.pop(CONF_BATTERY_ACTIONS, None)       # styring fra et andet anlæg passer ikke længere
@@ -459,8 +479,18 @@ class SmartHusOptionsFlow(OptionsFlow):
                 new[CONF_EXPORT_VALUE_NORMAL] = normal
         return new
 
+    def _growatt_type(self, device_id: str) -> str:
+        """SPH eller MIN – aflæst af nøglerne på inverterens sensorer."""
+        reg = er.async_get(self.hass)
+        for e in er.async_entries_for_device(reg, device_id, include_disabled_entities=True):
+            if kind := pz.gw.device_type(e.unique_id or ""):
+                return kind
+        return "sph"
+
     async def async_step_battery(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
+            if user_input.get(CONF_GROWATT_DEVICE):
+                user_input = {**user_input, CONF_GROWATT_TYPE: self._growatt_type(user_input[CONF_GROWATT_DEVICE])}
             return self._save(BATTERY_KEYS, user_input)
         fields = [
             (CONF_BATTERY_MODE_ENTITY, MODE),
@@ -470,6 +500,8 @@ class SmartHusOptionsFlow(OptionsFlow):
             (CONF_BATTERY_OPT_SELL_SOLAR, TEXT),
             (CONF_HUAWEI_DEVICE, HUAWEI_DEVICE),
             (CONF_HUAWEI_POWER, HUAWEI_POWER),
+            (CONF_GROWATT_DEVICE, GROWATT_DEVICE),
+            (CONF_GROWATT_POWER, GROWATT_POWER),
             (CONF_BATTERY_SCRIPT_CHARGE, SCRIPT),
             (CONF_BATTERY_SCRIPT_DISCHARGE, SCRIPT),
             (CONF_BATTERY_SCRIPT_NORMAL, SCRIPT),

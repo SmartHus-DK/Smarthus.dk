@@ -578,3 +578,47 @@ def test_select_charger():
     states["switch.lader"] = State("off")
     asyncio.run(c._set_charger(sw, True, True))
     assert h.services.calls[-1] == ("switch", "turn_on", {"entity_id": "switch.lader"})
+
+
+def test_growatt_cloud_control():
+    """Growatt via skyen: blokkens tidsrum skrives én gang, fejl prøves igen, sælg sol → normal."""
+    from datetime import datetime, timedelta
+    tz = ZoneInfo("Europe/Copenhagen")
+    q = timedelta(minutes=15)
+    t0 = datetime(2026, 11, 2, 2, 0, tzinfo=tz).astimezone(timezone.utc)
+    ch = [planner.Slot(t0 + i * q, t0 + (i + 1) * q, 1.0, 1.0, 0.5) for i in range(8)]
+    c, h = make({"battery_growatt_device": "gw1", "battery_growatt_type": "sph"}, {})
+    c.settings.update(battery_max_soc=90, battery_min_soc=20)
+    c.plan = planner.Plan(current=ch[2], battery_charge=ch)
+    assert c.has_battery_control
+    asyncio.run(c._apply_battery("charge", False))
+    assert [x[1] for x in h.services.calls] == ["write_ac_discharge_times", "write_ac_charge_times"]
+    data = h.services.calls[1][2]
+    assert (data["period_1_start"], data["period_1_end"], data["charge_stop_soc"], data["charge_power"]) == \
+        ("02:00", "04:00", 90, 100)
+    c.plan = planner.Plan(current=ch[3], battery_charge=ch)       # næste kvarter i samme blok: intet nyt
+    asyncio.run(c._apply_battery("charge", False))
+    assert len(h.services.calls) == 2
+    c._last_cmd.clear()
+    asyncio.run(c._apply_battery("sell_solar", False))             # findes ikke via skyen → normal
+    assert [x[1] for x in h.services.calls[2:]] == ["write_ac_charge_times", "write_ac_discharge_times"]
+    assert h.services.calls[2][2]["mains_enabled"] is False
+
+    # Et kald fejler: tilstanden huskes ikke, og der prøves igen (efter ventetiden)
+    c, h = make({"battery_growatt_device": "gw1"}, {})
+    c.plan = planner.Plan(current=ch[0], battery_discharge=ch)
+    fails = {"n": 1}
+    async def flaky(domain, service, data, blocking=False):
+        h.services.calls.append((domain, service, data))
+        if fails["n"]:
+            fails["n"] -= 1
+            raise RuntimeError("Growatt API timeout")
+    h.services.async_call = flaky
+    asyncio.run(c._apply_battery("discharge", False))
+    assert len(h.services.calls) == 1 and "battery" not in c._script_state
+    asyncio.run(c._apply_battery("discharge", False))              # inden for 90 s: venter
+    assert len(h.services.calls) == 1
+    c._last_cmd.clear()
+    asyncio.run(c._apply_battery("discharge", False))
+    assert [x[1] for x in h.services.calls[1:]] == ["write_ac_charge_times", "write_ac_discharge_times"]
+    assert c._script_state["battery"] == "discharge@02:00-04:00"

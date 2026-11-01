@@ -15,7 +15,7 @@ EDS_DAYAHEAD_FROM: Final = date(2025, 10, 1)
 
 STATIC_URL: Final = "/smarthus_static"
 CARD_URL: Final = f"{STATIC_URL}/smarthus-card.js"
-CARD_VERSION: Final = "1.37.0"
+CARD_VERSION: Final = "1.38.0"
 
 PLATFORMS: Final = ["sensor", "binary_sensor", "switch", "number", "select"]
 
@@ -100,6 +100,11 @@ CONF_HUAWEI_DEVICE: Final = "battery_huawei_device"
 CONF_BATTERY_PRESET: Final = "battery_preset"
 CONF_BATTERY_ACTIONS: Final = "battery_actions"
 CONF_HUAWEI_POWER: Final = "battery_huawei_power"
+# Growatt via skyen (Growatt Server med API-token): enhed, type (sph/min) og effekt i procent
+CONF_GROWATT_DEVICE: Final = "battery_growatt_device"
+CONF_GROWATT_TYPE: Final = "battery_growatt_type"
+CONF_GROWATT_POWER: Final = "battery_growatt_power"
+DEFAULT_GROWATT_POWER: Final = 100
 DEFAULT_HUAWEI_POWER: Final = 5000
 # Batteriets effekt lige nu (til energiflowet)
 CONF_BATTERY_POWER: Final = "battery_power_sensor"
@@ -178,6 +183,9 @@ BATTERY_KEYS: Final = [
     CONF_BATTERY_SCRIPT_SELL_SOLAR,
     CONF_HUAWEI_DEVICE,
     CONF_HUAWEI_POWER,
+    CONF_GROWATT_DEVICE,
+    CONF_GROWATT_TYPE,
+    CONF_GROWATT_POWER,
     CONF_BATTERY_POWER,
     CONF_BATTERY_POWER_SIGN,
 ]
