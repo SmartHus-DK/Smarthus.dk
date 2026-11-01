@@ -40,8 +40,9 @@ def _count(slots: list[Slot], hours: float) -> int:
 
 
 def cheapest(slots: list[Slot], hours: float, *, contiguous: bool = False,
-             most_expensive: bool = False) -> list[Slot]:
-    """Vælg de billigste (eller dyreste) tidsrum svarende til `hours` timer."""
+             most_expensive: bool = False, key=None) -> list[Slot]:
+    """Vælg de billigste (eller dyreste) tidsrum svarende til `hours` timer (efter købspris, eller `key`)."""
+    key = key or (lambda s: s.price)
     n = _count(slots, hours)
     if n == 0:
         return []
@@ -49,14 +50,14 @@ def cheapest(slots: list[Slot], hours: float, *, contiguous: bool = False,
         return list(slots)
     sign = -1 if most_expensive else 1
     if not contiguous:
-        chosen = sorted(slots, key=lambda s: (sign * s.price, s.start))[:n]
+        chosen = sorted(slots, key=lambda s: (sign * key(s), s.start))[:n]
         return sorted(chosen, key=lambda s: s.start)
     ordered = sorted(slots, key=lambda s: s.start)
     best_i, best_val = 0, None
-    window = sum(s.price for s in ordered[:n])
+    window = sum(key(s) for s in ordered[:n])
     for i in range(len(ordered) - n + 1):
         if i > 0:
-            window += ordered[i + n - 1].price - ordered[i - 1].price
+            window += key(ordered[i + n - 1]) - key(ordered[i - 1])
         # Kun ægte sammenhængende blokke (ingen huller i data)
         if ordered[i + n - 1].end - ordered[i].start > timedelta(hours=hours) + timedelta(minutes=1):
             continue
@@ -70,7 +71,7 @@ EV_MIN_BLOCK_H = 1.0   # elbilen lader i sammenhængende blokke på mindst 1 tim
 
 
 def cheapest_blocks(slots: list[Slot], hours: float, min_block_h: float = EV_MIN_BLOCK_H, *,
-                    min_gap_h: float = 0.0, most_expensive: bool = False) -> list[Slot]:
+                    min_gap_h: float = 0.0, most_expensive: bool = False, key=None) -> list[Slot]:
     """De billigste (eller dyreste) tidsrum svarende til `hours` – men kun i sammenhængende blokke på
     mindst `min_block_h`, og med en pause på mindst `min_gap_h` mellem to blokke.
 
@@ -86,6 +87,7 @@ def cheapest_blocks(slots: list[Slot], hours: float, min_block_h: float = EV_MIN
     if n >= len(ordered):
         return list(ordered)
     sign = -1.0 if most_expensive else 1.0
+    key = key or (lambda s: s.price)
     res = (ordered[0].end - ordered[0].start).total_seconds() / 3600 or 0.25
     m = max(1, min(n, int(round(min_block_h / res))))
     mg = max(0, int(round(min_gap_h / res)))
@@ -117,16 +119,16 @@ def cheapest_blocks(slots: list[Slot], hours: float, min_block_h: float = EV_MIN
             # Vælg kvarteret
             if k < n:
                 if kind == "b" and not gap:
-                    put((k + 1, ("b", min(x + 1, m))), cur + sign * sl.price, (k, st), True)
+                    put((k + 1, ("b", min(x + 1, m))), cur + sign * key(sl), (k, st), True)
                 elif (kind == "b" and x == m) or (kind == "g" and (x == mg or gap)):
-                    put((k + 1, ("b", min(1, m))), cur + sign * sl.price, (k, st), True)
+                    put((k + 1, ("b", min(1, m))), cur + sign * key(sl), (k, st), True)
         f = g
         back.append(b)
     ends = [(v, key) for key, v in f.items() if key[0] == n and (key[1][0] == "g" or key[1][1] == m)]
     if not ends:
         if mg:
-            return cheapest_blocks(slots, hours, min_block_h, most_expensive=most_expensive)
-        return cheapest(ordered, hours, most_expensive=most_expensive)
+            return cheapest_blocks(slots, hours, min_block_h, most_expensive=most_expensive, key=key)
+        return cheapest(ordered, hours, most_expensive=most_expensive, key=key)
     key = min(ends)[1]
     chosen = []
     for i in range(len(ordered) - 1, -1, -1):
@@ -139,6 +141,7 @@ def cheapest_blocks(slots: list[Slot], hours: float, min_block_h: float = EV_MIN
 
 BATTERY_MIN_BLOCK_H = 1.0   # batteriet lader/aflader i blokke på mindst 1 time …
 BATTERY_MIN_GAP_H = 1.0     # … med mindst 1 times pause imellem, så det ikke starter og stopper
+BATTERY_ROUND_TRIP = 0.90   # ca. 10 % tab fra opladning til afladning
 
 
 HEAT_MIN_BLOCK_H = 2   # en periode med ekstra eller mindre varme varer mindst 2 timer
@@ -537,15 +540,20 @@ def build_plan(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
         d = days[key]
         g = lambda k, dflt: float(settings.get(k, dflt))  # noqa: E731
         win = lambda name: in_window(d, tz, g(f"{name}_from", 0), g(f"{name}_to", 24))  # noqa: E731
-        # Batteri: lad billigst, aflad dyrest – kun hvis prisforskellen er stor nok
+        # Batteri: lad i de billigste timer, når strømmen er mindst "min. prisforskel" mere værd i husets dyre
+        # timer (købspris). Sælg kun til nettet i timer, hvor SALGSPRISEN slår ladeprisen inkl. tab med samme
+        # margin – ellers er strømmen mere værd i huset, og batteriet dækker bare forbruget.
         ch = cheapest_blocks(win("battery_charge"), settings["battery_charge_hours"], BATTERY_MIN_BLOCK_H,
                              min_gap_h=BATTERY_MIN_GAP_H)
-        dis_pool = [s for s in win("battery_discharge") if s not in ch]
-        dis = cheapest_blocks(dis_pool, settings["battery_discharge_hours"], BATTERY_MIN_BLOCK_H,
-                              min_gap_h=BATTERY_MIN_GAP_H, most_expensive=True)
-        if ch and dis and (avg(dis) or 0) - (avg(ch) or 0) >= settings["battery_min_spread"]:
+        pool = [s for s in win("battery_discharge") if s not in ch]
+        dear = cheapest(pool, settings["battery_discharge_hours"], most_expensive=True)
+        if ch and dear and (avg(dear) or 0) - (avg(ch) or 0) >= settings["battery_min_spread"]:
             plan.battery_charge += ch
-            plan.battery_discharge += dis
+            cost = (avg(ch) or 0) / BATTERY_ROUND_TRIP
+            sellable = [s for s in pool if s.sale - cost >= settings["battery_min_spread"]]
+            plan.battery_discharge += cheapest_blocks(sellable, settings["battery_discharge_hours"], BATTERY_MIN_BLOCK_H,
+                                                      min_gap_h=BATTERY_MIN_GAP_H, most_expensive=True,
+                                                      key=lambda s: s.sale)
         # Varmt vand: sammenhængende billigste blok
         plan.hotwater_slots += cheapest(win("hotwater"), settings["hotwater_hours"], contiguous=True)
         # Varme: sænk i dyreste timer, hæv i billigste – og forvarm huset op til den dyre periode.

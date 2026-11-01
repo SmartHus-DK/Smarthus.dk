@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.42.0";
+const SMARTHUS_CARD_VERSION = "1.43.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -103,13 +103,13 @@ const HELP = {
     { k: ["battery_charge_from"], t: "Tidsrum for opladning",
       d: "De billige timer søges kun inden for dette tidsrum. 00–24 betyder hele døgnet. Brug fx 00–06, hvis batteriet kun må lade om natten." },
     { k: ["battery_discharge_hours"], t: "Timer at sælge",
-      d: "I hvor mange af døgnets dyreste timer batteriet aflader med fuld kraft og sælger til nettet ('Batteri sælger' i grafen). Der holdes altid så meget strøm tilbage, at huset klarer sig, til strømmen bliver billig igen – kun det overskydende sælges. Resten af tiden dækker batteriet husets forbrug." },
+      d: "Højst så mange timer sælger batteriet til nettet med fuld kraft ('Batteri sælger' i grafen) – og kun når salgsprisen er mindst 'min. prisforskel' højere end ladeprisen inkl. ca. 10 % tab. Ellers er strømmen mere værd i huset, og der sælges ikke. Der holdes altid så meget tilbage, at huset klarer sig, til strømmen bliver billig igen. Resten af tiden dækker batteriet husets forbrug." },
     { k: ["battery_capacity"], t: "Gem batteriet til de dyre timer",
       d: "Rækker batteriet ikke til hele døgnet, gemmes det i de billige timer ('Batteri gemmes' i grafen): huset kører på nettet, solen må stadig lade, og strømmen bruges i stedet i de dyreste timer før næste opladning. Kræver at anlægget kan stå stille – fx Growatt SPH, SigEnergy eller et script." },
     { k: ["battery_discharge_from"], t: "Tidsrum for afladning",
       d: "De dyre timer søges kun inden for dette tidsrum, fx 16–21 for kun at bruge batteriet i aftenspidsen." },
     { k: ["battery_min_spread"], t: "Min. prisforskel",
-      d: "Batteriet styres kun den dag, hvor de dyre timer er mindst så meget dyrere end de billige. Er forskellen mindre, kører batteriet normalt, fordi tabet ved at lade og aflade (ca. 10 %) og slid på batteriet ellers æder gevinsten. 0,30–0,50 kr. er et godt udgangspunkt." },
+      d: "Batteriet lades kun fra nettet, når husets dyre timer er mindst så meget dyrere end de billige timer. Og der sælges kun til nettet, når salgsprisen er mindst så meget højere end ladeprisen inkl. tab. Ellers kører batteriet normalt, fordi tabet (ca. 10 %) og slid ellers æder gevinsten. 0,30–0,50 kr. er et godt udgangspunkt." },
     { k: ["battery_min_soc"], t: "Laveste niveau",
       d: "Batteriet aflades aldrig under dette niveau af SmartHus. Hæv det, hvis du vil have strøm i reserve, fx ved strømsvigt." },
     { k: ["battery_max_soc"], t: "Højeste niveau",

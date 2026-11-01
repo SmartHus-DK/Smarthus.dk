@@ -1275,3 +1275,27 @@ def test_plan_hold_saves_battery_for_expensive_hours():
     # Ingen enkelte kvarterer: et billigt kvarter alene gemmes ikke
     one = [planner.Slot(t0 + i * q, t0 + (i + 1) * q, 2.0 if i == 10 else 4.0, 0, 0) for i in range(72)]
     assert profile.plan_hold(one, prof, t0, until, 2.0)[0] == []
+
+
+def test_battery_sells_only_when_sale_price_beats_charge_cost():
+    """Salgsprisen (ikke købsprisen) afgør salg: lad til huset, men sælg ikke med tab."""
+    from datetime import datetime, timedelta, timezone
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("Europe/Copenhagen")
+    q = timedelta(minutes=15)
+    t0 = datetime(2026, 11, 2, 0, 0, tzinfo=tz).astimezone(timezone.utc)
+    def day(sale_peak):
+        out = []
+        for i in range(96):
+            h = i // 4
+            buy = 2.4 if 1 <= h < 5 else 3.9 if 17 <= h < 20 else 2.8
+            sale = sale_peak if 17 <= h < 20 else 1.7
+            out.append(planner.Slot(t0 + i * q, t0 + (i + 1) * q, buy - 1.0, buy, sale))
+        return out
+    st = dict(const.DEFAULT_SETTINGS, battery_charge_hours=3, battery_discharge_hours=2, battery_min_spread=0.5)
+    p = planner.build_plan(day(2.3), t0, tz, st)
+    assert len(p.battery_charge) == 12 and p.battery_discharge == []      # lad til huset, sælg ikke (2,3 < 2,67 + 0,5)
+    p = planner.build_plan(day(3.5), t0, tz, st)
+    assert len(p.battery_charge) == 12 and len(p.battery_discharge) == 8  # 3,5 kr i salg: sælg 2 timer
+    assert all(s.sale == 3.5 for s in p.battery_discharge)
+
