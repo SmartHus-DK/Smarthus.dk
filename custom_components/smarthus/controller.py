@@ -846,6 +846,9 @@ class SmartHusController:
                              full_kwh=cap * self.settings[S_BATTERY_MAX_SOC] / 100, charge=p.battery_charge,
                              hold=p.battery_hold, sell=p.battery_discharge, stock_price=stock, can_hold=self.has_hold)
         p.battery_use = f["use"]
+        # Vis også gem-tidsrummene efter næste opladning (de nuværende styrer stadig inverteren)
+        now_hold = {s.start for s in p.battery_hold}
+        p.battery_hold = p.battery_hold + [s for s in f["hold"] if s.start not in now_hold]
         today = now.astimezone(self.tz).date()
         keys = sorted(f["days"])
         # Hele dagen: det, der allerede er sket i dag (målt), plus skønnet for resten af dagen

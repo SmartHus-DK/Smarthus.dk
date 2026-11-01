@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.44.0";
+const SMARTHUS_CARD_VERSION = "1.45.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -14,8 +14,9 @@ const COLORS = {
   ev3: "#7FA6F0",
   battery_charge: "#3FA88F",
   battery_discharge: "#8A5CC8",
+  battery_sell: "#5B2C9E",
   battery_hold: "#B9A06B",
-  battery_use: "#A98BD9",
+  battery_use: "#C9B6F0",
   hotwater: "#2BA3C9",
   heating_boost: "#E0902F",
   heating_reduce: "#7B8794",
@@ -51,7 +52,7 @@ const MONTHS = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "
 const LANES = [
   { key: "battery_charge_now", label: "Batteri lader", color: COLORS.battery_charge, module: "control_battery" },
   { key: "battery_use_now", label: "Batteri bruges", color: COLORS.battery_use, module: "control_battery" },
-  { key: "battery_discharge_now", label: "Batteri sælger", color: COLORS.battery_discharge, module: "control_battery" },
+  { key: "battery_discharge_now", label: "Batteri sælger", color: COLORS.battery_sell, module: "control_battery" },
   { key: "battery_hold_now", label: "Batteri gemmes", color: COLORS.battery_hold, module: "control_battery" },
   { key: "hotwater_now", label: "Varmt vand", color: COLORS.hotwater, module: "control_hotwater" },
   { key: "heating_boost_now", label: "Ekstra varme", color: COLORS.heating_boost, module: "control_heating" },
@@ -1534,8 +1535,8 @@ class SmartHusCard extends HTMLElement {
         <div class="cmp-title">Reserve til huset frem til ${untilTxt}</div>
         <div class="res-line">Forventet forbrug <b>${nf(a.expected_house_kwh, 1)} kWh</b>${a.expected_solar_kwh > 0.05 ? ` − sol <b>${nf(a.expected_solar_kwh, 1)} kWh</b>` : ""} → gem <b>${nf(need, 1)} kWh</b></div>
         ${bat != null ? `
-        <div class="res-bar">${seg(floor, COLORS.mid)}${seg(have, COLORS.battery_charge)}${seg(missing, COLORS.battery_charge, "miss")}${seg(sell, COLORS.battery_discharge)}</div>
-        <div class="res-leg">${leg(COLORS.mid, "Laveste niveau")}${leg(COLORS.battery_charge, "Reserve")}${missing > 0.05 ? leg(COLORS.battery_charge, "Mangler", "miss") : ""}${leg(COLORS.battery_discharge, `Kan sælges${sell > 0.05 ? "" : " (0 kWh)"}`)}</div>
+        <div class="res-bar">${seg(floor, COLORS.mid)}${seg(have, COLORS.battery_charge)}${seg(missing, COLORS.battery_charge, "miss")}${seg(sell, COLORS.battery_sell)}</div>
+        <div class="res-leg">${leg(COLORS.mid, "Laveste niveau")}${leg(COLORS.battery_charge, "Reserve")}${missing > 0.05 ? leg(COLORS.battery_charge, "Mangler", "miss") : ""}${leg(COLORS.battery_sell, `Kan sælges${sell > 0.05 ? "" : " (0 kWh)"}`)}</div>
         <div class="cmp-result">${result}</div>${solarLine}${a.forecast ? this._forecastBox(a.forecast) : this._cycleBox(a, sale, charge)}` :
         `<div class="cmp-sub" style="margin-left:0">Vælg en sensor for batteriniveau for at se, hvor meget der må sælges.</div>`}
         <div class="prof-title">Husets forbrug pr. time (lært af ${nf(a.learned_days, 0)} dage)</div>

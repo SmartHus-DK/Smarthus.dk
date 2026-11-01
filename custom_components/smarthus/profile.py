@@ -242,7 +242,7 @@ def forecast_battery(slots: list, profile: Profile, now: datetime, *, battery_kw
     * Ellers dækker batteriet husets forventede forbrug, til det når laveste niveau.
     * I salgstidsrum sælges det, der er ud over husets behov frem til næste opladning.
     Strømmen i batteriet koster gennemsnittet af det, den er købt for, plus ca. 10 % tab.
-    Returnerer {"days": {dato: {...}}, "use": [tidsrum hvor batteriet dækker huset]}.
+    Returnerer {"days": {dato: {...}}, "use": [tidsrum hvor batteriet dækker huset], "hold": [gem-tidsrum]}.
     """
     tz = now.tzinfo
     fut = sorted((s for s in slots if s.end > now), key=lambda s: s.start)
@@ -304,4 +304,5 @@ def forecast_battery(slots: list, profile: Profile, now: datetime, *, battery_kw
         d["sell_gain"] = d["sell_income"] - d["sell_cost"]
         for k in list(d):
             d[k] = round(d[k], 2)
-    return {"days": days, "use": use}
+    held = [s for s in fut if s.start in hd]
+    return {"days": days, "use": use, "hold": held}
