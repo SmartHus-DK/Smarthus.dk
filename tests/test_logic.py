@@ -1159,3 +1159,68 @@ def test_savings_replace_today_after_unclean_restart():
     # Kører den igen (fx næste opstart), tælles intet dobbelt
     sv.replace_today(rows, now, {"import": 104.0})
     assert sv.data["solar"]["month"]["import_kwh"] == 204.0
+
+
+def _runs(chosen):
+    out = []
+    for x in chosen:
+        if out and out[-1][-1].end == x.start:
+            out[-1].append(x)
+        else:
+            out.append([x])
+    return out
+
+
+def test_battery_blocks_no_on_off_at_night():
+    """Kvarterpriser, der svinger med få øre om natten, må ikke give lad-stop-lad (som 01:45–02:00, 02:15–03:30 …)."""
+    from datetime import datetime, timedelta, timezone
+    q = timedelta(minutes=15)
+    t0 = datetime(2026, 11, 2, 0, 0, tzinfo=timezone.utc)
+    night = [2.66, 2.64, 2.66, 2.65, 2.62, 2.61, 2.60, 2.58, 2.55, 2.57, 2.54, 2.53, 2.52, 2.55, 2.53, 2.54,
+             2.51, 2.52, 2.55, 2.50, 2.52, 2.51, 2.53, 2.56] + [3.1] * 8
+    slots = [planner.Slot(t0 + i * q, t0 + (i + 1) * q, p, p, 1.5) for i, p in enumerate(night)]
+    old = planner.cheapest(slots, 3)
+    assert len(_runs(old)) > 2                        # den gamle måde hakker
+    new = planner.cheapest_blocks(slots, 3, 1.0, min_gap_h=1.0)
+    assert len(new) == 12 and len(_runs(new)) == 1    # én sammenhængende blok på 3 timer
+    assert sum(s.price for s in new) - sum(s.price for s in old) < 0.6   # koster kun få øre i alt
+    # Aflad i de dyreste – samme regel
+    dis = planner.cheapest_blocks(slots, 1, 1.0, min_gap_h=1.0, most_expensive=True)
+    assert len(_runs(dis)) == 1 and all(s.price == 3.1 for s in dis)
+
+
+def test_cheapest_blocks_is_optimal_with_block_and_gap_rules():
+    """Sammenlign med en udtømmende søgning på små tilfældige dage."""
+    import itertools, random
+    from datetime import datetime, timedelta, timezone
+    rnd = random.Random(7)
+    q = timedelta(minutes=15)
+    t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    def ok(idx, m, mg, total):
+        sel = set(idx)
+        runs, i = [], 0
+        while i < total:
+            if i in sel:
+                j = i
+                while j + 1 < total and j + 1 in sel:
+                    j += 1
+                runs.append((i, j)); i = j + 1
+            else:
+                i += 1
+        if any(b - a + 1 < m for a, b in runs):
+            return False
+        return all(runs[k + 1][0] - runs[k][1] - 1 >= mg for k in range(len(runs) - 1))
+    for trial in range(60):
+        total = rnd.randint(8, 13)
+        prices = [round(rnd.uniform(1, 3), 2) for _ in range(total)]
+        slots = [planner.Slot(t0 + i * q, t0 + (i + 1) * q, p, p, 0) for i, p in enumerate(prices)]
+        n = rnd.randint(2, 6)
+        for exp in (False, True):
+            got = planner.cheapest_blocks(slots, n * 0.25, 0.5, min_gap_h=0.5, most_expensive=exp)
+            sign = -1 if exp else 1
+            best = min((sum(sign * prices[i] for i in c) for c in itertools.combinations(range(total), n)
+                        if ok(c, 2, 2, total)), default=None)
+            if best is None:
+                continue        # ingen plan opfylder reglerne: der falder den tilbage
+            idx = [slots.index(s) for s in got]
+            assert ok(idx, 2, 2, total) and abs(sum(sign * prices[i] for i in idx) - best) < 1e-9, (prices, n, exp)

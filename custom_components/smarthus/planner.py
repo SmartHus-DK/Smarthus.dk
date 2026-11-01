@@ -69,13 +69,15 @@ def cheapest(slots: list[Slot], hours: float, *, contiguous: bool = False,
 EV_MIN_BLOCK_H = 1.0   # elbilen lader i sammenhængende blokke på mindst 1 time (ingen korte pauser)
 
 
-def cheapest_blocks(slots: list[Slot], hours: float, min_block_h: float = EV_MIN_BLOCK_H) -> list[Slot]:
-    """De billigste tidsrum svarende til `hours` – men kun i sammenhængende blokke på mindst `min_block_h`.
+def cheapest_blocks(slots: list[Slot], hours: float, min_block_h: float = EV_MIN_BLOCK_H, *,
+                    min_gap_h: float = 0.0, most_expensive: bool = False) -> list[Slot]:
+    """De billigste (eller dyreste) tidsrum svarende til `hours` – men kun i sammenhængende blokke på
+    mindst `min_block_h`, og med en pause på mindst `min_gap_h` mellem to blokke.
 
-    Med kvarterpriser vælger en ren "billigste kvarterer" ofte enkelte kvarterer fra, så laderen
-    starter og stopper. Her findes den billigste plan, hvor hver blok er mindst så lang (dynamisk
-    programmering over tid, valgte kvarterer og blokkens længde). Er der ikke plads til det, bruges
-    de billigste kvarterer.
+    Med kvarterpriser vælger en ren "billigste kvarterer" ofte enkelte kvarterer fra, så laderen eller
+    batteriet starter og stopper. Her findes den billigste plan, der overholder blok- og pauselængden
+    (dynamisk programmering over tid, valgte kvarterer og blokkens/pausens længde). Er der ikke plads til
+    det, prøves uden krav til pausen, og ellers bruges de billigste kvarterer.
     """
     ordered = sorted(slots, key=lambda x: x.start)
     n = _count(ordered, hours)
@@ -83,49 +85,60 @@ def cheapest_blocks(slots: list[Slot], hours: float, min_block_h: float = EV_MIN
         return []
     if n >= len(ordered):
         return list(ordered)
+    sign = -1.0 if most_expensive else 1.0
     res = (ordered[0].end - ordered[0].start).total_seconds() / 3600 or 0.25
     m = max(1, min(n, int(round(min_block_h / res))))
+    mg = max(0, int(round(min_gap_h / res)))
     INF = float("inf")
-    # f[k][r] = laveste pris med k valgte og en igangværende blok på r (0 = ingen, m = mindst m)
-    f = [[INF] * (m + 1) for _ in range(n + 1)]
-    f[0][0] = 0.0
+    # Tilstand: ("b", r) = i en blok på r kvarterer (r = m: lang nok)
+    #           ("g", q) = i en pause på q kvarterer (q = mg: lang nok – en ny blok må starte)
+    free = ("g", mg)
+    f: dict = {(0, free): 0.0}
     back: list[dict] = []
     for i, sl in enumerate(ordered):
-        cont = i > 0 and sl.start == ordered[i - 1].end
-        g = [[INF] * (m + 1) for _ in range(n + 1)]
+        # Hul i priserne: en lang nok blok slutter, og pausen tæller som holdt. En for kort blok må ikke stoppe her.
+        gap = i > 0 and sl.start != ordered[i - 1].end
+        g: dict = {}
         b: dict = {}
-        for k in range(n + 1):
-            for r in range(m + 1):
-                cur = f[k][r]
-                if cur == INF:
-                    continue
-                # Spring over: kun hvis der ikke er en for kort blok i gang
-                if r == 0 or r == m:
-                    if cur < g[k][0]:
-                        g[k][0], b[(k, 0)] = cur, (k, r, False)
-                # Vælg kvarteret
-                if k < n:
-                    if r > 0 and cont:
-                        nr = min(r + 1, m)
-                    elif r == 0 or r == m:
-                        nr = 1           # ny blok (den forrige var lang nok)
-                    else:
-                        continue         # hul midt i en for kort blok
-                    v = cur + sl.price
-                    if v < g[k + 1][nr]:
-                        g[k + 1][nr], b[(k + 1, nr)] = v, (k, r, True)
+
+        def put(key, v, prev, took):
+            if v < g.get(key, INF):
+                g[key], b[key] = v, (prev, took)
+
+        for (k, st), cur in f.items():
+            kind, x = st
+            if kind == "b" and x < m and gap:
+                continue
+            # Spring kvarteret over
+            if kind == "b" and x == m:
+                put((k, free if gap else ("g", min(1, mg))), cur, (k, st), False)
+            elif kind == "g":
+                put((k, free if gap else ("g", min(x + 1, mg))), cur, (k, st), False)
+            # Vælg kvarteret
+            if k < n:
+                if kind == "b" and not gap:
+                    put((k + 1, ("b", min(x + 1, m))), cur + sign * sl.price, (k, st), True)
+                elif (kind == "b" and x == m) or (kind == "g" and (x == mg or gap)):
+                    put((k + 1, ("b", min(1, m))), cur + sign * sl.price, (k, st), True)
         f = g
         back.append(b)
-    end = min((r for r in (0, m) if f[n][r] < INF), key=lambda r: f[n][r], default=None)
-    if end is None:
-        return cheapest(ordered, hours)
-    chosen, k, r = [], n, end
+    ends = [(v, key) for key, v in f.items() if key[0] == n and (key[1][0] == "g" or key[1][1] == m)]
+    if not ends:
+        if mg:
+            return cheapest_blocks(slots, hours, min_block_h, most_expensive=most_expensive)
+        return cheapest(ordered, hours, most_expensive=most_expensive)
+    key = min(ends)[1]
+    chosen = []
     for i in range(len(ordered) - 1, -1, -1):
-        pk, pr, took = back[i][(k, r)]
+        prev, took = back[i][key]
         if took:
             chosen.append(ordered[i])
-        k, r = pk, pr
+        key = prev
     return sorted(chosen, key=lambda x: x.start)
+
+
+BATTERY_MIN_BLOCK_H = 1.0   # batteriet lader/aflader i blokke på mindst 1 time …
+BATTERY_MIN_GAP_H = 1.0     # … med mindst 1 times pause imellem, så det ikke starter og stopper
 
 
 HEAT_MIN_BLOCK_H = 2   # en periode med ekstra eller mindre varme varer mindst 2 timer
@@ -524,9 +537,11 @@ def build_plan(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
         g = lambda k, dflt: float(settings.get(k, dflt))  # noqa: E731
         win = lambda name: in_window(d, tz, g(f"{name}_from", 0), g(f"{name}_to", 24))  # noqa: E731
         # Batteri: lad billigst, aflad dyrest – kun hvis prisforskellen er stor nok
-        ch = cheapest(win("battery_charge"), settings["battery_charge_hours"])
+        ch = cheapest_blocks(win("battery_charge"), settings["battery_charge_hours"], BATTERY_MIN_BLOCK_H,
+                             min_gap_h=BATTERY_MIN_GAP_H)
         dis_pool = [s for s in win("battery_discharge") if s not in ch]
-        dis = cheapest(dis_pool, settings["battery_discharge_hours"], most_expensive=True)
+        dis = cheapest_blocks(dis_pool, settings["battery_discharge_hours"], BATTERY_MIN_BLOCK_H,
+                              min_gap_h=BATTERY_MIN_GAP_H, most_expensive=True)
         if ch and dis and (avg(dis) or 0) - (avg(ch) or 0) >= settings["battery_min_spread"]:
             plan.battery_charge += ch
             plan.battery_discharge += dis
