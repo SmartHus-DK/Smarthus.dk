@@ -94,7 +94,7 @@ NUMBERS: tuple[SmartHusNumberDescription, ...] = (
                               native_max_value=100, native_step=1, native_unit_of_measurement=PERCENTAGE,
                               requires=CONF_BATTERY_MODE_ENTITY),
     SmartHusNumberDescription(key=S_BATTERY_CAPACITY, icon="mdi:battery-high", native_min_value=0.5,
-                              native_max_value=200, native_step=0.5, native_unit_of_measurement="kWh",
+                              native_max_value=200, native_step=0.1, native_unit_of_measurement="kWh",
                               requires=CONF_BATTERY_MODE_ENTITY),
     SmartHusNumberDescription(key=S_SOLAR_SELL_MARGIN, icon="mdi:solar-power-variant-outline", native_min_value=0,
                               native_max_value=3, native_step=0.05, native_unit_of_measurement="kr/kWh",

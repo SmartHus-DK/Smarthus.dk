@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.39.0";
+const SMARTHUS_CARD_VERSION = "1.40.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -91,6 +91,77 @@ const MODULES = [
   { id: "solar", name: "Solceller", icon: "mdi:solar-power", sw: "control_solar",
     groups: [{ title: null, items: ["solar_export_min_price"] }] },
 ];
+
+// Forklaringer under "Sådan virker indstillingerne" (foldet sammen). k = indstillingen(e), der skal
+// findes, for at forklaringen vises – så kunden kun ser det, der passer til hans anlæg.
+const HELP = {
+  battery: [
+    { k: ["battery_charge_hours"], t: "Timer at lade",
+      d: "Hvor mange af døgnets billigste timer batteriet må lade fra nettet. SmartHus vælger selv timerne ud fra elprisen, når morgendagens priser kommer ved 13-tiden. Ventes der meget sol i morgen, lades kun det, der mangler." },
+    { k: ["battery_charge_from"], t: "Tidsrum for opladning",
+      d: "De billige timer søges kun inden for dette tidsrum. 00–24 betyder hele døgnet. Brug fx 00–06, hvis batteriet kun må lade om natten." },
+    { k: ["battery_discharge_hours"], t: "Timer at aflade",
+      d: "I hvor mange af døgnets dyreste timer batteriet bruges til huset og evt. sælges. Der holdes altid så meget strøm tilbage, at huset klarer sig, til strømmen bliver billig igen – kun det overskydende sælges." },
+    { k: ["battery_discharge_from"], t: "Tidsrum for afladning",
+      d: "De dyre timer søges kun inden for dette tidsrum, fx 16–21 for kun at bruge batteriet i aftenspidsen." },
+    { k: ["battery_min_spread"], t: "Min. prisforskel",
+      d: "Batteriet styres kun den dag, hvor de dyre timer er mindst så meget dyrere end de billige. Er forskellen mindre, kører batteriet normalt, fordi tabet ved at lade og aflade (ca. 10 %) og slid på batteriet ellers æder gevinsten. 0,30–0,50 kr. er et godt udgangspunkt." },
+    { k: ["battery_min_soc"], t: "Laveste niveau",
+      d: "Batteriet aflades aldrig under dette niveau af SmartHus. Hæv det, hvis du vil have strøm i reserve, fx ved strømsvigt." },
+    { k: ["battery_max_soc"], t: "Højeste niveau",
+      d: "Opladning fra nettet stopper her. 90–95 % skåner batteriet og efterlader plads til solstrøm." },
+    { k: ["battery_capacity"], t: "Batteriets størrelse",
+      d: "Den brugbare kapacitet i kWh – står på batteriet eller i inverterens app. Bruges til at regne ud, hvor meget der skal lades, hvor meget huset skal have i reserve, og hvor meget der kan sælges. Et forkert tal giver forkerte beslutninger." },
+    { k: ["battery_solar_sell_margin"], t: "Sælg når gevinsten er mindst",
+      d: "Midt på dagen kan det betale sig at sælge solstrømmen og lade batteriet billigt fra nettet senere. Det sker kun, når salgsprisen nu slår prisen for at lade senere med mindst dette beløb pr. kWh." },
+  ],
+  hotwater: [
+    { k: ["hotwater_hours"], t: "Timer at opvarme",
+      d: "Vandet varmes op i døgnets billigste sammenhængende timer inden for tidsrummet." },
+    { k: ["hotwater_surplus_kw"], t: "Overskud over",
+      d: "Sender solcellerne mere end dette ud på nettet, varmes vandet op med overskuddet. 0 slår det fra." },
+    { k: ["hotwater_surplus_smart"], t: "Kun når det betaler sig",
+      d: "Overskuddet bruges kun til vandet, når det er billigere end at sælge strømmen nu og varme op i en billig time senere." },
+    { k: ["hotwater_boost_temp", "hotwater_normal_temp"], t: "Temperatur",
+      d: "'Opvarm til' bruges i de billige timer og ved overskud. Resten af tiden holdes 'Normal temperatur', så vandvarmeren ikke selv varmer op i dyre timer." },
+    { k: ["hotwater_watch_temp", "hotwater_min_temp"], t: "Efter behov",
+      d: "Kommer vandet under 'Hold øje under', planlægger SmartHus en ekstra opvarmning i en billig time, før det når 'Laveste temperatur'. 0 slår det fra." },
+  ],
+  heating: [
+    { k: ["heating_base_temp"], t: "Grundtemperatur",
+      d: "Den temperatur, huset normalt holder. Ekstra varme og besparelse regnes ud fra den." },
+    { k: ["heating_max_outdoor"], t: "Aktiv under udetemperatur",
+      d: "Styringen holder pause, når det er så varmt ude, at der næsten ikke bruges varme." },
+    { k: ["heating_auto"], t: "Automatisk plan",
+      d: "SmartHus vælger selv sparetimer i dagens dyre toppe og forvarmer huset i de billigste timer før dem. Slår du den fra, styrer du selv antal timer og tidsrum." },
+    { k: ["heating_boost_degrees", "heating_boost_hours"], t: "Ekstra varme i billige timer",
+      d: "Huset varmes lidt ekstra op i de billigste timer og bruger varmen bagefter. Huset virker som et batteri. 0 grader slår det fra." },
+    { k: ["heating_reduce_degrees", "heating_reduce_hours"], t: "Spar i dyre timer",
+      d: "Temperaturen sænkes i de dyreste timer. 1–2 grader mærkes sjældent, især når huset er forvarmet. 0 grader slår det fra." },
+    { k: ["heating_min_indoor"], t: "Mindste indetemperatur",
+      d: "Frostsikring: bliver det koldere inde, springes sparetimerne over." },
+  ],
+  solar: [
+    { k: ["solar_export_min_price"], t: "Stop eksport under",
+      d: "Er salgsprisen under denne grænse, stoppes eksporten (kræver at inverteren kan begrænse eksport), og batteriet lader af solstrømmen i stedet, hvis der er plads. 0 kr. betyder kun ved negativ pris." },
+  ],
+  car: [
+    { k: ["_target_soc", "_hours"], t: "Lad til / Timer at lade",
+      d: "Kender SmartHus bilens batteriniveau, lades der til den valgte procent. Ellers lades det valgte antal timer. Opladningen lægges i de billigste timer, før bilen skal være klar." },
+    { k: ["_ready_hour"], t: "Klar kl.",
+      d: "Hvornår bilen skal være færdig. Jo længere tid til, desto flere billige timer at vælge imellem." },
+    { k: ["_manual_soc"], t: "Batteriniveau nu",
+      d: "Til biler uden måler: tast niveauet ind, når bilen sættes til, så beregnes ladetiden. Det skønnes videre, mens bilen lader." },
+    { k: ["_car_target"], t: "Lademål i bilen",
+      d: "Har bilen selv et lademål, holdes laderen tændt lidt længere end beregnet, og bilen stopper selv." },
+    { k: ["_battery_capacity", "_charge_power"], t: "Bil og lader",
+      d: "Bilens batteristørrelse og laderens effekt bruges til at regne ladetiden ud. Brug det, laderen faktisk giver – fx 11 kW på 3-faset 16 A." },
+    { k: ["_solar"], t: "Solcelleladning",
+      d: "Ladestrømmen følger solcelleoverskuddet, 1 A ad gangen. Laderen starter, når overskuddet er over startgrænsen, og holder sig mellem mindste og største ladestrøm." },
+    { k: ["ev_max_total_power"], t: "Maks. samlet ladeeffekt",
+      d: "Grænse for alle biler tilsammen, så hovedsikringen ikke overbelastes. 0 = ingen grænse." },
+  ],
+};
 
 const CAR_COLORS = [COLORS.ev, COLORS.ev2, COLORS.ev3];
 /** Batteriniveau – "ca." når det er skønnet ud fra den ladede energi (bilen har ikke meldt et nyt tal). */
@@ -1010,6 +1081,7 @@ class SmartHusCard extends HTMLElement {
         return rows ? `<div class="grp">${g.title ? `<div class="grp-title">${g.title}</div>` : ""}${rows}</div>` : "";
       })
       .join("");
+    const help = this._helpFold(m);
     let actions = "";
     const force = m.car ? this._st("switch", this._forceKey(m.id)) : null;
     if (force) {
@@ -1017,7 +1089,21 @@ class SmartHusCard extends HTMLElement {
       actions = `<button class="action ${fon ? "active" : ""}" data-action="toggle" data-entity="${force.entity_id}">
         <ha-icon icon="mdi:lightning-bolt"></ha-icon>${fon ? "Stop opladning nu" : `Lad ${esc(m.name)} nu`}</button>`;
     }
-    return `<div class="mod-body">${extra}${groups}${actions}</div>`;
+    return `<div class="mod-body">${extra}${groups}${help}${actions}</div>`;
+  }
+
+  /** "Sådan virker indstillingerne" – foldet sammen, kun forklaringer til de indstillinger, anlægget har. */
+  _helpFold(m) {
+    const list = HELP[m.car ? "car" : m.id];
+    if (!list) return "";
+    const key = (k) => (m.car && k.startsWith("_") ? `${m.id}${k}` : k);
+    const exists = (k) => this._st("number", key(k)) || this._st("switch", key(k));
+    const items = list.filter((h) => h.k.some(exists));
+    if (!items.length) return "";
+    const fk = `${m.id}:help`, open = this._openGroups?.has(fk);
+    const body = open ? `<div class="help">${items.map((h) => `<div class="help-item"><b>${esc(h.t)}</b><span>${esc(h.d)}</span></div>`).join("")}</div>` : "";
+    return `<div class="grp fold help-fold${open ? " open" : ""}"><button class="grp-title grp-btn" data-action="fold" data-key="${fk}" aria-expanded="${!!open}">
+      <span><ha-icon class="help-ic" icon="mdi:information-outline"></ha-icon>Sådan virker indstillingerne</span><ha-icon class="chev${open ? " up" : ""}" icon="mdi:chevron-down"></ha-icon></button>${body}</div>`;
   }
 
   /** Indstillinger, der ikke har nogen virkning lige nu, vises ikke. */
@@ -1588,7 +1674,7 @@ class SmartHusCard extends HTMLElement {
     const unit = s.attributes.unit_of_measurement || "";
     const blank = isNaN(v);       // fx batteriniveau, der ikke er tastet ind endnu
     const step = s.attributes.step || 1;
-    const dec = step < 0.1 ? 2 : step < 1 ? (step % 0.5 === 0 ? 1 : 2) : 0;
+    const dec = step >= 1 ? 0 : Math.min(2, (String(step).split(".")[1] || "").length);   // 0,1 → 1 decimal
     const trim = (x) => Number(x.toFixed(2)).toLocaleString("da-DK", { maximumFractionDigits: 2 });
     const shown = blank ? "Ukendt" :
       unit === "kl." ? `kl. ${String(v).padStart(2, "0")}` :
@@ -1982,6 +2068,12 @@ class SmartHusCard extends HTMLElement {
       .grp-btn { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 8px; text-align: left; padding: 8px 0 4px; }
       .grp-btn .chev { --mdc-icon-size: 18px; transition: transform .2s; }
       .grp-btn .chev.up { transform: rotate(180deg); }
+      .help-fold .grp-btn > span { display: inline-flex; align-items: center; gap: 6px; }
+      .help-ic { --mdc-icon-size: 16px; }
+      .help { display: grid; gap: 10px; padding: 6px 0 10px; }
+      .help-item { display: grid; gap: 2px; font-size: 13px; line-height: 1.45; }
+      .help-item b { font-weight: 600; }
+      .help-item span { color: var(--secondary-text-color); }
       .water { padding: 4px 0 10px; }
       .water-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; }
       .water-row b { font-size: 18px; font-variant-numeric: tabular-nums; }
