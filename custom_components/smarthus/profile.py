@@ -290,7 +290,7 @@ def forecast_battery(slots: list, profile: Profile, now: datetime, *, battery_kw
             left = block_end(i, sl) - i + 1
             sold = max(min((avail - used - need) / left, avail - used), 0.0)
         bat -= used + sold
-        if used > 0.005:
+        if avail > 0.005:                  # batteriet står klar og dækker huset (også når det bruger meget lidt)
             use.append(s)
             d["house_kwh"] += used
             d["house_value"] += used * s.price

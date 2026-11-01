@@ -12,11 +12,11 @@ const COLORS = {
   ev: "#3E6FD8",
   ev2: "#1B3F8F",
   ev3: "#7FA6F0",
-  battery_charge: "#3FA88F",
+  battery_charge: "#2FA37A",
   battery_discharge: "#8A5CC8",
-  battery_sell: "#5B2C9E",
-  battery_hold: "#B9A06B",
-  battery_use: "#C9B6F0",
+  battery_sell: "#3C1A78",
+  battery_hold: "#B8862B",
+  battery_use: "#9F7AEA",
   hotwater: "#2BA3C9",
   heating_boost: "#E0902F",
   heating_reduce: "#7B8794",
@@ -234,7 +234,7 @@ const NUMBER_LABELS = {
 const nf = (v, d = 2) =>
   v === null || v === undefined || isNaN(v)
     ? "–"
-    : Number(v).toLocaleString("da-DK", { minimumFractionDigits: d, maximumFractionDigits: d });
+    : (Math.abs(v) < 0.5 * 10 ** -d ? 0 : Number(v)).toLocaleString("da-DK", { minimumFractionDigits: d, maximumFractionDigits: d });   // aldrig "−0"
 
 const esc = (s) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
