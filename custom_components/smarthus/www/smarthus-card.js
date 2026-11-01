@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.45.0";
+const SMARTHUS_CARD_VERSION = "1.46.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -1487,10 +1487,19 @@ class SmartHusCard extends HTMLElement {
     if (!a.profile_ready) {
       return `<div class="cmp wait">SmartHus lærer husets forbrug. Reserven bruges, når der er mindst 2 dages historik (har nu ${nf(a.learned_days || 0, 0)}).</div>`;
     }
-    const prof = a.profile_today || [];
-    const max = Math.max(...prof, 0.01);
-    const nowH = new Date().getHours();
+    // Forbrugsmønster: i dag, hverdag eller weekend
+    const ptab = ["today", "weekday", "weekend"].includes(this._profTab) && a.profile_weekday ? this._profTab : "today";
+    const prof = (ptab === "weekday" ? a.profile_weekday : ptab === "weekend" ? a.profile_weekend : a.profile_today) || [];
+    const max = Math.max(...(a.profile_weekday || []), ...(a.profile_weekend || []), ...prof, 0.01);   // samme skala i alle faner
+    const nowH = ptab === "today" ? new Date().getHours() : -1;
     const bars = prof.map((v, i) => `<i title="kl. ${String(i).padStart(2, "0")}: ${nf(v, 2)} kWh" style="height:${Math.max((v / max) * 100, 3)}%" class="${i === nowH ? "now" : i < nowH ? "past" : ""}"></i>`).join("");
+    const dayKwh = prof.reduce((x, y) => x + y, 0);
+    const restKwh = ptab === "today" ? prof.slice(nowH + 1).reduce((x, y) => x + y, 0) + (prof[nowH] || 0) * (1 - new Date().getMinutes() / 60) : null;
+    const kindDays = (k) => a[`profile_${k}_days`];
+    const learned = ptab === "today" ? (a.today_is_weekend ? kindDays("weekend") : kindDays("weekday")) : kindDays(ptab);
+    const ptabs = a.profile_weekday ? [["today", "I dag"], ["weekday", "Hverdag"], ["weekend", "Weekend"]]
+      .map(([id, l]) => `<button class="tab ${id === ptab ? "on" : ""}" data-action="prof-tab" data-tab="${id}" aria-pressed="${id === ptab}">${l}</button>`).join("") : "";
+    const profSum = `Forventet forbrug <b>${nf(dayKwh, 1)} kWh</b> pr. ${ptab === "weekend" || (ptab === "today" && a.today_is_weekend) ? "weekenddag" : "hverdag"}${restKwh != null ? ` · resten af i dag ca. <b>${nf(restKwh, 1)} kWh</b>` : ""}${learned != null ? ` <span class="muted">· lært af ${nf(learned, 0)} ${learned === 1 ? "dag" : "dage"}</span>` : ""}`;
     const until = a.until ? new Date(a.until) : null;
     const untilTxt = until ? `${until.getDate() !== new Date().getDate() ? "i morgen " : ""}kl. ${hh(until)}` : "";
     const bat = a.battery_kwh, sell = a.sellable_kwh ?? 0;
@@ -1539,7 +1548,8 @@ class SmartHusCard extends HTMLElement {
         <div class="res-leg">${leg(COLORS.mid, "Laveste niveau")}${leg(COLORS.battery_charge, "Reserve")}${missing > 0.05 ? leg(COLORS.battery_charge, "Mangler", "miss") : ""}${leg(COLORS.battery_sell, `Kan sælges${sell > 0.05 ? "" : " (0 kWh)"}`)}</div>
         <div class="cmp-result">${result}</div>${solarLine}${a.forecast ? this._forecastBox(a.forecast) : this._cycleBox(a, sale, charge)}` :
         `<div class="cmp-sub" style="margin-left:0">Vælg en sensor for batteriniveau for at se, hvor meget der må sælges.</div>`}
-        <div class="prof-title">Husets forbrug pr. time (lært af ${nf(a.learned_days, 0)} dage)</div>
+        <div class="tr-head prof-head"><span class="prof-title" style="margin:0">Husets forbrug pr. time</span>${ptabs ? `<span class="tabs" role="group" aria-label="Forbrugsmønster">${ptabs}</span>` : ""}</div>
+        <div class="prof-sum">${profSum}</div>
         <div class="prof">${bars}</div>
         <div class="prof-ticks"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>
       </div>`;
@@ -1790,6 +1800,9 @@ class SmartHusCard extends HTMLElement {
     } else if (action === "expand") {
       const id = el.dataset.mod;
       this._closed.has(id) ? this._closed.delete(id) : this._closed.add(id);
+      this._render();
+    } else if (action === "prof-tab") {
+      this._profTab = el.dataset.tab;
       this._render();
     } else if (action === "trade-tab") {
       this._tradeTab = el.dataset.tab;
@@ -2108,6 +2121,9 @@ class SmartHusCard extends HTMLElement {
       .res-leg { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--secondary-text-color); margin-bottom: 6px; }
       .res-leg i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
       .prof-title { margin-top: 12px; font-size: 12px; color: var(--secondary-text-color); }
+      .prof-head { margin-top: 12px; }
+      .prof-sum { margin-top: 6px; font-size: 13px; color: var(--secondary-text-color); }
+      .prof-sum b { color: var(--primary-text-color); font-variant-numeric: tabular-nums; }
       .prof { display: flex; align-items: flex-end; gap: 2px; height: 44px; margin-top: 6px; }
       .prof i { flex: 1; border-radius: 2px 2px 0 0; background: ${COLORS.battery_charge}; opacity: .8; }
       .prof i.past { opacity: .3; }

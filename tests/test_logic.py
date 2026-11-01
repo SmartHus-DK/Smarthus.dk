@@ -1337,3 +1337,21 @@ def test_forecast_battery_charge_use_hold_and_sell():
     e = h["days"]["2026-11-02"]
     assert e["sell_kwh"] > 0 and e["sell_gain"] > 0 and e["sell_kwh"] + e["house_kwh"] <= 5.0 + 1e-6
 
+
+def test_profile_ignores_days_without_data():
+    """Døgn før måleren fandtes (0 kWh hele døgnet) må ikke trække forbruget ned."""
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("Europe/Copenhagen")
+    hours = []
+    d0 = datetime(2026, 10, 19, 0, 0, tzinfo=tz)       # mandag
+    for day in range(14):
+        for h in range(24):
+            t = d0 + timedelta(days=day, hours=h)
+            hours.append((t, 0.0 if day < 7 else 0.4))   # første uge: ingen data
+    # Måleren startede kl. 12 på den første dag med data (opsætningsdagen) – timerne før tæller ikke
+    hours = [(t, (0.0 if t < d0 + timedelta(days=7, hours=12) else k)) for t, k in hours]
+    p = profile.build_profile(hours)
+    assert abs(sum(p.weekday) - 9.6) < 0.01 and abs(sum(p.weekend) - 9.6) < 0.01
+    assert (p.weekday_days, p.weekend_days) == (5, 2)
+

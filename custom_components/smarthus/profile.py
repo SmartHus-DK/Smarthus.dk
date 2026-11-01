@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 LEARN_DAYS = 14
 MIN_DAYS = 2  # så få dage med data før profilen bruges
 MAX_HOUR_KWH = 50.0  # spring urealistiske timer over (fx nulstillet måler)
+MIN_DAY_KWH = 0.2    # døgn med mindre forbrug end dette har ingen data (måleren fandtes ikke endnu) – tæller ikke med
 SUN_START, SUN_END = 6, 21  # timer hvor solceller regnes at producere (lokal tid)
 EFFICIENCY = 0.95  # tab ved afladning
 
@@ -26,6 +27,8 @@ class Profile:
     weekday: list[float] = field(default_factory=lambda: [0.0] * 24)
     weekend: list[float] = field(default_factory=lambda: [0.0] * 24)
     days: int = 0
+    weekday_days: int = 0
+    weekend_days: int = 0
 
     @property
     def ready(self) -> bool:
@@ -36,22 +39,34 @@ class Profile:
 
     def as_dict(self) -> dict:
         return {"weekday": [round(v, 3) for v in self.weekday],
-                "weekend": [round(v, 3) for v in self.weekend], "days": self.days}
+                "weekend": [round(v, 3) for v in self.weekend], "days": self.days,
+                "weekday_days": self.weekday_days, "weekend_days": self.weekend_days}
 
 
 def build_profile(hours: list[tuple[datetime, float]]) -> Profile:
     """Byg profilen ud fra (lokal timestart, kWh i timen)."""
     sums = {"weekday": [0.0] * 24, "weekend": [0.0] * 24}
     counts = {"weekday": [0] * 24, "weekend": [0] * 24}
+    ok = [(s, k) for s, k in hours if k is not None and 0 <= k <= MAX_HOUR_KWH]
+    # Timer før måleren begyndte at tælle (fx første døgn efter opsætning) har heller ingen data
+    started = [s for s, k in hours if k is not None and k > 0]
+    first = min(started) if started else None
+    ok = [(s, k) for s, k in ok if first is None or s >= first]
+    # Døgn uden forbrug har ingen data (fx før måleren blev sat op) – de ville trække gennemsnittet ned
+    per_day: dict = {}
+    for s, k in ok:
+        per_day[s.date()] = per_day.get(s.date(), 0.0) + k
+    real = {d for d, total in per_day.items() if total >= MIN_DAY_KWH}
     valid = 0
-    for start, kwh in hours:
-        if kwh is None or kwh < 0 or kwh > MAX_HOUR_KWH:
+    for start, kwh in ok:
+        if start.date() not in real:
             continue
         kind = "weekend" if start.weekday() >= 5 else "weekday"
         sums[kind][start.hour] += kwh
         counts[kind][start.hour] += 1
         valid += 1
-    p = Profile(days=valid // 24)  # hele døgn med data
+    p = Profile(days=valid // 24,  # hele døgn med data
+                weekday_days=sum(1 for d in real if d.weekday() < 5), weekend_days=sum(1 for d in real if d.weekday() >= 5))
     all_avg = [
         (sums["weekday"][h] + sums["weekend"][h]) / max(counts["weekday"][h] + counts["weekend"][h], 1)
         for h in range(24)
