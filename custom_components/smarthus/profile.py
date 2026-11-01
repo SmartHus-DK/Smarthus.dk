@@ -161,8 +161,8 @@ def plan_hold(slots: list, profile: Profile, now: datetime, until: datetime, usa
     """Hvornår skal batteriet gemmes (stå stille), så strømmen rækker til de dyreste timer?
 
     Batteriets brugbare energi fordeles på husets forventede forbrug i de dyreste tidsrum frem til
-    `until` (næste opladning). Er der ikke nok til alle, gemmes batteriet i de tidsrum, der er mindst
-    `min_gain` billigere end det billigste tidsrum, batteriet når at dække. Huset kører så på nettet,
+    `until` (næste opladning). Er der ikke nok til alle, gemmes batteriet i de tidsrum, det ikke skal dække,
+    når et senere tidsrum, det skal dække, er mindst `min_gain` dyrere. Huset kører så på nettet,
     mens solen stadig må lade batteriet.
 
     `slots` har tidspunkter med tidszone; `now`/`until` er lokale tidspunkter.
@@ -186,8 +186,16 @@ def plan_hold(slots: list, profile: Profile, now: datetime, until: datetime, usa
     if left > (HOLD_STICKY_KWH if previous else 0):
         return [], None                       # nok til det hele – intet at gemme
     limit = min(s.price for s in horizon if s.start in covered)
-    flag = [s.start not in covered and (s.price <= limit - min_gain or (s.start in previous and s.price < limit))
-            for s in horizon]
+    # Gem i et tidsrum, batteriet ikke skal dække, hvis det senere skal dække et tidsrum, der er mindst
+    # `min_gain` dyrere – ellers ville strømmen blive brugt nu og mangle der.
+    later = [0.0] * len(horizon)
+    best = float("-inf")
+    for k in range(len(horizon) - 1, -1, -1):
+        later[k] = best
+        if horizon[k].start in covered:
+            best = max(best, horizon[k].price)
+    flag = [s.start not in covered and (later[k] - s.price >= min_gain or (s.start in previous and later[k] > s.price))
+            for k, s in enumerate(horizon)]
     # Glat ud: korte huller (højst 30 min) mellem to perioder lukkes, hvis batteriet alligevel ikke dækker dem …
     i = 0
     while i < len(horizon):
@@ -214,3 +222,86 @@ def plan_hold(slots: list, profile: Profile, now: datetime, until: datetime, usa
     if len(run) >= HOLD_MIN_SLOTS:
         out += run
     return out, limit
+
+
+ROUND_TRIP = 0.90      # ca. 10 % tab fra opladning til afladning
+
+
+def _blank_day() -> dict:
+    return {"house_kwh": 0.0, "house_value": 0.0, "house_cost": 0.0, "sell_kwh": 0.0, "sell_income": 0.0,
+            "sell_cost": 0.0, "charge_kwh": 0.0, "charge_cost": 0.0}
+
+
+def forecast_battery(slots: list, profile: Profile, now: datetime, *, battery_kwh: float, floor_kwh: float,
+                     full_kwh: float, charge: list, hold: list, sell: list, stock_price: float,
+                     can_hold: bool) -> dict:
+    """Skøn over batteriet time for time: hvornår det lades, gemmes, dækker huset og sælger – og hvad det sparer.
+
+    * Ladetidsrum fylder batteriet op til `full_kwh` (ladepris = købsprisen).
+    * Gem-tidsrum: batteriet står stille. Efter hver opladning planlægges nye gem-tidsrum (hvis anlægget kan).
+    * Ellers dækker batteriet husets forventede forbrug, til det når laveste niveau.
+    * I salgstidsrum sælges det, der er ud over husets behov frem til næste opladning.
+    Strømmen i batteriet koster gennemsnittet af det, den er købt for, plus ca. 10 % tab.
+    Returnerer {"days": {dato: {...}}, "use": [tidsrum hvor batteriet dækker huset]}.
+    """
+    tz = now.tzinfo
+    fut = sorted((s for s in slots if s.end > now), key=lambda s: s.start)
+    ch = {s.start for s in charge}
+    sl = {s.start for s in sell}
+    hd = {s.start for s in hold}
+    bat, avg = battery_kwh, stock_price
+    days: dict[str, dict] = {}
+    use: list = []
+
+    def next_charge(t: datetime) -> datetime:
+        later = [s.start for s in fut if s.start in ch and s.start >= t]
+        return (min(later) if later else (fut[-1].end if fut else t)).astimezone(tz)
+
+    def block_end(i: int, keys: set) -> int:
+        j = i
+        while j + 1 < len(fut) and fut[j + 1].start in keys and fut[j + 1].start == fut[j].end:
+            j += 1
+        return j
+
+    for i, s in enumerate(fut):
+        d = days.setdefault(s.start.astimezone(tz).date().isoformat(), _blank_day())
+        a, b = max(s.start.astimezone(tz), now), s.end.astimezone(tz)
+        load = expected_load(profile, a, b)
+        if s.start in ch:
+            j = block_end(i, ch)
+            add = max(full_kwh - bat, 0.0) / (j - i + 1)
+            if add > 0:
+                avg = (avg * max(bat, 0.0) + add * s.price) / max(bat + add, 0.01)
+                bat += add
+                d["charge_kwh"] += add
+                d["charge_cost"] += add * s.price
+            if i == j and can_hold:      # opladningen er færdig: hvornår skal batteriet gemmes til næste gang?
+                rest = [x for x in fut if x.start not in ch]
+                hd |= {x.start for x in plan_hold(rest, profile, b, next_charge(s.end), max(bat - floor_kwh, 0.0))[0]}
+            continue
+        if s.start in hd:
+            continue
+        avail = max(bat - floor_kwh, 0.0)
+        cost = avg / ROUND_TRIP
+        used = min(load, avail)
+        sold = 0.0
+        if s.start in sl:
+            need = expected_load(profile, b, next_charge(s.end))
+            left = block_end(i, sl) - i + 1
+            sold = max(min((avail - used - need) / left, avail - used), 0.0)
+        bat -= used + sold
+        if used > 0.005:
+            use.append(s)
+            d["house_kwh"] += used
+            d["house_value"] += used * s.price
+            d["house_cost"] += used * cost
+        if sold > 0.005:
+            d["sell_kwh"] += sold
+            d["sell_income"] += sold * s.sale
+            d["sell_cost"] += sold * cost
+    for d in days.values():
+        d["house_saving"] = d["house_value"] - d["house_cost"]
+        d["sell_gain"] = d["sell_income"] - d["sell_cost"]
+        for k in list(d):
+            d[k] = round(d[k], 2)
+    return {"days": days, "use": use}

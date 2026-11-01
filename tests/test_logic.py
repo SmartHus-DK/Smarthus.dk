@@ -1261,7 +1261,7 @@ def test_plan_hold_saves_battery_for_expensive_hours():
     until = t0 + timedelta(hours=18)
     # 2 kWh rækker kun til de dyre timer (4 t × 0,5 kWh / 95 %) – resten af tiden gemmes batteriet
     hold, limit = profile.plan_hold(slots, prof, t0, until, 2.0)
-    assert limit == 4.6 and {s.price for s in hold} == {2.7, 3.0} and len(hold) == 56
+    assert limit == 4.6 and {s.price for s in hold} == {2.7} and len(hold) == 40   # efter spidsen er batteriet tomt
     # Lidt mere strøm (2,2 kWh) rækker også til starten af aftenen – så gemmes kun de billigste timer
     hold, limit = profile.plan_hold(slots, prof, t0, until, 2.2)
     assert limit == 3.0 and {s.price for s in hold} == {2.7}
@@ -1298,4 +1298,42 @@ def test_battery_sells_only_when_sale_price_beats_charge_cost():
     p = planner.build_plan(day(3.5), t0, tz, st)
     assert len(p.battery_charge) == 12 and len(p.battery_discharge) == 8  # 3,5 kr i salg: sælg 2 timer
     assert all(s.sale == 3.5 for s in p.battery_discharge)
+
+
+def test_forecast_battery_charge_use_hold_and_sell():
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("Europe/Copenhagen")
+    q = timedelta(minutes=15)
+    t0 = datetime(2026, 11, 2, 0, 0, tzinfo=tz)
+    prof = profile.Profile(weekday=[0.4] * 24, weekend=[0.4] * 24, days=5)
+    def slots(sale_peak=1.7):
+        out = []
+        for i in range(96):
+            h = i // 4
+            buy = 2.4 if 1 <= h < 4 else 4.0 if 17 <= h < 20 else 2.8
+            out.append(planner.Slot(t0 + i * q, t0 + (i + 1) * q, buy, buy, sale_peak if 17 <= h < 20 else 1.7))
+        return out
+    sl = slots()
+    ch = [s for s in sl if 1 <= s.start.hour < 4]
+    f = profile.forecast_battery(sl, prof, t0, battery_kwh=1.0, floor_kwh=1.0, full_kwh=6.0, charge=ch, hold=[],
+                                 sell=[], stock_price=2.4, can_hold=True)
+    d = f["days"]["2026-11-02"]
+    assert d["charge_kwh"] == 5.0 and d["charge_cost"] == 12.0
+    assert abs(d["house_kwh"] - 5.0) < 0.01 and d["house_saving"] > 0
+    used = {s.start.hour for s in f["use"]}
+    assert {17, 18, 19} <= used                      # aftenspidsen dækkes, fordi batteriet gemmes i billige timer
+    assert d["sell_kwh"] == 0
+    # Uden "gem": batteriet bruges fra morgenstunden og er tomt før aftenspidsen
+    g = profile.forecast_battery(sl, prof, t0, battery_kwh=1.0, floor_kwh=1.0, full_kwh=6.0, charge=ch, hold=[],
+                                 sell=[], stock_price=2.4, can_hold=False)
+    assert not ({17, 18, 19} & {s.start.hour for s in g["use"]})
+    assert g["days"]["2026-11-02"]["house_saving"] < d["house_saving"]
+    # Høj salgspris: der sælges kun det, der er ud over husets behov til næste opladning
+    sp = slots(6.0)
+    sell = [s for s in sp if s.start.hour == 17]
+    h = profile.forecast_battery(sp, prof, t0 + timedelta(hours=16), battery_kwh=6.0, floor_kwh=1.0, full_kwh=6.0, charge=[], hold=[],
+                                 sell=sell, stock_price=2.4, can_hold=False)
+    e = h["days"]["2026-11-02"]
+    assert e["sell_kwh"] > 0 and e["sell_gain"] > 0 and e["sell_kwh"] + e["house_kwh"] <= 5.0 + 1e-6
 

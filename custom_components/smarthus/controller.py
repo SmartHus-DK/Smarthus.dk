@@ -129,7 +129,7 @@ from .const import (
 from .coordinator import SmartHusPriceCoordinator
 from . import growatt as gw
 from .planner import CHARGE_EFFICIENCY, CarInput, Plan, build_plan, car_ready, car_settings, heating_outdoor_ok
-from .profile import (EFFICIENCY, plan_hold, LEARN_DAYS, SUN_END, SUN_START, Profile, Reserve, build_profile, calc_reserve,
+from .profile import (EFFICIENCY, plan_hold, forecast_battery, LEARN_DAYS, SUN_END, SUN_START, Profile, Reserve, build_profile, calc_reserve,
                       expected_load, grid_charge_target, solar_surplus)
 from .savings import SavingsCalculator
 from .hotwater import cooling_rate, plan_demand
@@ -202,6 +202,7 @@ class SmartHusController:
         self.reserve: Reserve | None = None
         self.reserve_holds = False  # True når salg fra batteriet er sat på pause for at gemme reserven
         self.battery_hold: dict | None = None  # beslutning om at gemme batteriet til de dyre timer
+        self.battery_forecast: dict | None = None  # skøn: hvornår batteriet bruges, og hvad det sparer
         self.sell_solar: dict | None = None  # beslutning om at sælge solstrøm i stedet for at lade batteriet
         self.grid_charge: dict | None = None  # hvor meget der lades fra nettet, når solen kan fylde resten
         self._unsub_learn = None
@@ -687,6 +688,8 @@ class SmartHusController:
     def _update_reserve(self) -> None:
         self.reserve, self.reserve_holds = None, False
         self.battery_hold = None
+        self.battery_forecast = None
+        self.plan.battery_use = []
         self._hold_prev = {s.start for s in self.plan.battery_hold} or getattr(self, "_hold_prev", set())
         self.plan.battery_hold = []
         self.sell_solar = None
@@ -710,6 +713,7 @@ class SmartHusController:
         self._decide_grid_charge(now)
         self._decide_sell_solar(now)
         self._decide_hold(now, until)
+        self._forecast_battery(now)
 
     def _decide_grid_charge(self, now: datetime) -> None:
         """Lad kun fra nettet, hvad solen ikke selv kan fylde.
@@ -810,7 +814,12 @@ class SmartHusController:
         cap, mn = self.settings[S_BATTERY_CAPACITY], self.settings[S_BATTERY_MIN_SOC]
         usable = max(soc - mn, 0.0) / 100 * cap
         local = now.astimezone(self.tz)
-        slots = [s for s in (self.coordinator.data or []) if s not in p.battery_charge]
+        data = self.coordinator.data or []
+        # Frem til næste planlagte opladning – ellers til den sidste kendte pris (ikke "næste billige tidsrum",
+        # for så kunne batteriet blive brugt op midt på dagen og mangle i aftenspidsen)
+        nxt = [s.start for s in p.battery_charge if s.start > now]
+        until = min(nxt) if nxt else max((s.end for s in data), default=until)
+        slots = [s for s in data if s not in p.battery_charge]
         hold, limit = plan_hold(slots, self.profile, local, until.astimezone(self.tz), usable,
                                 previous=getattr(self, "_hold_prev", set()))
         p.battery_hold = hold
@@ -819,6 +828,33 @@ class SmartHusController:
                              "covers_price_from": round(limit, 3) if limit is not None else None}
         if p.battery_action == ACTION_NORMAL and p.current in hold:
             p.battery_action = ACTION_HOLD
+
+    def _forecast_battery(self, now: datetime) -> None:
+        """Skøn over batteriet resten af i dag og i morgen: brug i huset, besparelse og salg."""
+        p = self.plan
+        soc = self._float_state(self.config.get(CONF_BATTERY_SOC))
+        if soc is None or p.current is None:
+            return
+        cap = self.settings[S_BATTERY_CAPACITY]
+        t = self.savings.data.get("battery_trade", {})
+        if t.get("stock_kwh", 0) > 0.1:
+            stock = (t.get("stock_grid", 0) + t.get("stock_solar", 0)) / t["stock_kwh"]
+        else:
+            stock = (sum(s.price for s in p.battery_charge) / len(p.battery_charge)) if p.battery_charge else p.current.price
+        f = forecast_battery(self.coordinator.data or [], self.profile, now.astimezone(self.tz),
+                             battery_kwh=cap * soc / 100, floor_kwh=cap * self.settings[S_BATTERY_MIN_SOC] / 100,
+                             full_kwh=cap * self.settings[S_BATTERY_MAX_SOC] / 100, charge=p.battery_charge,
+                             hold=p.battery_hold, sell=p.battery_discharge, stock_price=stock, can_hold=self.has_hold)
+        p.battery_use = f["use"]
+        today = now.astimezone(self.tz).date()
+        keys = sorted(f["days"])
+        self.battery_forecast = {
+            "today": f["days"].get(today.isoformat()),
+            "tomorrow": f["days"].get((today + timedelta(days=1)).isoformat()),
+            "cost_per_kwh": round(stock / 0.9, 3),
+            "best_sale": round(max((s.sale for s in (self.coordinator.data or []) if s.end > now), default=0.0), 3),
+            "days": keys,
+        }
 
     async def async_stop(self) -> None:
         for name in ("_unsub_learn", "_unsub_learn_first", "_unsub_energy", "_unsub_energy_first"):

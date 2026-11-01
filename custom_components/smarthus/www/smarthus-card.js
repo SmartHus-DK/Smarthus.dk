@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.43.0";
+const SMARTHUS_CARD_VERSION = "1.44.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -15,6 +15,7 @@ const COLORS = {
   battery_charge: "#3FA88F",
   battery_discharge: "#8A5CC8",
   battery_hold: "#B9A06B",
+  battery_use: "#A98BD9",
   hotwater: "#2BA3C9",
   heating_boost: "#E0902F",
   heating_reduce: "#7B8794",
@@ -49,6 +50,7 @@ const MONTHS = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "
 
 const LANES = [
   { key: "battery_charge_now", label: "Batteri lader", color: COLORS.battery_charge, module: "control_battery" },
+  { key: "battery_use_now", label: "Batteri bruges", color: COLORS.battery_use, module: "control_battery" },
   { key: "battery_discharge_now", label: "Batteri sælger", color: COLORS.battery_discharge, module: "control_battery" },
   { key: "battery_hold_now", label: "Batteri gemmes", color: COLORS.battery_hold, module: "control_battery" },
   { key: "hotwater_now", label: "Varmt vand", color: COLORS.hotwater, module: "control_hotwater" },
@@ -105,7 +107,7 @@ const HELP = {
     { k: ["battery_discharge_hours"], t: "Timer at sælge",
       d: "Højst så mange timer sælger batteriet til nettet med fuld kraft ('Batteri sælger' i grafen) – og kun når salgsprisen er mindst 'min. prisforskel' højere end ladeprisen inkl. ca. 10 % tab. Ellers er strømmen mere værd i huset, og der sælges ikke. Der holdes altid så meget tilbage, at huset klarer sig, til strømmen bliver billig igen. Resten af tiden dækker batteriet husets forbrug." },
     { k: ["battery_capacity"], t: "Gem batteriet til de dyre timer",
-      d: "Rækker batteriet ikke til hele døgnet, gemmes det i de billige timer ('Batteri gemmes' i grafen): huset kører på nettet, solen må stadig lade, og strømmen bruges i stedet i de dyreste timer før næste opladning. Kræver at anlægget kan stå stille – fx Growatt SPH, SigEnergy eller et script." },
+      d: "Rækker batteriet ikke til hele døgnet, gemmes det i de billige timer ('Batteri gemmes' i grafen): huset kører på nettet, solen må stadig lade, og strømmen bruges i stedet i de dyreste timer før næste opladning ('Batteri bruges'). Under reserven ses, hvad det forventes at spare resten af i dag. Kræver at anlægget kan stå stille – fx Growatt SPH, SigEnergy eller et script." },
     { k: ["battery_discharge_from"], t: "Tidsrum for afladning",
       d: "De dyre timer søges kun inden for dette tidsrum, fx 16–21 for kun at bruge batteriet i aftenspidsen." },
     { k: ["battery_min_spread"], t: "Min. prisforskel",
@@ -970,6 +972,10 @@ class SmartHusCard extends HTMLElement {
         if (ra.grid_charge?.skipping) return "Lader ikke fra nettet – solen fylder batteriet";
         if (isOn("battery_hold_now")) return `${prefix}Gemmes til de dyre timer${ra.battery_hold?.covers_price_from != null ? ` · bruges over ${nf(ra.battery_hold.covers_price_from)} kr/kWh` : ""}`;
         if (isOn("battery_discharge_now")) return `${prefix}Sælger${ra.sellable_kwh != null ? ` · ${nf(ra.sellable_kwh, 1)} kWh tilbage at sælge` : ""}`;
+        const fd = ra.forecast?.today;
+        const gain = fd ? (fd.house_saving || 0) + Math.max(fd.sell_gain || 0, 0) : 0;
+        if (isOn("battery_use_now")) return `${prefix}Dækker huset${gain > 0.05 ? ` · sparer ca. ${nf(gain, 0)} kr resten af i dag` : ""}`;
+        if (gain > 0.05) return `${prefix}Sparer ca. ${nf(gain, 0)} kr resten af i dag`;
         if (r && ra.reserve_kwh != null && ra.until) return `Reserve ${nf(ra.reserve_kwh, 1)} kWh til kl. ${hh(new Date(ra.until))}`;
         return `${prefix}${next("battery_charge_now") ? `Lader ${next("battery_charge_now")}` : "Normal drift"}`;
       }
@@ -1530,7 +1536,7 @@ class SmartHusCard extends HTMLElement {
         ${bat != null ? `
         <div class="res-bar">${seg(floor, COLORS.mid)}${seg(have, COLORS.battery_charge)}${seg(missing, COLORS.battery_charge, "miss")}${seg(sell, COLORS.battery_discharge)}</div>
         <div class="res-leg">${leg(COLORS.mid, "Laveste niveau")}${leg(COLORS.battery_charge, "Reserve")}${missing > 0.05 ? leg(COLORS.battery_charge, "Mangler", "miss") : ""}${leg(COLORS.battery_discharge, `Kan sælges${sell > 0.05 ? "" : " (0 kWh)"}`)}</div>
-        <div class="cmp-result">${result}</div>${solarLine}${this._cycleBox(a, sale, charge)}` :
+        <div class="cmp-result">${result}</div>${solarLine}${a.forecast ? this._forecastBox(a.forecast) : this._cycleBox(a, sale, charge)}` :
         `<div class="cmp-sub" style="margin-left:0">Vælg en sensor for batteriniveau for at se, hvor meget der må sælges.</div>`}
         <div class="prof-title">Husets forbrug pr. time (lært af ${nf(a.learned_days, 0)} dage)</div>
         <div class="prof">${bars}</div>
@@ -1612,6 +1618,39 @@ class SmartHusCard extends HTMLElement {
           : `Bruges strømmen i huset i stedet, er den ca. ${nf(houseValue)} kr værd (købspris ${nf(sale.avgBuy)} kr/kWh).`}</div>`;
     }
     return `<div class="cycle"><div class="cycle-title">Næste køb og salg <span>skøn</span></div>${body}</div>`;
+  }
+
+  /** Forventet i dag (og i morgen): hvad batteriet dækker i huset, hvad det sparer, og om salg betaler sig. */
+  _forecastBox(f) {
+    const row = (l, v, cls = "") => `<div class="tr-row ${cls}"><span>${l}</span><b>${v}</b></div>`;
+    const sign = (v) => `${v >= 0 ? "+" : "−"}${nf(Math.abs(v))} kr`;
+    const periods = (key, day) => {
+      const slots = (this._st("binary_sensor", key)?.attributes?.slots || []).filter((t) => {
+        const d = new Date(t); const ref = new Date(); if (day === "tomorrow") ref.setDate(ref.getDate() + 1);
+        return d.toDateString() === ref.toDateString() && d.getTime() + 900e3 > Date.now();
+      });
+      return upcoming(slots).map((p) => (p.active ? `nu–${p.text.split("–")[1]}` : p.text).replace(/^(i dag|i morgen) /, "")).join(", ");
+    };
+    const block = (d, day, title) => {
+      if (!d) return "";
+      const use = periods("battery_use_now", day);
+      const rows = [];
+      if (d.charge_kwh > 0.05) rows.push(row(`Lader ${nf(d.charge_kwh, 1)} kWh fra nettet`, `−${nf(d.charge_cost)} kr`, "neg"));
+      if (d.house_kwh > 0.05) {
+        rows.push(row(`Dækker huset ${nf(d.house_kwh, 1)} kWh${use ? ` <small class="muted">${esc(use)}</small>` : ""}`, `+${nf(d.house_value)} kr`));
+        rows.push(row(`Strømmen koster ca. ${nf(f.cost_per_kwh)} kr/kWh (inkl. tab)`, `−${nf(d.house_cost)} kr`, "neg"));
+        rows.push(row("Sparet ved at bruge batteriet", sign(d.house_saving), `sum ${d.house_saving >= 0 ? "pos" : "neg"}`));
+      }
+      if (d.sell_kwh > 0.05) {
+        rows.push(row(`Sælger ${nf(d.sell_kwh, 1)} kWh ud over reserven`, `+${nf(d.sell_income)} kr`));
+        rows.push(row("Gevinst ved salg (efter ladepris og tab)", sign(d.sell_gain), `sum ${d.sell_gain >= 0 ? "pos" : "neg"}`));
+      }
+      if (!rows.length) rows.push(`<div class="cmp-sub" style="margin-left:0">Batteriet er ved laveste niveau og bruges ikke${day === "today" ? " resten af i dag" : ""}.</div>`);
+      return `<div class="cycle-title">${title} <span>skøn</span></div>${rows.join("")}`;
+    };
+    const anySell = (f.today?.sell_kwh || 0) + (f.tomorrow?.sell_kwh || 0) > 0.05;
+    const note = anySell ? "" : `<div class="cmp-sub" style="margin-left:0">Intet salg til nettet: den bedste salgspris (${nf(f.best_sale)} kr/kWh) dækker ikke strømmens pris inkl. tab (${nf(f.cost_per_kwh)} kr/kWh). Strømmen er mere værd i huset.</div>`;
+    return `<div class="cycle">${block(f.today, "today", "Resten af i dag")}${block(f.tomorrow, "tomorrow", "I morgen")}${note}</div>`;
   }
 
   /** Kommende perioder for en plan (fx afladning) med gennemsnitlig salgs- og købspris. */
