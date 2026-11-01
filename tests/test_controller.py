@@ -652,3 +652,45 @@ def test_split_power_sensors_give_energy_flow():
     c3, _ = make({**cfg, "grid_power_sensor": "sensor.grid"}, states)
     assert abs(c3.export_kw - (-0.3)) < 1e-9
 
+
+def test_growatt_hold_writes_battery_first_without_grid():
+    from datetime import datetime, timedelta
+    tz = ZoneInfo("Europe/Copenhagen")
+    q = timedelta(minutes=15)
+    t0 = datetime(2026, 11, 2, 11, 0, tzinfo=tz).astimezone(timezone.utc)
+    hold = [planner.Slot(t0 + i * q, t0 + (i + 1) * q, 2.7, 2.7, 1.8) for i in range(12)]
+    c, h = make({"battery_growatt_device": "gw1", "battery_growatt_type": "sph"}, {})
+    assert c.has_hold
+    c.plan = planner.Plan(current=hold[1], battery_hold=hold)
+    asyncio.run(c._apply_battery("hold", False))
+    assert [x[1] for x in h.services.calls] == ["write_ac_discharge_times", "write_ac_charge_times"]
+    d = h.services.calls[1][2]
+    assert d["mains_enabled"] is False and (d["period_1_start"], d["period_1_end"], d["period_1_enabled"]) == ("11:00", "14:00", True)
+    # MIN kan ikke stå stille: normal drift
+    c2, h2 = make({"battery_growatt_device": "gw1", "battery_growatt_type": "min"}, {})
+    assert not c2.has_hold
+    c2.plan = planner.Plan(current=hold[1], battery_hold=hold)
+    asyncio.run(c2._apply_battery("hold", False))
+    assert h2.services.calls[-1][2]["enabled"] is False
+
+
+def test_hold_capability_and_fallbacks():
+    c, h = make({"battery_mode_entity": "select.mode", "battery_option_hold": "Hold"}, {})
+    assert c.has_hold and c._battery_option("hold") == "Hold"
+    c, h = make({"battery_mode_entity": "select.mode"}, {})
+    assert not c.has_hold and c._battery_option("hold") == "Maximum Self Consumption"
+    c, h = make({"battery_actions": {"normal": [], "charge": []}}, {})
+    assert not c.has_hold
+    c, h = make({"battery_script_charge": "script.c", "battery_script_discharge": "script.d",
+                 "battery_script_normal": "script.n"}, {})
+    assert not c.has_hold
+    asyncio.run(c._apply_battery("hold", False))                      # uden gem-script: normal-scriptet
+    assert h.services.calls[-1][2]["entity_id"] == "script.n"
+    c, h = make({"battery_script_normal": "script.n", "battery_script_hold": "script.h"}, {})
+    assert c.has_hold
+    asyncio.run(c._apply_battery("hold", False))
+    assert h.services.calls[-1][2]["entity_id"] == "script.h"
+    c, h = make({"battery_huawei_device": "d"}, {})
+    assert not c.has_hold
+    asyncio.run(c._apply_battery("hold", False))
+    assert h.services.calls[-1][1] == "stop_forcible_charge"

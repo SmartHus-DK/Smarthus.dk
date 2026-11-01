@@ -6,6 +6,7 @@ kender sluttidspunktet, stopper inverteren også til tiden, hvis Home Assistant 
 forsvinder midt i en blok.
 
 - SPH (hybrid med batteri): write_ac_charge_times / write_ac_discharge_times
+  "Gem batteriet" er et ladetidsrum uden netopladning (Battery First): solen lader, batteriet aflader ikke.
 - MIN TL-XH: update_time_segment (tidsrum 1: Battery First / Grid First)
 """
 
@@ -76,6 +77,11 @@ def commands(kind: str, device: str, action: str, window: tuple[str, str] | None
     if action == "charge":
         return [discharge_off, ("write_ac_charge_times", {
             "device_id": device, "charge_power": power, "charge_stop_soc": max_soc, "mains_enabled": True,
+            **_OFF3, "period_1_start": start, "period_1_end": end, "period_1_enabled": True})]
+    if action == "hold":
+        # Battery First uden netopladning: solen lader batteriet, og det aflader ikke – huset kører på nettet
+        return [discharge_off, ("write_ac_charge_times", {
+            "device_id": device, "charge_power": power, "charge_stop_soc": max_soc, "mains_enabled": False,
             **_OFF3, "period_1_start": start, "period_1_end": end, "period_1_enabled": True})]
     if action == "discharge":
         return [charge_off, ("write_ac_discharge_times", {

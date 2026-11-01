@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.41.0";
+const SMARTHUS_CARD_VERSION = "1.42.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -14,6 +14,7 @@ const COLORS = {
   ev3: "#7FA6F0",
   battery_charge: "#3FA88F",
   battery_discharge: "#8A5CC8",
+  battery_hold: "#B9A06B",
   hotwater: "#2BA3C9",
   heating_boost: "#E0902F",
   heating_reduce: "#7B8794",
@@ -48,7 +49,8 @@ const MONTHS = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "
 
 const LANES = [
   { key: "battery_charge_now", label: "Batteri lader", color: COLORS.battery_charge, module: "control_battery" },
-  { key: "battery_discharge_now", label: "Batteri aflader", color: COLORS.battery_discharge, module: "control_battery" },
+  { key: "battery_discharge_now", label: "Batteri sælger", color: COLORS.battery_discharge, module: "control_battery" },
+  { key: "battery_hold_now", label: "Batteri gemmes", color: COLORS.battery_hold, module: "control_battery" },
   { key: "hotwater_now", label: "Varmt vand", color: COLORS.hotwater, module: "control_hotwater" },
   { key: "heating_boost_now", label: "Ekstra varme", color: COLORS.heating_boost, module: "control_heating" },
   { key: "heating_reduce_now", label: "Sparer på varmen", color: COLORS.heating_reduce, module: "control_heating" },
@@ -100,8 +102,10 @@ const HELP = {
       d: "Hvor mange af døgnets billigste timer batteriet må lade fra nettet. SmartHus vælger selv timerne ud fra elprisen, når morgendagens priser kommer ved 13-tiden. Ventes der meget sol i morgen, lades kun det, der mangler." },
     { k: ["battery_charge_from"], t: "Tidsrum for opladning",
       d: "De billige timer søges kun inden for dette tidsrum. 00–24 betyder hele døgnet. Brug fx 00–06, hvis batteriet kun må lade om natten." },
-    { k: ["battery_discharge_hours"], t: "Timer at aflade",
-      d: "I hvor mange af døgnets dyreste timer batteriet bruges til huset og evt. sælges. Der holdes altid så meget strøm tilbage, at huset klarer sig, til strømmen bliver billig igen – kun det overskydende sælges." },
+    { k: ["battery_discharge_hours"], t: "Timer at sælge",
+      d: "I hvor mange af døgnets dyreste timer batteriet aflader med fuld kraft og sælger til nettet ('Batteri sælger' i grafen). Der holdes altid så meget strøm tilbage, at huset klarer sig, til strømmen bliver billig igen – kun det overskydende sælges. Resten af tiden dækker batteriet husets forbrug." },
+    { k: ["battery_capacity"], t: "Gem batteriet til de dyre timer",
+      d: "Rækker batteriet ikke til hele døgnet, gemmes det i de billige timer ('Batteri gemmes' i grafen): huset kører på nettet, solen må stadig lade, og strømmen bruges i stedet i de dyreste timer før næste opladning. Kræver at anlægget kan stå stille – fx Growatt SPH, SigEnergy eller et script." },
     { k: ["battery_discharge_from"], t: "Tidsrum for afladning",
       d: "De dyre timer søges kun inden for dette tidsrum, fx 16–21 for kun at bruge batteriet i aftenspidsen." },
     { k: ["battery_min_spread"], t: "Min. prisforskel",
@@ -204,7 +208,7 @@ const NUMBER_LABELS = {
   ev_battery_capacity: "Batteristørrelse",
   ev_hours: "Timer at lade",
   battery_charge_hours: "Timer at lade",
-  battery_discharge_hours: "Timer at aflade",
+  battery_discharge_hours: "Timer at sælge",
   battery_min_spread: "Min. prisforskel",
   battery_min_soc: "Laveste niveau",
   battery_max_soc: "Højeste niveau",
@@ -708,7 +712,10 @@ class SmartHusCard extends HTMLElement {
   /** Sporene under prisgrafen (én pr. elbil + batteri, varmt vand og varme). */
   _lanes() {
     const carLanes = this._visibleCars(this._cars()).map((c) => ({ key: `${c.cid}_charge_now`, label: `${c.name} lader`, color: c.color, module: `control_${c.cid}` }));
-    return [...carLanes, ...LANES].filter((l) => this._st("switch", l.module) && this._st("binary_sensor", l.key));
+    // "Batteri gemmes" kun for anlæg, der kan stå stille
+    const hold = !!this._st("sensor", "battery_reserve")?.attributes?.battery_hold;
+    return [...carLanes, ...LANES].filter((l) => this._st("switch", l.module) && this._st("binary_sensor", l.key)
+      && (l.key !== "battery_hold_now" || hold));
   }
 
   _renderStrip() {
@@ -961,6 +968,7 @@ class SmartHusCard extends HTMLElement {
         if (ra.holding_for_reserve) return `Gemmer ${nf(ra.reserve_kwh, 1)} kWh til huset`;
         if (ra.sell_solar?.active) return `Sælger solstrøm · lader billigt senere`;
         if (ra.grid_charge?.skipping) return "Lader ikke fra nettet – solen fylder batteriet";
+        if (isOn("battery_hold_now")) return `${prefix}Gemmes til de dyre timer${ra.battery_hold?.covers_price_from != null ? ` · bruges over ${nf(ra.battery_hold.covers_price_from)} kr/kWh` : ""}`;
         if (isOn("battery_discharge_now")) return `${prefix}Sælger${ra.sellable_kwh != null ? ` · ${nf(ra.sellable_kwh, 1)} kWh tilbage at sælge` : ""}`;
         if (r && ra.reserve_kwh != null && ra.until) return `Reserve ${nf(ra.reserve_kwh, 1)} kWh til kl. ${hh(new Date(ra.until))}`;
         return `${prefix}${next("battery_charge_now") ? `Lader ${next("battery_charge_now")}` : "Normal drift"}`;

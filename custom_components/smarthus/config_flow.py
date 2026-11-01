@@ -36,6 +36,8 @@ from .const import (
     CONF_BATTERY_SCRIPT_DISCHARGE,
     CONF_BATTERY_SCRIPT_NORMAL,
     CONF_BATTERY_SCRIPT_SELL_SOLAR,
+    CONF_BATTERY_SCRIPT_HOLD,
+    CONF_BATTERY_OPT_HOLD,
     CONF_HUAWEI_DEVICE,
     CONF_HUAWEI_POWER,
     CONF_GROWATT_DEVICE,
@@ -329,12 +331,14 @@ def _preset_summary(m: pz.Match) -> str:
         lines += [f"- {pz.ROLE_NAMES[r]}: `{e}`" for r, e in m.roles.items()]
     if m.actions:
         n = sum(len(v) for v in m.actions.values())
-        lines += ["", f"**Batteristyring:** lad fra nettet, aflad og normal drift ({n} trin) – erstatter tidligere rullemenu/scripts."]
+        hold = " og gem batteriet til de dyre timer" if m.actions.get("hold") else ""
+        lines += ["", f"**Batteristyring:** lad fra nettet, aflad{hold} og normal drift ({n} trin) – erstatter tidligere rullemenu/scripts."]
     elif m.huawei_device:
         lines += ["", "**Batteristyring:** Huawei – indbygget styring af batteriet."]
     elif m.growatt_device:
         kind = {"sph": "SPH", "min": "MIN TL-XH"}.get(m.growatt_type or "", "ukendt model – behandles som SPH")
-        lines += ["", f"**Batteristyring:** Growatt via skyen ({kind}) – SmartHus skriver lade- og afladetidsrum."]
+        hold = " – og gemmer batteriet til de dyre timer" if (m.growatt_type or "sph") == "sph" else ""
+        lines += ["", f"**Batteristyring:** Growatt via skyen ({kind}) – SmartHus skriver lade- og afladetidsrum{hold}."]
     elif p.growatt_cloud:
         lines += ["", "**Batteristyring:** ikke fundet – batteriets niveau (SOC) mangler, så inverteren kan ikke findes."]
     elif p.control:
@@ -445,13 +449,21 @@ class SmartHusOptionsFlow(OptionsFlow):
         control_keys = [CONF_BATTERY_MODE_ENTITY, CONF_BATTERY_OPT_CHARGE, CONF_BATTERY_OPT_DISCHARGE,
                         CONF_BATTERY_OPT_NORMAL, CONF_BATTERY_OPT_SELL_SOLAR, CONF_HUAWEI_DEVICE,
                         CONF_GROWATT_DEVICE, CONF_GROWATT_TYPE, *BATTERY_SCRIPTS,
-                        CONF_BATTERY_SCRIPT_SELL_SOLAR]
+                        CONF_BATTERY_SCRIPT_SELL_SOLAR, CONF_BATTERY_SCRIPT_HOLD, CONF_BATTERY_OPT_HOLD]
         if m.actions:
             current = {s["entity_id"]: (st.state if (st := self.hass.states.get(s["entity_id"])) else None)
                        for steps in m.actions.values() for s in steps}
             for k in control_keys:
                 new.pop(k, None)
-            new[CONF_BATTERY_ACTIONS] = pz.fill_keep(m.actions, current, pz.keep_fallbacks(m.actions, entries))
+            fallback = pz.keep_fallbacks(m.actions, entries)
+            for eid, sensor in pz.keep_sensor_fallbacks(m.actions, entries).items():
+                st = self.hass.states.get(sensor)
+                try:
+                    if st and float(st.state) > 0:
+                        fallback[eid] = st.state
+                except ValueError:
+                    pass
+            new[CONF_BATTERY_ACTIONS] = pz.fill_keep(m.actions, current, fallback)
             new[CONF_BATTERY_PRESET] = p.key
         elif m.huawei_device:
             for k in control_keys:
@@ -502,6 +514,7 @@ class SmartHusOptionsFlow(OptionsFlow):
             (CONF_BATTERY_OPT_DISCHARGE, TEXT),
             (CONF_BATTERY_OPT_NORMAL, TEXT),
             (CONF_BATTERY_OPT_SELL_SOLAR, TEXT),
+            (CONF_BATTERY_OPT_HOLD, TEXT),
             (CONF_HUAWEI_DEVICE, HUAWEI_DEVICE),
             (CONF_HUAWEI_POWER, HUAWEI_POWER),
             (CONF_GROWATT_DEVICE, GROWATT_DEVICE),
@@ -510,6 +523,7 @@ class SmartHusOptionsFlow(OptionsFlow):
             (CONF_BATTERY_SCRIPT_DISCHARGE, SCRIPT),
             (CONF_BATTERY_SCRIPT_NORMAL, SCRIPT),
             (CONF_BATTERY_SCRIPT_SELL_SOLAR, SCRIPT),
+            (CONF_BATTERY_SCRIPT_HOLD, SCRIPT),
             (CONF_BATTERY_SOC, SOC),
             (CONF_BATTERY_POWER, POWER),
             (CONF_BATTERY_CHARGE_POWER, POWER),

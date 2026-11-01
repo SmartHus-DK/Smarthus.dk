@@ -102,7 +102,17 @@ PRESETS: dict[str, Preset] = {p.key: p for p in (
             "house_energy": "sensor:plant_accumulated_consumed_energy",
         },
         battery_sign="charge_positive", grid_sign="import_positive",
-        control=({
+        control=({  # Med "ESS Max Discharging Limit" slået til: batteriet kan også gemmes (afladning sat til 0 kW)
+            "charge": [("switch", "plant_remote_ems_enable", True), ("number", "plant_ess_max_discharging_limit", KEEP),
+                       ("select", "plant_remote_ems_control_mode", "Command Charging (Grid First)")],
+            "discharge": [("switch", "plant_remote_ems_enable", True), ("number", "plant_ess_max_discharging_limit", KEEP),
+                          ("select", "plant_remote_ems_control_mode", "Command Discharging (ESS First)")],
+            "normal": [("switch", "plant_remote_ems_enable", True), ("number", "plant_ess_max_discharging_limit", KEEP),
+                       ("select", "plant_remote_ems_control_mode", "Maximum Self Consumption")],
+            "hold": [("switch", "plant_remote_ems_enable", True),
+                     ("select", "plant_remote_ems_control_mode", "Maximum Self Consumption"),
+                     ("number", "plant_ess_max_discharging_limit", 0)],
+        }, {
             "charge": [("switch", "plant_remote_ems_enable", True),
                        ("select", "plant_remote_ems_control_mode", "Command Charging (Grid First)")],
             "discharge": [("switch", "plant_remote_ems_enable", True),
@@ -111,7 +121,8 @@ PRESETS: dict[str, Preset] = {p.key: p for p in (
                        ("select", "plant_remote_ems_control_mode", "Maximum Self Consumption")],
         },),
         export=("number:plant_grid_point_maximum_export_limitation", 0.0),
-        note="Remote EMS slås til af SmartHus.",
+        note="Remote EMS slås til af SmartHus. Slå entiteten \"ESS Max Discharging Limit\" til (den er skjult som "
+             "standard), så kan SmartHus også gemme batteriet til de dyre timer.",
     ),
     Preset(
         "deye", "Deye / Sunsynk", "solarman", "Solarman (ha-solarman)",
@@ -387,17 +398,51 @@ def fill_keep(actions: dict[str, list[dict]], current: dict[str, str | None], fa
         for s in steps:
             if s["value"] == KEEP:
                 cur = current.get(s["entity_id"])
-                val = cur if cur and cur not in ours and cur not in ("unknown", "unavailable") else fallback.get(s["entity_id"])
+                usable = bool(cur) and cur not in ours and cur not in ("unknown", "unavailable")
+                if usable and s["type"] == "number":
+                    try:
+                        usable = float(cur) > 0          # 0 er SmartHus' egen "gem"-værdi – ikke en normal indstilling
+                    except ValueError:
+                        usable = False
+                val = cur if usable else fallback.get(s["entity_id"])
                 if not val:
                     continue
                 s = {**s, "value": val}
             new.append(s)
         out[state] = new
+    # "Gem" sætter et tal (fx maks. afladning) til 0. Kan de andre tilstande ikke sætte det tilbage,
+    # bruges "gem" ikke – ellers kunne batteriet blive stående uden afladning.
+    hold_nums = {s["entity_id"] for s in out.get("hold", []) if s["type"] == "number"}
+    for state, steps in out.items():
+        if state != "hold" and not hold_nums <= {s["entity_id"] for s in steps}:
+            out.pop("hold", None)
+            break
     return out
 
 
 # Hvad "normal" sættes til, hvis den nuværende værdi ikke kan bruges
 KEEP_FALLBACK = {"work_mode_select": "Zero Export To CT", "charger_use_mode": "Self Use Mode", "work_mode": "Self Use"}
+
+
+# Tal, hvis normale værdi kan læses af en sensor, hvis entiteten selv står forkert (fx efter "gem")
+KEEP_FALLBACK_SENSOR = {"plant_ess_max_discharging_limit": "plant_ess_rated_discharging_power"}
+
+
+def keep_sensor_fallbacks(actions: dict[str, list[dict]], entries: list[Entry]) -> dict[str, str]:
+    """entity_id → sensorens entity_id, hvis normalværdi kan bruges som reserve for KEEP."""
+    uid = {e.entity_id: e.unique_id for e in entries}
+    out = {}
+    for steps in actions.values():
+        for s in steps:
+            if s["value"] != KEEP:
+                continue
+            for key, sensor_key in KEEP_FALLBACK_SENSOR.items():
+                u = uid.get(s["entity_id"], "")
+                if u == key or u.endswith("_" + key):
+                    found = _find(entries, f"sensor:{sensor_key}")
+                    if found and not found.disabled:
+                        out[s["entity_id"]] = found.entity_id
+    return out
 
 
 def keep_fallbacks(actions: dict[str, list[dict]], entries: list[Entry]) -> dict[str, str]:

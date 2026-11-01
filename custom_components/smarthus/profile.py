@@ -149,3 +149,68 @@ def grid_charge_target(*, capacity: float, min_soc: float, max_soc: float, surpl
     full = capacity * max_soc / 100
     floor = capacity * min_soc / 100
     return min(full, max(floor + until_sun_kwh / EFFICIENCY, full - surplus_kwh))
+
+
+HOLD_MIN_GAIN = 0.10   # kr/kWh – gem kun batteriet, når strømmen er mindst så meget billigere end senere
+HOLD_MIN_SLOTS = 2     # gem i mindst 30 min ad gangen (ingen enkelte kvarterer)
+HOLD_STICKY_KWH = 0.3  # en igangværende gem-periode fortsætter, til batteriet har mindst så meget for meget
+
+
+def plan_hold(slots: list, profile: Profile, now: datetime, until: datetime, usable_kwh: float,
+              min_gain: float = HOLD_MIN_GAIN, previous: set | None = None) -> tuple[list, float | None]:
+    """Hvornår skal batteriet gemmes (stå stille), så strømmen rækker til de dyreste timer?
+
+    Batteriets brugbare energi fordeles på husets forventede forbrug i de dyreste tidsrum frem til
+    `until` (næste opladning). Er der ikke nok til alle, gemmes batteriet i de tidsrum, der er mindst
+    `min_gain` billigere end det billigste tidsrum, batteriet når at dække. Huset kører så på nettet,
+    mens solen stadig må lade batteriet.
+
+    `slots` har tidspunkter med tidszone; `now`/`until` er lokale tidspunkter.
+    `previous` er starttiderne fra sidste beregning. De holdes ved (hysterese), så planen ikke skifter
+    frem og tilbage, fordi den regnes om hvert minut.
+    Returnerer (tidsrum, hvor batteriet gemmes, prisgrænsen for de tidsrum batteriet dækker).
+    """
+    previous = previous or set()
+    horizon = sorted((s for s in slots if s.end > now and s.start < until), key=lambda s: s.start)
+    if not horizon or usable_kwh <= 0.05:
+        return [], None
+    tz = now.tzinfo
+    need = {s.start: expected_load(profile, max(s.start.astimezone(tz), now), min(s.end.astimezone(tz), until)) / EFFICIENCY
+            for s in horizon}
+    left, covered = usable_kwh, set()
+    for s in sorted(horizon, key=lambda s: (-s.price, s.start)):
+        if left <= 0:
+            break
+        covered.add(s.start)
+        left -= need[s.start]
+    if left > (HOLD_STICKY_KWH if previous else 0):
+        return [], None                       # nok til det hele – intet at gemme
+    limit = min(s.price for s in horizon if s.start in covered)
+    flag = [s.start not in covered and (s.price <= limit - min_gain or (s.start in previous and s.price < limit))
+            for s in horizon]
+    # Glat ud: korte huller (højst 30 min) mellem to perioder lukkes, hvis batteriet alligevel ikke dækker dem …
+    i = 0
+    while i < len(horizon):
+        if not flag[i]:
+            j = i
+            while j < len(horizon) and not flag[j]:
+                j += 1
+            if 0 < i and j < len(horizon) and j - i <= HOLD_MIN_SLOTS \
+                    and all(horizon[k].start not in covered for k in range(i, j)):
+                for k in range(i, j):
+                    flag[k] = True
+            i = j
+        else:
+            i += 1
+    # … og korte perioder (under 30 min) droppes, så batteriet ikke skifter for hvert kvarter
+    out, run = [], []
+    for s, f in zip(horizon, flag):
+        if f and (not run or run[-1].end == s.start):
+            run.append(s)
+            continue
+        if len(run) >= HOLD_MIN_SLOTS:
+            out += run
+        run = [s] if f else []
+    if len(run) >= HOLD_MIN_SLOTS:
+        out += run
+    return out, limit

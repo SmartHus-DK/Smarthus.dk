@@ -335,6 +335,7 @@ class Plan:
     day_avg: float | None = None
     battery_charge: list[Slot] = field(default_factory=list)
     battery_discharge: list[Slot] = field(default_factory=list)
+    battery_hold: list[Slot] = field(default_factory=list)   # batteriet gemmes til de dyre timer
     battery_action: str = "normal"
     solar_curtail: bool = False
     evs: dict[str, EvPlan] = field(default_factory=dict)

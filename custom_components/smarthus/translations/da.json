@@ -102,7 +102,9 @@
           "battery_growatt_device": "D) Growatt via skyen: inverteren (Growatt Server)",
           "battery_growatt_power": "D) Growatt: effekt ved lad/aflad (%)",
           "battery_charge_power_sensor": "Batteriets ladeeffekt lige nu – i stedet for én sensor",
-          "battery_discharge_power_sensor": "Batteriets afladeeffekt lige nu – i stedet for én sensor"
+          "battery_discharge_power_sensor": "Batteriets afladeeffekt lige nu – i stedet for én sensor",
+          "battery_option_hold": "A) Navn på tilstanden: gem batteriet (valgfri)",
+          "battery_script_hold": "C) Script: gem batteriet (valgfri)"
         },
         "data_description": {
           "house_energy_sensor": "En stigende energimåler (kWh) for husets forbrug – fx fra inverteren ('Load consumption total'), en P1-måler (HAN-port) eller en elmåler. SmartHus lærer ud fra de seneste 14 dage, hvor meget huset bruger time for time, og holder så meget i batteriet, at huset klarer sig til strømmen bliver billig igen. Kun det overskydende sælges. Kræver langtidsstatistik (står den i Energi-dashboardet, har den det). Reserven bruges efter 2 dages historik.",
@@ -125,7 +127,9 @@
           "battery_growatt_device": "Har kunden Growatt uden lokal Modbus, kan integrationen Growatt Server (med API-token) bruges. Vælg inverteren – så skriver SmartHus selv lade- og afladetidsrum i Growatt. Ændringer slår igennem efter et minut eller to.",
           "battery_growatt_power": "Hvor hårdt batteriet lades/aflades i procent af inverterens maks. Standard 100 %.",
           "battery_charge_power_sensor": "Kun hvis inverteren viser lade- og afladeeffekt hver for sig (fx Growatt via skyen). Begge skal vælges. Bruges kun, når 'Batteriets effekt' er tom.",
-          "battery_discharge_power_sensor": "Afladeeffekten lige nu – sammen med ladeeffekten ovenfor."
+          "battery_discharge_power_sensor": "Afladeeffekten lige nu – sammen med ladeeffekten ovenfor.",
+          "battery_option_hold": "Valgfri. En tilstand hvor batteriet ikke aflader, men solen gerne må lade det. Så kan SmartHus gemme strømmen i billige timer til de dyreste timer før næste opladning. Lad feltet stå tomt for at slå det fra.",
+          "battery_script_hold": "Valgfri. Køres når batteriet skal gemmes til de dyre timer: det må ikke aflade, men solen må gerne lade (fx sæt maks. afladeeffekt til 0). Script til normal drift skal sætte det tilbage."
         }
       },
       "solar": {

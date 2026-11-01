@@ -39,6 +39,9 @@ from .const import (
     CONF_BATTERY_SCRIPT_SELL_SOLAR,
     CONF_BATTERY_OPT_SELL_SOLAR,
     ACTION_SELL_SOLAR,
+    ACTION_HOLD,
+    CONF_BATTERY_SCRIPT_HOLD,
+    CONF_BATTERY_OPT_HOLD,
     S_SOLAR_SELL_MARGIN,
     S_BATTERY_MAX_SOC,
     BATTERY_SCRIPTS,
@@ -126,7 +129,7 @@ from .const import (
 from .coordinator import SmartHusPriceCoordinator
 from . import growatt as gw
 from .planner import CHARGE_EFFICIENCY, CarInput, Plan, build_plan, car_ready, car_settings, heating_outdoor_ok
-from .profile import (EFFICIENCY, LEARN_DAYS, SUN_END, SUN_START, Profile, Reserve, build_profile, calc_reserve,
+from .profile import (EFFICIENCY, plan_hold, LEARN_DAYS, SUN_END, SUN_START, Profile, Reserve, build_profile, calc_reserve,
                       expected_load, grid_charge_target, solar_surplus)
 from .savings import SavingsCalculator
 from .hotwater import cooling_rate, plan_demand
@@ -198,6 +201,7 @@ class SmartHusController:
         self.profile_updated: datetime | None = None
         self.reserve: Reserve | None = None
         self.reserve_holds = False  # True når salg fra batteriet er sat på pause for at gemme reserven
+        self.battery_hold: dict | None = None  # beslutning om at gemme batteriet til de dyre timer
         self.sell_solar: dict | None = None  # beslutning om at sælge solstrøm i stedet for at lade batteriet
         self.grid_charge: dict | None = None  # hvor meget der lades fra nettet, når solen kan fylde resten
         self._unsub_learn = None
@@ -682,6 +686,9 @@ class SmartHusController:
 
     def _update_reserve(self) -> None:
         self.reserve, self.reserve_holds = None, False
+        self.battery_hold = None
+        self._hold_prev = {s.start for s in self.plan.battery_hold} or getattr(self, "_hold_prev", set())
+        self.plan.battery_hold = []
         self.sell_solar = None
         self.grid_charge = None
         if not self.has(CONF_HOUSE_ENERGY) or not self.has_battery_control or not self.profile.ready:
@@ -702,6 +709,7 @@ class SmartHusController:
             self.reserve_holds = True
         self._decide_grid_charge(now)
         self._decide_sell_solar(now)
+        self._decide_hold(now, until)
 
     def _decide_grid_charge(self, now: datetime) -> None:
         """Lad kun fra nettet, hvad solen ikke selv kan fylde.
@@ -791,6 +799,27 @@ class SmartHusController:
         if active:
             p.battery_action = ACTION_SELL_SOLAR
 
+    def _decide_hold(self, now: datetime, until: datetime) -> None:
+        """Gem batteriet i billige timer, så strømmen rækker til de dyre timer før næste opladning."""
+        p = self.plan
+        if not self.has_hold or p.current is None:
+            return
+        soc = self._float_state(self.config.get(CONF_BATTERY_SOC))
+        if soc is None:
+            return
+        cap, mn = self.settings[S_BATTERY_CAPACITY], self.settings[S_BATTERY_MIN_SOC]
+        usable = max(soc - mn, 0.0) / 100 * cap
+        local = now.astimezone(self.tz)
+        slots = [s for s in (self.coordinator.data or []) if s not in p.battery_charge]
+        hold, limit = plan_hold(slots, self.profile, local, until.astimezone(self.tz), usable,
+                                previous=getattr(self, "_hold_prev", set()))
+        p.battery_hold = hold
+        self._hold_prev = {s.start for s in hold}
+        self.battery_hold = {"active": p.current in hold, "usable_kwh": round(usable, 2),
+                             "covers_price_from": round(limit, 3) if limit is not None else None}
+        if p.battery_action == ACTION_NORMAL and p.current in hold:
+            p.battery_action = ACTION_HOLD
+
     async def async_stop(self) -> None:
         for name in ("_unsub_learn", "_unsub_learn_first", "_unsub_energy", "_unsub_energy_first"):
             unsub = getattr(self, name, None)
@@ -845,6 +874,17 @@ class SmartHusController:
         """Kan batteriet sættes til at sælge solstrømmen i stedet for at lade? (valgfri tilstand/script)"""
         return bool(self.config.get(CONF_BATTERY_SCRIPT_SELL_SOLAR)) or (
             bool(self.config.get(CONF_BATTERY_MODE_ENTITY)) and bool(self.config.get(CONF_BATTERY_OPT_SELL_SOLAR)))
+
+    @property
+    def has_hold(self) -> bool:
+        """Kan batteriet stå stille (ikke aflade, men gerne lade af solen)?"""
+        if self.config.get(CONF_BATTERY_SCRIPT_HOLD):
+            return True
+        if self.config.get(CONF_BATTERY_ACTIONS):
+            return bool(self.config[CONF_BATTERY_ACTIONS].get(ACTION_HOLD))
+        if self.config.get(CONF_GROWATT_DEVICE):
+            return (self.config.get(CONF_GROWATT_TYPE) or gw.TYPE_SPH) == gw.TYPE_SPH
+        return bool(self.config.get(CONF_BATTERY_MODE_ENTITY)) and bool(self.config.get(CONF_BATTERY_OPT_HOLD))
 
     @property
     def has_export_control(self) -> bool:
@@ -1355,7 +1395,10 @@ class SmartHusController:
 
     async def _apply_battery(self, action: str, force: bool) -> None:
         key = {ACTION_CHARGE: CONF_BATTERY_SCRIPT_CHARGE, ACTION_DISCHARGE: CONF_BATTERY_SCRIPT_DISCHARGE,
-               ACTION_SELL_SOLAR: CONF_BATTERY_SCRIPT_SELL_SOLAR}.get(action, CONF_BATTERY_SCRIPT_NORMAL)
+               ACTION_SELL_SOLAR: CONF_BATTERY_SCRIPT_SELL_SOLAR,
+               ACTION_HOLD: CONF_BATTERY_SCRIPT_HOLD}.get(action, CONF_BATTERY_SCRIPT_NORMAL)
+        if action == ACTION_HOLD and not self.config.get(key) and any(self.config.get(k) for k in BATTERY_SCRIPTS):
+            key = CONF_BATTERY_SCRIPT_NORMAL       # scripts uden "gem": normal drift
         if await self._run_script(key, "battery", action, force, self._script_vars(action)):
             return
         if self.config.get(CONF_BATTERY_ACTIONS):
@@ -1442,6 +1485,8 @@ class SmartHusController:
     async def _apply_huawei(self, action: str, force: bool) -> None:
         """Huawei (huawei_solar): tvungen opladning/afladning via integrationens egne handlinger."""
         device = self.config[CONF_HUAWEI_DEVICE]
+        if action == ACTION_HOLD:
+            action = ACTION_NORMAL
         power = int(float(self.config.get(CONF_HUAWEI_POWER) or DEFAULT_HUAWEI_POWER))
         if action == ACTION_CHARGE:
             await self._service_once("battery", action, force, "huawei_solar", "forcible_charge_soc", {
@@ -1459,12 +1504,14 @@ class SmartHusController:
         Tilstanden huskes først, når Growatt har taget imod alle kald; fejler et kald, prøves der igen
         næste gang (højst hvert 90. sekund), så en kortvarig fejl i skyen ikke efterlader en halv opsætning.
         """
-        if action not in (ACTION_CHARGE, ACTION_DISCHARGE):
-            action = ACTION_NORMAL        # "sælg sol" findes ikke via skyen
+        kind = self.config.get(CONF_GROWATT_TYPE) or gw.TYPE_SPH
+        if action not in (ACTION_CHARGE, ACTION_DISCHARGE, ACTION_HOLD) or (action == ACTION_HOLD and kind != gw.TYPE_SPH):
+            action = ACTION_NORMAL        # "sælg sol" findes ikke via skyen, og MIN kan ikke stå stille
         window = None
         cur = self.plan.current if getattr(self, "plan", None) else None
         if action != ACTION_NORMAL and cur is not None:
-            slots = self.plan.battery_charge if action == ACTION_CHARGE else self.plan.battery_discharge
+            slots = {ACTION_CHARGE: self.plan.battery_charge, ACTION_DISCHARGE: self.plan.battery_discharge,
+                     ACTION_HOLD: self.plan.battery_hold}[action]
             window = gw.block_window(slots, cur, self.tz)
         state = f"{action}@{window[0]}-{window[1]}" if window else action
         if not force and self._script_state.get("battery") == state:
@@ -1472,7 +1519,7 @@ class SmartHusController:
         if not force and not self._rate_ok("battery:growatt"):
             return
         self._last_cmd["battery:growatt"] = time.monotonic()
-        cmds = gw.commands(self.config.get(CONF_GROWATT_TYPE) or gw.TYPE_SPH, self.config[CONF_GROWATT_DEVICE],
+        cmds = gw.commands(kind, self.config[CONF_GROWATT_DEVICE],
                            action, window, int(self.settings.get("battery_max_soc", 95)),
                            int(self.settings.get("battery_min_soc", 15)),
                            int(float(self.config.get(CONF_GROWATT_POWER) or DEFAULT_GROWATT_POWER)))
@@ -1491,8 +1538,9 @@ class SmartHusController:
             ACTION_CHARGE: CONF_BATTERY_OPT_CHARGE,
             ACTION_DISCHARGE: CONF_BATTERY_OPT_DISCHARGE,
             ACTION_SELL_SOLAR: CONF_BATTERY_OPT_SELL_SOLAR,
+            ACTION_HOLD: CONF_BATTERY_OPT_HOLD,
         }.get(action, CONF_BATTERY_OPT_NORMAL)
-        if key == CONF_BATTERY_OPT_SELL_SOLAR:
+        if key in (CONF_BATTERY_OPT_SELL_SOLAR, CONF_BATTERY_OPT_HOLD):
             return self.config.get(key) or self.config.get(CONF_BATTERY_OPT_NORMAL) \
                 or DEFAULT_BATTERY_OPTIONS[CONF_BATTERY_OPT_NORMAL]
         return self.config.get(key) or DEFAULT_BATTERY_OPTIONS[key]

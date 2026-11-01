@@ -1224,3 +1224,54 @@ def test_cheapest_blocks_is_optimal_with_block_and_gap_rules():
                 continue        # ingen plan opfylder reglerne: der falder den tilbage
             idx = [slots.index(s) for s in got]
             assert ok(idx, 2, 2, total) and abs(sum(sign * prices[i] for i in idx) - best) < 1e-9, (prices, n, exp)
+
+
+def test_preset_sigenergy_hold_needs_discharge_limit_and_restores_it():
+    base = [("sensor.sigen_soc", "plant_ess_soc"), ("switch.sigen_ems", "plant_remote_ems_enable"),
+            ("select.sigen_mode", "plant_remote_ems_control_mode")]
+    m = presets.match(presets.PRESETS["sigenergy"], _reg("01J_plant", base))
+    assert m.actions and "hold" not in m.actions                         # uden afladegrænsen: som før
+    reg = _reg("01J_plant", base + [("number.sigen_dis", "plant_ess_max_discharging_limit"),
+                                    ("sensor.sigen_rated_dis", "plant_ess_rated_discharging_power")])
+    m = presets.match(presets.PRESETS["sigenergy"], reg)
+    assert {"type": "number", "entity_id": "number.sigen_dis", "value": 0} in m.actions["hold"]
+    # Normal sætter grænsen tilbage til den nuværende værdi …
+    a = presets.fill_keep(m.actions, {"number.sigen_dis": "8.0", "select.sigen_mode": "Maximum Self Consumption"}, {})
+    assert {"type": "number", "entity_id": "number.sigen_dis", "value": "8.0"} in a["normal"]
+    assert all(any(x["entity_id"] == "number.sigen_dis" for x in a[st]) for st in ("charge", "discharge", "normal"))
+    # … men står den på 0 (SmartHus' egen gem-værdi), bruges den nominelle effekt
+    assert presets.keep_sensor_fallbacks(m.actions, reg) == {"number.sigen_dis": "sensor.sigen_rated_dis"}
+    a = presets.fill_keep(m.actions, {"number.sigen_dis": "0.0"}, {"number.sigen_dis": "10.0"})
+    assert {"type": "number", "entity_id": "number.sigen_dis", "value": "10.0"} in a["normal"]
+    # Kan den ikke sættes tilbage, bruges "gem" slet ikke
+    a = presets.fill_keep(m.actions, {"number.sigen_dis": "0.0"}, {})
+    assert "hold" not in a and a["normal"]
+
+
+def test_plan_hold_saves_battery_for_expensive_hours():
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("Europe/Copenhagen")
+    prof = profile.Profile(weekday=[0.5] * 24, weekend=[0.5] * 24, days=5)
+    t0 = datetime(2026, 11, 2, 6, 0, tzinfo=tz)
+    q = timedelta(minutes=15)
+    # 06–16 billigt (2,7), 16–20 dyrt (4,6), 20–24 middel (3,0)
+    prices = [2.7] * 40 + [4.6] * 16 + [3.0] * 16
+    slots = [planner.Slot(t0 + i * q, t0 + (i + 1) * q, p, p, 1.0) for i, p in enumerate(prices)]
+    until = t0 + timedelta(hours=18)
+    # 2 kWh rækker kun til de dyre timer (4 t × 0,5 kWh / 95 %) – resten af tiden gemmes batteriet
+    hold, limit = profile.plan_hold(slots, prof, t0, until, 2.0)
+    assert limit == 4.6 and {s.price for s in hold} == {2.7, 3.0} and len(hold) == 56
+    # Lidt mere strøm (2,2 kWh) rækker også til starten af aftenen – så gemmes kun de billigste timer
+    hold, limit = profile.plan_hold(slots, prof, t0, until, 2.2)
+    assert limit == 3.0 and {s.price for s in hold} == {2.7}
+    # Nok strøm til hele perioden: intet gemmes
+    assert profile.plan_hold(slots, prof, t0, until, 20.0) == ([], None)
+    # Tomt batteri: intet at gemme
+    assert profile.plan_hold(slots, prof, t0, until, 0.0) == ([], None)
+    # Kun lidt billigere end grænsen (under 0,10 kr): gemmes ikke
+    flat = [planner.Slot(t0 + i * q, t0 + (i + 1) * q, 3.0 + (0.05 if i >= 40 else 0), 0, 0) for i in range(72)]
+    assert profile.plan_hold(flat, prof, t0, until, 2.0)[0] == []
+    # Ingen enkelte kvarterer: et billigt kvarter alene gemmes ikke
+    one = [planner.Slot(t0 + i * q, t0 + (i + 1) * q, 2.0 if i == 10 else 4.0, 0, 0) for i in range(72)]
+    assert profile.plan_hold(one, prof, t0, until, 2.0)[0] == []

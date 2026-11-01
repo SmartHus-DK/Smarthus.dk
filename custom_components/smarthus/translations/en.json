@@ -97,7 +97,9 @@
           "battery_growatt_device": "D) Growatt via cloud: the inverter (Growatt Server)",
           "battery_growatt_power": "D) Growatt: charge/discharge power (%)",
           "battery_charge_power_sensor": "Battery charge power now – instead of one sensor",
-          "battery_discharge_power_sensor": "Battery discharge power now – instead of one sensor"
+          "battery_discharge_power_sensor": "Battery discharge power now – instead of one sensor",
+          "battery_option_hold": "A) Mode name: hold battery (optional)",
+          "battery_script_hold": "C) Script: hold battery (optional)"
         },
         "data_description": {
           "house_energy_sensor": "Increasing energy meter (kWh) of the house consumption – e.g. from the inverter ('Load consumption total'), a P1 meter or an electricity meter. Every night SmartHus learns the hourly consumption from the last 14 days (weekdays and weekends separately) and keeps enough in the battery for the house until power is cheap again. Only the surplus is sold. Requires long-term statistics. The reserve is used after 2 days of history.",
@@ -118,7 +120,9 @@
           "battery_growatt_device": "For Growatt without local Modbus, use the Growatt Server integration (API token). Pick the inverter – SmartHus writes charge/discharge time periods itself. Changes take a minute or two.",
           "battery_growatt_power": "Charge/discharge power as a percentage of the inverter's maximum. Default 100%.",
           "battery_charge_power_sensor": "Only if the inverter shows charge and discharge power separately (e.g. Growatt via cloud). Pick both. Used only when 'battery power' is empty.",
-          "battery_discharge_power_sensor": "Discharge power now – together with charge power above."
+          "battery_discharge_power_sensor": "Discharge power now – together with charge power above.",
+          "battery_option_hold": "Optional. A mode where the battery does not discharge but may charge from solar, so SmartHus can save it for the most expensive hours. Leave empty to disable.",
+          "battery_script_hold": "Optional. Runs when the battery should be held for expensive hours: no discharge, solar charging allowed (e.g. set max discharge power to 0). The normal script must restore it."
         }
       },
       "solar": {

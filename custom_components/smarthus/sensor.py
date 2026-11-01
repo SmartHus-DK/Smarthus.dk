@@ -119,6 +119,8 @@ def _status(c: SmartHusController) -> str:
         parts.append("Gemmer batteri til huset")
     if c.active(MODULE_BATTERY) and c.grid_charge and c.grid_charge.get("skipping"):
         parts.append("Lader ikke fra nettet – solen fylder batteriet")
+    if c.active(MODULE_BATTERY) and p.battery_action == "hold":
+        parts.append("Gemmer batteriet til de dyre timer")
     if c.active(MODULE_BATTERY) and p.battery_action == "sell_solar":
         parts.append("Sælger solstrøm – batteriet lades billigt senere")
     if c.active(MODULE_SOLAR) and p.solar_curtail:
@@ -251,6 +253,7 @@ def _reserve_attrs(c: SmartHusController) -> dict:
         "profile_today": [round(v, 2) for v in p.hours_for(today)],
         "holding_for_reserve": c.reserve_holds,
         "sell_solar": c.sell_solar,
+        "battery_hold": c.battery_hold,
         "grid_charge": c.grid_charge,
     })
     return attrs

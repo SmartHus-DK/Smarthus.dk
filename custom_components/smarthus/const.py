@@ -15,7 +15,7 @@ EDS_DAYAHEAD_FROM: Final = date(2025, 10, 1)
 
 STATIC_URL: Final = "/smarthus_static"
 CARD_URL: Final = f"{STATIC_URL}/smarthus-card.js"
-CARD_VERSION: Final = "1.41.0"
+CARD_VERSION: Final = "1.42.0"
 
 PLATFORMS: Final = ["sensor", "binary_sensor", "switch", "number", "select"]
 
@@ -91,9 +91,12 @@ CONF_BATTERY_SCRIPT_CHARGE: Final = "battery_script_charge"
 CONF_BATTERY_SCRIPT_DISCHARGE: Final = "battery_script_discharge"
 CONF_BATTERY_SCRIPT_NORMAL: Final = "battery_script_normal"
 CONF_BATTERY_SCRIPT_SELL_SOLAR: Final = "battery_script_sell_solar"
+# Valgfrit: gem batteriet til de dyre timer – batteriet aflader ikke, men solen må gerne lade det
+CONF_BATTERY_SCRIPT_HOLD: Final = "battery_script_hold"
+CONF_BATTERY_OPT_HOLD: Final = "battery_option_hold"
 BATTERY_SCRIPTS: Final = [CONF_BATTERY_SCRIPT_CHARGE, CONF_BATTERY_SCRIPT_DISCHARGE, CONF_BATTERY_SCRIPT_NORMAL]
 # Valgfrit script (tæller ikke som batteristyring alene)
-BATTERY_OPTIONAL_SCRIPTS: Final = [CONF_BATTERY_SCRIPT_SELL_SOLAR]
+BATTERY_OPTIONAL_SCRIPTS: Final = [CONF_BATTERY_SCRIPT_SELL_SOLAR, CONF_BATTERY_SCRIPT_HOLD]
 # Indbyggede profiler (ingen scripts nødvendige)
 CONF_HUAWEI_DEVICE: Final = "battery_huawei_device"
 # Færdig opsætning for et kendt anlæg ("Vælg dit anlæg"): mærke + trin pr. tilstand
@@ -179,6 +182,7 @@ BATTERY_KEYS: Final = [
     CONF_BATTERY_OPT_DISCHARGE,
     CONF_BATTERY_OPT_NORMAL,
     CONF_BATTERY_OPT_SELL_SOLAR,
+    CONF_BATTERY_OPT_HOLD,
     CONF_BATTERY_SOC,
     CONF_BATTERY_CHARGE_ENERGY,
     CONF_BATTERY_DISCHARGE_ENERGY,
@@ -187,6 +191,7 @@ BATTERY_KEYS: Final = [
     CONF_BATTERY_SCRIPT_DISCHARGE,
     CONF_BATTERY_SCRIPT_NORMAL,
     CONF_BATTERY_SCRIPT_SELL_SOLAR,
+    CONF_BATTERY_SCRIPT_HOLD,
     CONF_HUAWEI_DEVICE,
     CONF_HUAWEI_POWER,
     CONF_GROWATT_DEVICE,
@@ -332,6 +337,7 @@ ACTION_CHARGE: Final = "charge"
 ACTION_DISCHARGE: Final = "discharge"
 ACTION_NORMAL: Final = "normal"
 ACTION_SELL_SOLAR: Final = "sell_solar"
+ACTION_HOLD: Final = "hold"          # batteriet gemmes til de dyre timer (aflader ikke, solen må lade)
 ACTION_OFF: Final = "off"
 HEATING_BOOST: Final = "boost"
 HEATING_REDUCE: Final = "reduce"
