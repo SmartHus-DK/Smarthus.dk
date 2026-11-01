@@ -49,6 +49,8 @@ from .const import (
     DEFAULT_GROWATT_POWER,
     CONF_HUAWEI_POWER,
     CONF_BATTERY_POWER,
+    CONF_BATTERY_CHARGE_POWER,
+    CONF_BATTERY_DISCHARGE_POWER,
     CONF_BATTERY_POWER_SIGN,
     SIGN_CHARGE_POSITIVE,
     DEFAULT_HUAWEI_POWER,
@@ -83,6 +85,8 @@ from .const import (
     CONF_HOTWATER_ENTITY,
     CONF_HOTWATER_TEMP,
     CONF_GRID_POWER,
+    CONF_GRID_IMPORT_POWER,
+    CONF_GRID_EXPORT_POWER,
     CONF_GRID_POWER_SIGN,
     SIGN_IMPORT_POSITIVE,
     SURPLUS_CONFIRM_TICKS,
@@ -825,6 +829,9 @@ class SmartHusController:
             return self.has_export_control
         if key == "battery_sell_solar":
             return self.has_sell_solar
+        if key == CONF_GRID_POWER:     # én sensor, eller køb + salg som to
+            return bool(self.config.get(CONF_GRID_POWER)) or bool(
+                self.config.get(CONF_GRID_IMPORT_POWER) and self.config.get(CONF_GRID_EXPORT_POWER))
         return bool(self.config.get(key))
 
     @property
@@ -1712,6 +1719,8 @@ class SmartHusController:
     def export_kw(self) -> float | None:
         """Eksport til nettet lige nu i kW (negativ = køb fra nettet)."""
         entity_id = self.config.get(CONF_GRID_POWER)
+        if not entity_id:
+            return self._pair_kw(CONF_GRID_EXPORT_POWER, CONF_GRID_IMPORT_POWER)
         val = self._float_state(entity_id)
         if val is None:
             return None
@@ -1729,6 +1738,15 @@ class SmartHusController:
         unit = (self.hass.states.get(entity_id).attributes.get("unit_of_measurement") or "W").lower()
         return val / 1000 if unit == "w" else val * 1000 if unit == "mw" else val
 
+    def _pair_kw(self, plus_key: str, minus_key: str) -> float | None:
+        """To sensorer, der hver viser én retning (fx salg og køb): plus − minus i kW.
+        Kræver begge; tal under 0 i den enkelte sensor tæller som 0."""
+        plus = self._power_kw(self.config.get(plus_key))
+        minus = self._power_kw(self.config.get(minus_key))
+        if plus is None or minus is None:
+            return None
+        return max(plus, 0.0) - max(minus, 0.0)
+
     def _power_kw(self, entity_id: str | None) -> float | None:
         val = self._float_state(entity_id)
         if val is None:
@@ -1738,6 +1756,8 @@ class SmartHusController:
     @property
     def battery_kw(self) -> float | None:
         """Batteriets effekt lige nu i kW (positiv = afladning)."""
+        if not self.config.get(CONF_BATTERY_POWER):
+            return self._pair_kw(CONF_BATTERY_DISCHARGE_POWER, CONF_BATTERY_CHARGE_POWER)
         kw = self._power_kw(self.config.get(CONF_BATTERY_POWER))
         if kw is None:
             return None
@@ -1749,7 +1769,8 @@ class SmartHusController:
         ev = {car["id"]: self._power_kw(car.get("power")) for car in self.cars}
         f = energy_flow(self.solar_kw, self.export_kw, self.battery_kw, ev)
         f["battery_soc"] = self._float_state(self.config.get(CONF_BATTERY_SOC))
-        f["has_battery"] = self.has_battery_control or bool(self.config.get(CONF_BATTERY_POWER))
+        f["has_battery"] = self.has_battery_control or bool(self.config.get(CONF_BATTERY_POWER)
+                                                             or self.config.get(CONF_BATTERY_CHARGE_POWER))
         f["has_solar"] = bool(self.config.get(CONF_SOLAR_POWER) or self.config.get(CONF_SOLAR_ENERGY))
         f["cars"] = [{"id": c["id"], "name": c.get("name") or "Elbil", "kw": f["ev_kw"].get(c["id"]),
                       "connected": self.connected.get(c["id"], True),

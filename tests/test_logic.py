@@ -1032,6 +1032,18 @@ def test_preset_growatt_cloud_sph_and_min():
     m = presets.match(presets.PRESETS["growatt_cloud"], reg)
     assert (m.growatt_device, m.growatt_type) == ("inv-dev", "sph") and m.huawei_device is None
     assert m.roles["soc"] == "sensor.omc_state_of_charge" and m.roles["solar_energy"] == "sensor.omc_lifetime_solar_energy"
+    # Effekt: køb/salg og lad/aflad som hver sin sensor
+    reg_p = reg + [presets.Entry("sensor.omc_import_from_grid", "OMC123-mix_import_from_grid", "inv-dev"),
+                   presets.Entry("sensor.omc_import_from_grid_today", "OMC123-mix_import_from_grid_today", "inv-dev"),
+                   presets.Entry("sensor.omc_export_to_grid", "OMC123-mix_export_to_grid", "inv-dev"),
+                   presets.Entry("sensor.omc_battery_charging", "OMC123-mix_battery_charge", "inv-dev"),
+                   presets.Entry("sensor.omc_battery_charged_today", "OMC123-mix_battery_charge_today", "inv-dev"),
+                   presets.Entry("sensor.omc_battery_discharging_w", "OMC123-mix_battery_discharge_w", "inv-dev")]
+    mp = presets.match(presets.PRESETS["growatt_cloud"], reg_p)
+    assert (mp.roles["grid_import_power"], mp.roles["grid_export_power"]) == ("sensor.omc_import_from_grid", "sensor.omc_export_to_grid")
+    assert (mp.roles["battery_charge_power"], mp.roles["battery_discharge_power"]) == \
+        ("sensor.omc_battery_charging", "sensor.omc_battery_discharging_w")
+    assert mp.roles["import_energy"] == "sensor.omc_import_from_grid_today"
     # MIN TL-XH: alternative nøgler ("a|b") findes
     reg2 = [presets.Entry("sensor.min_soc", "MIN9-tlx_statement_of_charge", "min-dev"),
             presets.Entry("sensor.min_house", "MIN9-mix_load_consumption_total", "min-dev")]

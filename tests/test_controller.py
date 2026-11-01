@@ -622,3 +622,33 @@ def test_growatt_cloud_control():
     asyncio.run(c._apply_battery("discharge", False))
     assert [x[1] for x in h.services.calls[1:]] == ["write_ac_charge_times", "write_ac_discharge_times"]
     assert c._script_state["battery"] == "discharge@02:00-04:00"
+
+
+def test_split_power_sensors_give_energy_flow():
+    """Køb/salg og lad/aflad som to sensorer hver (Growatt via skyen) giver net, batteri og hus."""
+    states = {"sensor.imp": State("543.5", unit_of_measurement="W"), "sensor.exp": State("0", unit_of_measurement="W"),
+              "sensor.chg": State("0", unit_of_measurement="W"), "sensor.dis": State("1200", unit_of_measurement="W"),
+              "sensor.pv": State("0.3", unit_of_measurement="kW")}
+    cfg = {"grid_import_power_sensor": "sensor.imp", "grid_export_power_sensor": "sensor.exp",
+           "battery_charge_power_sensor": "sensor.chg", "battery_discharge_power_sensor": "sensor.dis",
+           "solar_power_sensor": "sensor.pv"}
+    c, h = make(cfg, states)
+    c.cars = []
+    assert c.has("grid_power_sensor")
+    assert abs(c.export_kw - (-0.5435)) < 1e-9 and abs(c.battery_kw - 1.2) < 1e-9
+    f = c.flow
+    assert f["grid_kw"] == 0.54 and f["battery_kw"] == 1.2 and f["house_kw"] == 2.04 and f["has_battery"]
+    # Salg og opladning
+    states["sensor.imp"], states["sensor.exp"] = State("0", unit_of_measurement="W"), State("800", unit_of_measurement="W")
+    states["sensor.chg"], states["sensor.dis"] = State("1500", unit_of_measurement="W"), State("0", unit_of_measurement="W")
+    assert abs(c.export_kw - 0.8) < 1e-9 and abs(c.battery_kw - (-1.5)) < 1e-9
+    # Mangler den ene: intet tal (hellere tomt end forkert)
+    del states["sensor.exp"]
+    assert c.export_kw is None
+    c2, _ = make({"grid_import_power_sensor": "sensor.imp"}, states)
+    assert not c2.has("grid_power_sensor")
+    # Én samlet sensor har forrang
+    states["sensor.grid"] = State("-300", unit_of_measurement="W")
+    c3, _ = make({**cfg, "grid_power_sensor": "sensor.grid"}, states)
+    assert abs(c3.export_kw - (-0.3)) < 1e-9
+

@@ -100,7 +100,9 @@
           "battery_option_sell_solar": "A) Navn på tilstanden: sælg solstrøm (valgfri)",
           "battery_script_sell_solar": "C) Script: sælg solstrøm (valgfri)",
           "battery_growatt_device": "D) Growatt via skyen: inverteren (Growatt Server)",
-          "battery_growatt_power": "D) Growatt: effekt ved lad/aflad (%)"
+          "battery_growatt_power": "D) Growatt: effekt ved lad/aflad (%)",
+          "battery_charge_power_sensor": "Batteriets ladeeffekt lige nu – i stedet for én sensor",
+          "battery_discharge_power_sensor": "Batteriets afladeeffekt lige nu – i stedet for én sensor"
         },
         "data_description": {
           "house_energy_sensor": "En stigende energimåler (kWh) for husets forbrug – fx fra inverteren ('Load consumption total'), en P1-måler (HAN-port) eller en elmåler. SmartHus lærer ud fra de seneste 14 dage, hvor meget huset bruger time for time, og holder så meget i batteriet, at huset klarer sig til strømmen bliver billig igen. Kun det overskydende sælges. Kræver langtidsstatistik (står den i Energi-dashboardet, har den det). Reserven bruges efter 2 dages historik.",
@@ -121,7 +123,9 @@
           "battery_option_sell_solar": "Valgfri. En tilstand hvor solcellernes strøm sælges til nettet, og batteriet ikke lades af solcellerne (huset må gerne bruge batteriet). Så kan SmartHus sælge solstrømmen, når salgsprisen er højere end prisen for at lade batteriet billigt fra nettet senere. Bruges kun, når batteriet allerede har reserven til huset. Lad feltet stå tomt for at slå det fra.",
           "battery_script_sell_solar": "Valgfri. Køres når solstrømmen skal sælges i stedet for at lade batteriet (fx sæt maks. ladeeffekt til 0). Script til normal drift køres bagefter.",
           "battery_growatt_device": "Har kunden Growatt uden lokal Modbus, kan integrationen Growatt Server (med API-token) bruges. Vælg inverteren – så skriver SmartHus selv lade- og afladetidsrum i Growatt. Ændringer slår igennem efter et minut eller to.",
-          "battery_growatt_power": "Hvor hårdt batteriet lades/aflades i procent af inverterens maks. Standard 100 %."
+          "battery_growatt_power": "Hvor hårdt batteriet lades/aflades i procent af inverterens maks. Standard 100 %.",
+          "battery_charge_power_sensor": "Kun hvis inverteren viser lade- og afladeeffekt hver for sig (fx Growatt via skyen). Begge skal vælges. Bruges kun, når 'Batteriets effekt' er tom.",
+          "battery_discharge_power_sensor": "Afladeeffekten lige nu – sammen med ladeeffekten ovenfor."
         }
       },
       "solar": {
@@ -142,7 +146,9 @@
           "grid_power_sign": "Hvad betyder et positivt tal?",
           "solar_power_sensor": "Solcelleproduktion lige nu (W eller kW) – valgfri",
           "grid_import_energy_sensor": "Energimåler: købt fra nettet i alt (kWh) – valgfri",
-          "solar_investment": "Anlæggets pris (kr) – valgfri"
+          "solar_investment": "Anlæggets pris (kr) – valgfri",
+          "grid_import_power_sensor": "Køb fra nettet lige nu (W/kW) – i stedet for én sensor",
+          "grid_export_power_sensor": "Salg til nettet lige nu (W/kW) – i stedet for én sensor"
         },
         "data_description": {
           "solar_forecast_sensor": "Gør batteriets reserve mere præcis, fordi forventet sol trækkes fra. Solcast: sensor.solcast_pv_forecast_forecast_remaining_today. Forecast.Solar: sensor.energy_production_today_remaining.",
@@ -159,7 +165,9 @@
           "grid_power_sign": "Mange invertere viser eksport som positiv, P1-målere viser ofte køb som positiv. Tjek ved at se sensoren, mens solen skinner og huset sender strøm ud.",
           "solar_power_sensor": "Solcellernes effekt lige nu, fx sensor.[inverter]_power. Elbilen begynder først at lade med sol, når produktionen er over 'Start ved sol over' (fx 4 kW). Uden sensor bruges eksporten i stedet.",
           "grid_import_energy_sensor": "En stigende måler (kWh) for al strøm, du har købt fra nettet, fx fra en P1-måler (HomeWizard, DSMR) eller inverteren ('Grid imported total'). Så viser kortet under Solceller, hvor meget du har købt, hvad det har kostet, og din gennemsnitspris.",
-          "solar_investment": "Hvad solcelleanlægget kostede i alt inkl. montering. Bruges til at vise, hvor stor en del af anlægget strømmen har tjent hjem (ROI) og hvornår det er tilbagebetalt."
+          "solar_investment": "Hvad solcelleanlægget kostede i alt inkl. montering. Bruges til at vise, hvor stor en del af anlægget strømmen har tjent hjem (ROI) og hvornår det er tilbagebetalt.",
+          "grid_import_power_sensor": "Kun hvis inverteren ikke har én sensor for nettet, men viser køb og salg hver for sig (fx Growatt via skyen). Begge skal vælges. Bruges kun, når feltet 'Effekt til/fra nettet' er tomt.",
+          "grid_export_power_sensor": "Salget til nettet lige nu – sammen med købet ovenfor."
         }
       },
       "ev": {

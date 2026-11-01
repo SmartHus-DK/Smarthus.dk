@@ -95,7 +95,9 @@
           "battery_option_sell_solar": "A) Mode name: sell solar (optional)",
           "battery_script_sell_solar": "C) Script: sell solar (optional)",
           "battery_growatt_device": "D) Growatt via cloud: the inverter (Growatt Server)",
-          "battery_growatt_power": "D) Growatt: charge/discharge power (%)"
+          "battery_growatt_power": "D) Growatt: charge/discharge power (%)",
+          "battery_charge_power_sensor": "Battery charge power now – instead of one sensor",
+          "battery_discharge_power_sensor": "Battery discharge power now – instead of one sensor"
         },
         "data_description": {
           "house_energy_sensor": "Increasing energy meter (kWh) of the house consumption – e.g. from the inverter ('Load consumption total'), a P1 meter or an electricity meter. Every night SmartHus learns the hourly consumption from the last 14 days (weekdays and weekends separately) and keeps enough in the battery for the house until power is cheap again. Only the surplus is sold. Requires long-term statistics. The reserve is used after 2 days of history.",
@@ -114,7 +116,9 @@
           "battery_option_sell_solar": "Optional. A mode where solar power is exported and the battery is not charged by the panels. SmartHus then sells solar when the sale price beats charging cheaply from the grid later. Only used when the battery already holds the house reserve. Leave empty to disable.",
           "battery_script_sell_solar": "Optional. Runs when solar should be sold instead of charging the battery (e.g. set max charge power to 0). The normal script runs afterwards.",
           "battery_growatt_device": "For Growatt without local Modbus, use the Growatt Server integration (API token). Pick the inverter – SmartHus writes charge/discharge time periods itself. Changes take a minute or two.",
-          "battery_growatt_power": "Charge/discharge power as a percentage of the inverter's maximum. Default 100%."
+          "battery_growatt_power": "Charge/discharge power as a percentage of the inverter's maximum. Default 100%.",
+          "battery_charge_power_sensor": "Only if the inverter shows charge and discharge power separately (e.g. Growatt via cloud). Pick both. Used only when 'battery power' is empty.",
+          "battery_discharge_power_sensor": "Discharge power now – together with charge power above."
         }
       },
       "solar": {
@@ -135,7 +139,9 @@
           "grid_power_sign": "What does a positive value mean?",
           "solar_power_sensor": "Solar production right now (W or kW) – optional",
           "grid_import_energy_sensor": "Energy meter: grid import (kWh) – optional",
-          "solar_investment": "System price (DKK) – optional"
+          "solar_investment": "System price (DKK) – optional",
+          "grid_import_power_sensor": "Grid import power now (W/kW) – instead of one sensor",
+          "grid_export_power_sensor": "Grid export power now (W/kW) – instead of one sensor"
         },
         "data_description": {
           "solar_forecast_sensor": "Makes the battery reserve more accurate by subtracting expected solar. Solcast: sensor.solcast_pv_forecast_forecast_remaining_today. Forecast.Solar: sensor.energy_production_today_remaining. Without a forecast, solar is assumed not to cover any house consumption – the cautious choice.",
@@ -152,7 +158,9 @@
           "grid_power_sign": "Many inverters show export as positive; P1 meters often show import as positive.",
           "solar_power_sensor": "Current solar power. EV solar charging starts when production is above 'Start at solar above'. Without it, export is used.",
           "grid_import_energy_sensor": "Increasing meter (kWh) of all energy bought from the grid, e.g. from a P1 meter. The card then shows how much you bought, what it cost and your average price.",
-          "solar_investment": "What the solar system cost in total incl. installation. Used to show how much of the system has been paid back (ROI) and when it will be paid back."
+          "solar_investment": "What the solar system cost in total incl. installation. Used to show how much of the system has been paid back (ROI) and when it will be paid back.",
+          "grid_import_power_sensor": "Only if the inverter shows import and export separately (e.g. Growatt via cloud). Pick both. Used only when 'grid power' is empty.",
+          "grid_export_power_sensor": "Export to the grid now – together with import above."
         }
       },
       "ev": {

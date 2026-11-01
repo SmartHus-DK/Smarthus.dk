@@ -15,7 +15,7 @@ EDS_DAYAHEAD_FROM: Final = date(2025, 10, 1)
 
 STATIC_URL: Final = "/smarthus_static"
 CARD_URL: Final = f"{STATIC_URL}/smarthus-card.js"
-CARD_VERSION: Final = "1.38.0"
+CARD_VERSION: Final = "1.39.0"
 
 PLATFORMS: Final = ["sensor", "binary_sensor", "switch", "number", "select"]
 
@@ -109,6 +109,9 @@ DEFAULT_HUAWEI_POWER: Final = 5000
 # Batteriets effekt lige nu (til energiflowet)
 CONF_BATTERY_POWER: Final = "battery_power_sensor"
 CONF_BATTERY_POWER_SIGN: Final = "battery_power_sign"
+# Alternativ til én sensor: lade- og afladeeffekt som to sensorer (begge ≥ 0)
+CONF_BATTERY_CHARGE_POWER: Final = "battery_charge_power_sensor"
+CONF_BATTERY_DISCHARGE_POWER: Final = "battery_discharge_power_sensor"
 SIGN_DISCHARGE_POSITIVE: Final = "discharge_positive"
 SIGN_CHARGE_POSITIVE: Final = "charge_positive"
 # Solceller
@@ -139,6 +142,9 @@ CONF_HOTWATER_MIN_ENTITY: Final = "hotwater_min_temp_entity"   # varmepumpens eg
 # Effekt til/fra nettet lige nu (bruges til solcelleoverskud)
 CONF_GRID_POWER: Final = "grid_power_sensor"
 CONF_GRID_POWER_SIGN: Final = "grid_power_sign"
+# Alternativ til én sensor: købt og solgt lige nu som to sensorer (begge ≥ 0) – fx Growatt via skyen
+CONF_GRID_IMPORT_POWER: Final = "grid_import_power_sensor"
+CONF_GRID_EXPORT_POWER: Final = "grid_export_power_sensor"
 SIGN_EXPORT_POSITIVE: Final = "export_positive"
 SIGN_IMPORT_POSITIVE: Final = "import_positive"
 S_HOTWATER_SURPLUS_KW: Final = "hotwater_surplus_kw"
@@ -188,9 +194,12 @@ BATTERY_KEYS: Final = [
     CONF_GROWATT_POWER,
     CONF_BATTERY_POWER,
     CONF_BATTERY_POWER_SIGN,
+    CONF_BATTERY_CHARGE_POWER,
+    CONF_BATTERY_DISCHARGE_POWER,
 ]
 SOLAR_KEYS: Final = [CONF_SOLAR_INVESTMENT, CONF_SOLAR_ENERGY, CONF_EXPORT_ENERGY, CONF_IMPORT_ENERGY, CONF_SOLAR_CURTAIL, CONF_SOLAR_FORECAST,
-                     CONF_GRID_POWER, CONF_GRID_POWER_SIGN, CONF_SOLAR_POWER,
+                     CONF_GRID_POWER, CONF_GRID_POWER_SIGN, CONF_GRID_IMPORT_POWER, CONF_GRID_EXPORT_POWER,
+                     CONF_SOLAR_POWER,
                      CONF_EXPORT_OPT_STOP, CONF_EXPORT_OPT_NORMAL, CONF_EXPORT_VALUE_STOP,
                      CONF_EXPORT_VALUE_NORMAL, CONF_EXPORT_SCRIPT_STOP, CONF_EXPORT_SCRIPT_START]
 EV_KEYS: Final = [CONF_EV_SWITCH, CONF_EV_ENERGY, CONF_EV_SOC]
