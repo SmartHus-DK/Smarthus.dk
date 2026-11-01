@@ -107,7 +107,7 @@ const HELP = {
     { k: ["battery_discharge_hours"], t: "Timer at sælge",
       d: "Højst så mange timer sælger batteriet til nettet med fuld kraft ('Batteri sælger' i grafen) – og kun når salgsprisen er mindst 'min. prisforskel' højere end ladeprisen inkl. ca. 10 % tab. Ellers er strømmen mere værd i huset, og der sælges ikke. Der holdes altid så meget tilbage, at huset klarer sig, til strømmen bliver billig igen. Resten af tiden dækker batteriet husets forbrug." },
     { k: ["battery_capacity"], t: "Gem batteriet til de dyre timer",
-      d: "Rækker batteriet ikke til hele døgnet, gemmes det i de billige timer ('Batteri gemmes' i grafen): huset kører på nettet, solen må stadig lade, og strømmen bruges i stedet i de dyreste timer før næste opladning ('Batteri bruges'). Under reserven ses, hvad det forventes at spare resten af i dag. Kræver at anlægget kan stå stille – fx Growatt SPH, SigEnergy eller et script." },
+      d: "Rækker batteriet ikke til hele døgnet, gemmes det i de billige timer ('Batteri gemmes' i grafen): huset kører på nettet, solen må stadig lade, og strømmen bruges i stedet i de dyreste timer før næste opladning ('Batteri bruges'). Under reserven ses, hvad det sparer i dag – målt indtil nu plus et skøn for resten af dagen. Kræver at anlægget kan stå stille – fx Growatt SPH, SigEnergy eller et script." },
     { k: ["battery_discharge_from"], t: "Tidsrum for afladning",
       d: "De dyre timer søges kun inden for dette tidsrum, fx 16–21 for kun at bruge batteriet i aftenspidsen." },
     { k: ["battery_min_spread"], t: "Min. prisforskel",
@@ -974,8 +974,8 @@ class SmartHusCard extends HTMLElement {
         if (isOn("battery_discharge_now")) return `${prefix}Sælger${ra.sellable_kwh != null ? ` · ${nf(ra.sellable_kwh, 1)} kWh tilbage at sælge` : ""}`;
         const fd = ra.forecast?.today;
         const gain = fd ? (fd.house_saving || 0) + Math.max(fd.sell_gain || 0, 0) : 0;
-        if (isOn("battery_use_now")) return `${prefix}Dækker huset${gain > 0.05 ? ` · sparer ca. ${nf(gain, 0)} kr resten af i dag` : ""}`;
-        if (gain > 0.05) return `${prefix}Sparer ca. ${nf(gain, 0)} kr resten af i dag`;
+        if (isOn("battery_use_now")) return `${prefix}Dækker huset${gain > 0.05 ? ` · sparer ca. ${nf(gain, 0)} kr i dag` : ""}`;
+        if (gain > 0.05) return `${prefix}Sparer ca. ${nf(gain, 0)} kr i dag`;
         if (r && ra.reserve_kwh != null && ra.until) return `Reserve ${nf(ra.reserve_kwh, 1)} kWh til kl. ${hh(new Date(ra.until))}`;
         return `${prefix}${next("battery_charge_now") ? `Lader ${next("battery_charge_now")}` : "Normal drift"}`;
       }
@@ -1620,37 +1620,41 @@ class SmartHusCard extends HTMLElement {
     return `<div class="cycle"><div class="cycle-title">Næste køb og salg <span>skøn</span></div>${body}</div>`;
   }
 
-  /** Forventet i dag (og i morgen): hvad batteriet dækker i huset, hvad det sparer, og om salg betaler sig. */
+  /** Batteriet i dag (målt indtil nu + skøn for resten) og i morgen: brug i huset, besparelse og salg. */
   _forecastBox(f) {
     const row = (l, v, cls = "") => `<div class="tr-row ${cls}"><span>${l}</span><b>${v}</b></div>`;
     const sign = (v) => `${v >= 0 ? "+" : "−"}${nf(Math.abs(v))} kr`;
     const periods = (key, day) => {
-      const slots = (this._st("binary_sensor", key)?.attributes?.slots || []).filter((t) => {
-        const d = new Date(t); const ref = new Date(); if (day === "tomorrow") ref.setDate(ref.getDate() + 1);
-        return d.toDateString() === ref.toDateString() && d.getTime() + 900e3 > Date.now();
-      });
+      const ref = new Date(); if (day === "tomorrow") ref.setDate(ref.getDate() + 1);
+      const slots = (this._st("binary_sensor", key)?.attributes?.slots || []).filter((t) => new Date(t).toDateString() === ref.toDateString());
       return upcoming(slots).map((p) => (p.active ? `nu–${p.text.split("–")[1]}` : p.text).replace(/^(i dag|i morgen) /, "")).join(", ");
     };
-    const block = (d, day, title) => {
+    const block = (d, day, title, split) => {
       if (!d) return "";
       const use = periods("battery_use_now", day);
       const rows = [];
-      if (d.charge_kwh > 0.05) rows.push(row(`Lader ${nf(d.charge_kwh, 1)} kWh fra nettet`, `−${nf(d.charge_cost)} kr`, "neg"));
       if (d.house_kwh > 0.05) {
-        rows.push(row(`Dækker huset ${nf(d.house_kwh, 1)} kWh${use ? ` <small class="muted">${esc(use)}</small>` : ""}`, `+${nf(d.house_value)} kr`));
-        rows.push(row(`Strømmen koster ca. ${nf(f.cost_per_kwh)} kr/kWh (inkl. tab)`, `−${nf(d.house_cost)} kr`, "neg"));
+        const more = split && split.rest > 0.05 && split.done > 0.05 ? ` <small class="muted">${nf(split.done, 1)} indtil nu${use ? ` · ${esc(use)}` : ""}</small>`
+          : use ? ` <small class="muted">${esc(use)}</small>` : "";
+        rows.push(row(`Dækker huset ${nf(d.house_kwh, 1)} kWh${more}`, `+${nf(d.house_value)} kr`));
+        rows.push(row(`Strømmen i batteriet koster (inkl. tab)`, `−${nf(d.house_cost)} kr`, "neg"));
         rows.push(row("Sparet ved at bruge batteriet", sign(d.house_saving), `sum ${d.house_saving >= 0 ? "pos" : "neg"}`));
       }
       if (d.sell_kwh > 0.05) {
         rows.push(row(`Sælger ${nf(d.sell_kwh, 1)} kWh ud over reserven`, `+${nf(d.sell_income)} kr`));
         rows.push(row("Gevinst ved salg (efter ladepris og tab)", sign(d.sell_gain), `sum ${d.sell_gain >= 0 ? "pos" : "neg"}`));
       }
-      if (!rows.length) rows.push(`<div class="cmp-sub" style="margin-left:0">Batteriet er ved laveste niveau og bruges ikke${day === "today" ? " resten af i dag" : ""}.</div>`);
-      return `<div class="cycle-title">${title} <span>skøn</span></div>${rows.join("")}`;
+      if (!rows.length) rows.push(`<div class="cmp-sub" style="margin-left:0">Batteriet bruges ikke ${day === "today" ? "i dag" : "i morgen"} – det er ved laveste niveau.</div>`);
+      return `<div class="cycle-title">${title} <span>${day === "today" ? "målt + skøn" : "skøn"}</span></div>${rows.join("")}`;
     };
-    const anySell = (f.today?.sell_kwh || 0) + (f.tomorrow?.sell_kwh || 0) > 0.05;
+    const t = f.today, done = f.today_so_far || {}, rest = f.today_rest || {};
+    const split = { done: done.house_kwh || 0, rest: rest.house_kwh || 0 };
+    const gainDone = (done.house_saving || 0) + (done.sell_gain || 0), gainRest = (rest.house_saving || 0) + (rest.sell_gain || 0);
+    const parts = t && (Math.abs(gainDone) > 0.05 && Math.abs(gainRest) > 0.05)
+      ? `<div class="cmp-sub" style="margin-left:0">Indtil nu ${sign(gainDone)} · resten af dagen ca. ${sign(gainRest)}</div>` : "";
+    const anySell = (t?.sell_kwh || 0) + (f.tomorrow?.sell_kwh || 0) > 0.05;
     const note = anySell ? "" : `<div class="cmp-sub" style="margin-left:0">Intet salg til nettet: den bedste salgspris (${nf(f.best_sale)} kr/kWh) dækker ikke strømmens pris inkl. tab (${nf(f.cost_per_kwh)} kr/kWh). Strømmen er mere værd i huset.</div>`;
-    return `<div class="cycle">${block(f.today, "today", "Resten af i dag")}${block(f.tomorrow, "tomorrow", "I morgen")}${note}</div>`;
+    return `<div class="cycle">${block(t, "today", "I dag", split)}${parts}${block(f.tomorrow, "tomorrow", "I morgen")}${note}</div>`;
   }
 
   /** Kommende perioder for en plan (fx afladning) med gennemsnitlig salgs- og købspris. */

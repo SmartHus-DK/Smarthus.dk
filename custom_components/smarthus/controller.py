@@ -848,8 +848,22 @@ class SmartHusController:
         p.battery_use = f["use"]
         today = now.astimezone(self.tz).date()
         keys = sorted(f["days"])
+        # Hele dagen: det, der allerede er sket i dag (målt), plus skønnet for resten af dagen
+        rest = f["days"].get(today.isoformat()) or {}
+        done = self.savings.trade("today") if hasattr(self.savings, "trade") else {}
+        so_far = {
+            "house_kwh": done.get("house_kwh", 0.0), "house_value": done.get("house_value", 0.0),
+            "house_cost": done.get("house_cost", 0.0), "sell_kwh": done.get("sold_kwh", 0.0),
+            "sell_income": done.get("income", 0.0),
+            "sell_cost": done.get("cost_grid", 0.0) + done.get("cost_solar", 0.0),
+        }
+        so_far["house_saving"] = so_far["house_value"] - so_far["house_cost"]
+        so_far["sell_gain"] = so_far["sell_income"] - so_far["sell_cost"]
+        whole = {k: round(so_far.get(k, 0.0) + rest.get(k, 0.0), 2) for k in so_far}
         self.battery_forecast = {
-            "today": f["days"].get(today.isoformat()),
+            "today": whole,
+            "today_so_far": {k: round(v, 2) for k, v in so_far.items()},
+            "today_rest": rest or None,
             "tomorrow": f["days"].get((today + timedelta(days=1)).isoformat()),
             "cost_per_kwh": round(stock / 0.9, 3),
             "best_sale": round(max((s.sale for s in (self.coordinator.data or []) if s.end > now), default=0.0), 3),
