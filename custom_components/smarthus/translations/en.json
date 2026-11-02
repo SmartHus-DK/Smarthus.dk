@@ -405,7 +405,8 @@
           "discharge": "Discharging",
           "normal": "Normal",
           "off": "Off",
-          "sell_solar": "Selling solar"
+          "sell_solar": "Selling solar",
+          "hold": "Held for expensive hours"
         }
       },
       "status": {

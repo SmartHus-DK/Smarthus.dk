@@ -138,7 +138,7 @@ from .flow import energy_flow, to_kw
 from .pricing import has_vat, vat_factor
 from .plug import pick_connected, plug_state
 from .solar import EvSolarState, regulate_ev
-from .weather import forecast_sensor_ids, merge_wh, pick_weather_entity, summarize_forecast
+from .weather import forecast_sensor_ids, merge_wh, pick_weather_entity, solar_by_hour, summarize_forecast
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -768,7 +768,9 @@ class SmartHusController:
             "skipping": skip,
         }
         if skip:
-            p.battery_action = ACTION_NORMAL
+            # Målet er nået: stå stille resten af ladeblokken – ellers bruges strømmen i nattens billigste timer,
+            # og opladningen starter igen, så snart niveauet falder lidt
+            p.battery_action = ACTION_HOLD if self.has_hold else ACTION_NORMAL
 
     def _decide_sell_solar(self, now: datetime) -> None:
         """Sælg solstrømmen nu og lad batteriet billigt senere – hvis det betaler sig og huset er dækket.
@@ -820,14 +822,30 @@ class SmartHusController:
         nxt = [s.start for s in p.battery_charge if s.start > now]
         until = min(nxt) if nxt else max((s.end for s in data), default=until)
         slots = [s for s in data if s not in p.battery_charge]
+        full = cap * self.settings[S_BATTERY_MAX_SOC] / 100
         hold, limit = plan_hold(slots, self.profile, local, until.astimezone(self.tz), usable,
-                                previous=getattr(self, "_hold_prev", set()))
-        p.battery_hold = hold
+                                previous=getattr(self, "_hold_prev", set()), solar=self._solar_hours(),
+                                room_kwh=max(full - cap * soc / 100, 0.0))
         self._hold_prev = {s.start for s in hold}
+        if p.battery_action == ACTION_HOLD and p.current in p.battery_charge:
+            # Lademålet er nået midt i en ladeblok: resten af blokken står batteriet stille (ét tidsrum til inverteren)
+            by = {s.start: s for s in p.battery_charge}
+            blk, t = [], p.current.start
+            while t in by:
+                blk.append(by[t])
+                t = by[t].end
+            hold = blk + [s for s in hold if s.start not in {x.start for x in blk}]
+        p.battery_hold = sorted(hold, key=lambda s: s.start)
         self.battery_hold = {"active": p.current in hold, "usable_kwh": round(usable, 2),
                              "covers_price_from": round(limit, 3) if limit is not None else None}
         if p.battery_action == ACTION_NORMAL and p.current in hold:
             p.battery_action = ACTION_HOLD
+
+    def _solar_hours(self) -> dict | None:
+        """Solprognosen som kWh pr. lokal time (tom, hvis der ikke er en prognose)."""
+        if not self._forecast_wh:
+            return None
+        return solar_by_hour(self._forecast_wh, self.tz, self._forecast_key_is_end)
 
     def _forecast_battery(self, now: datetime) -> None:
         """Skøn over batteriet resten af i dag og i morgen: brug i huset, besparelse og salg."""
@@ -844,7 +862,8 @@ class SmartHusController:
         f = forecast_battery(self.coordinator.data or [], self.profile, now.astimezone(self.tz),
                              battery_kwh=cap * soc / 100, floor_kwh=cap * self.settings[S_BATTERY_MIN_SOC] / 100,
                              full_kwh=cap * self.settings[S_BATTERY_MAX_SOC] / 100, charge=p.battery_charge,
-                             hold=p.battery_hold, sell=p.battery_discharge, stock_price=stock, can_hold=self.has_hold)
+                             hold=p.battery_hold, sell=p.battery_discharge, stock_price=stock, can_hold=self.has_hold,
+                             solar=self._solar_hours())
         p.battery_use = f["use"]
         # Vis også gem-tidsrummene efter næste opladning (de nuværende styrer stadig inverteren)
         now_hold = {s.start for s in p.battery_hold}

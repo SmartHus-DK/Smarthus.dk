@@ -694,3 +694,32 @@ def test_hold_capability_and_fallbacks():
     assert not c.has_hold
     asyncio.run(c._apply_battery("hold", False))
     assert h.services.calls[-1][1] == "stop_forcible_charge"
+
+
+def test_charge_target_reached_holds_rest_of_block():
+    """Når lademålet er nået, står batteriet stille resten af ladeblokken (ikke normal drift i de billigste timer)."""
+    import types
+    from datetime import datetime, timedelta
+    tz = ZoneInfo("Europe/Copenhagen")
+    q = timedelta(minutes=15)
+    t0 = datetime(2026, 11, 2, 2, 0, tzinfo=tz).astimezone(timezone.utc)
+    ch = [planner.Slot(t0 + i * q, t0 + (i + 1) * q, 2.4, 2.4, 1.6) for i in range(12)]
+    c, h = make({"battery_growatt_device": "gw1", "battery_growatt_type": "sph", "battery_soc_sensor": "sensor.soc"},
+                {"sensor.soc": State("60")})
+    c.settings.update(battery_capacity=5.6, battery_max_soc=95, battery_min_soc=15)
+    c.plan = planner.Plan(current=ch[5], battery_charge=ch, battery_action="charge")
+    c.plan.battery_hold = []
+    c.profile = sys.modules["smarthus.profile"].Profile(weekday=[0.3] * 24, weekend=[0.3] * 24, days=5)
+    c.coordinator = types.SimpleNamespace(data=ch)
+    c._forecast_wh, c._forecast_key_is_end = {}, False
+    fc = {"today_kwh": 9.0, "remaining_kwh": 9.0, "tomorrow_kwh": 9.0}
+    c.__class__ = type("WithSun", (type(c),), {"solar_forecast": property(lambda self: fc)})
+    c._decide_grid_charge(ch[5].start)
+    assert c.grid_charge["skipping"] and c.plan.battery_action == "hold"
+    c._decide_hold(ch[5].start, ch[-1].end)
+    hold = c.plan.battery_hold
+    assert hold[0].start == ch[5].start and hold[-1].end == ch[-1].end          # resten af blokken som ét tidsrum
+    asyncio.run(c._apply_battery("hold", False))
+    d = h.services.calls[-1][2]
+    assert d["mains_enabled"] is False and (d["period_1_start"], d["period_1_end"]) == ("03:15", "05:00")
+

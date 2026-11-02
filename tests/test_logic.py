@@ -1355,3 +1355,26 @@ def test_profile_ignores_days_without_data():
     assert abs(sum(p.weekday) - 9.6) < 0.01 and abs(sum(p.weekend) - 9.6) < 0.01
     assert (p.weekday_days, p.weekend_days) == (5, 2)
 
+
+def test_plan_hold_counts_on_solar_refill():
+    """Fylder solen batteriet midt på dagen, må det bruges i morgenspidsen – det skal ikke gemmes hele dagen."""
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("Europe/Copenhagen")
+    q = timedelta(minutes=15)
+    t0 = datetime(2026, 11, 2, 7, 0, tzinfo=tz)
+    prof = profile.Profile(weekday=[0.5] * 24, weekend=[0.5] * 24, days=5)
+    # 07–09 dyrt (3,5), 09–16 billigt (2,6), 16–21 dyrest (4,5)
+    prices = [3.5] * 8 + [2.6] * 28 + [4.5] * 20
+    slots = [planner.Slot(t0 + i * q, t0 + (i + 1) * q, p, p, 1.6) for i, p in enumerate(prices)]
+    until = t0 + timedelta(hours=14)
+    no_sun, _ = profile.plan_hold(slots, prof, t0, until, 2.0)
+    assert any(s.price == 3.5 for s in no_sun)                 # uden sol: morgenspidsen gemmes til aftenen
+    sun = {t0.replace(hour=h): 2.0 for h in range(10, 15)}     # 5 timer à 2 kWh – rigeligt overskud
+    with_sun, _ = profile.plan_hold(slots, prof, t0, until, 2.0, solar=sun, room_kwh=4.0)
+    assert not any(s.price == 3.5 for s in with_sun)           # med sol: brug batteriet nu, solen fylder op
+    f = profile.forecast_battery(slots, prof, t0, battery_kwh=3.0, floor_kwh=1.0, full_kwh=5.0, charge=[],
+                                 hold=with_sun, sell=[], stock_price=2.4, can_hold=True, solar=sun)
+    d = f["days"]["2026-11-02"]
+    assert d["solar_kwh"] >= 3.0 and {7, 16, 17, 18, 19, 20} <= {s.start.hour for s in f["use"]}
+

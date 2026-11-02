@@ -414,10 +414,11 @@
         "name": "Batteristyring",
         "state": {
           "charge": "Lader",
-          "discharge": "Aflader",
+          "discharge": "Sælger",
           "normal": "Normal",
           "off": "Slået fra",
-          "sell_solar": "Sælger solstrøm"
+          "sell_solar": "Sælger solstrøm",
+          "hold": "Gemmes til de dyre timer"
         }
       },
       "status": {

@@ -171,35 +171,80 @@ HOLD_MIN_SLOTS = 2     # gem i mindst 30 min ad gangen (ingen enkelte kvarterer)
 HOLD_STICKY_KWH = 0.3  # en igangværende gem-periode fortsætter, til batteriet har mindst så meget for meget
 
 
+def _solar_in(solar: dict | None, a: datetime, b: datetime) -> float:
+    """Forventet solproduktion (kWh) mellem to lokale tidspunkter ud fra en prognose pr. time."""
+    if not solar or b <= a:
+        return 0.0
+    total, t = 0.0, a
+    while t < b:
+        h = t.replace(minute=0, second=0, microsecond=0)
+        nxt = min(h + timedelta(hours=1), b)
+        total += solar.get(h, 0.0) * (nxt - t).total_seconds() / 3600
+        t = nxt
+    return total
+
+
+SOLAR_CHARGE = 0.95    # tab, når solens overskud lades i batteriet
+
+
 def plan_hold(slots: list, profile: Profile, now: datetime, until: datetime, usable_kwh: float,
-              min_gain: float = HOLD_MIN_GAIN, previous: set | None = None) -> tuple[list, float | None]:
+              min_gain: float = HOLD_MIN_GAIN, previous: set | None = None, solar: dict | None = None,
+              room_kwh: float | None = None) -> tuple[list, float | None]:
     """Hvornår skal batteriet gemmes (stå stille), så strømmen rækker til de dyreste timer?
 
-    Batteriets brugbare energi fordeles på husets forventede forbrug i de dyreste tidsrum frem til
-    `until` (næste opladning). Er der ikke nok til alle, gemmes batteriet i de tidsrum, det ikke skal dække,
-    når et senere tidsrum, det skal dække, er mindst `min_gain` dyrere. Huset kører så på nettet,
-    mens solen stadig må lade batteriet.
+    Batteriets brugbare energi – og solens forventede overskud, når det er kommet – fordeles på husets
+    forventede forbrug (efter sol) i de dyreste tidsrum frem til `until` (næste opladning). Solens overskud
+    kan kun bruges efter, det er lavet, og højst `room_kwh` kan gemmes. Er der ikke nok til alle, gemmes
+    batteriet i de tidsrum, det ikke skal dække, når et senere tidsrum, det skal dække, er mindst
+    `min_gain` dyrere. Huset kører så på nettet, mens solen stadig må lade batteriet.
 
-    `slots` har tidspunkter med tidszone; `now`/`until` er lokale tidspunkter.
+    `slots` har tidspunkter med tidszone; `now`/`until` er lokale tidspunkter. `solar` er kWh pr. lokal time.
     `previous` er starttiderne fra sidste beregning. De holdes ved (hysterese), så planen ikke skifter
     frem og tilbage, fordi den regnes om hvert minut.
     Returnerer (tidsrum, hvor batteriet gemmes, prisgrænsen for de tidsrum batteriet dækker).
     """
     previous = previous or set()
     horizon = sorted((s for s in slots if s.end > now and s.start < until), key=lambda s: s.start)
-    if not horizon or usable_kwh <= 0.05:
+    if not horizon:
         return [], None
     tz = now.tzinfo
-    need = {s.start: expected_load(profile, max(s.start.astimezone(tz), now), min(s.end.astimezone(tz), until)) / EFFICIENCY
-            for s in horizon}
-    left, covered = usable_kwh, set()
-    for s in sorted(horizon, key=lambda s: (-s.price, s.start)):
-        if left <= 0:
-            break
-        covered.add(s.start)
-        left -= need[s.start]
-    if left > (HOLD_STICKY_KWH if previous else 0):
+    need, pool = [], []
+    cap = float("inf") if room_kwh is None else room_kwh
+    for s in horizon:
+        a, b = max(s.start.astimezone(tz), now), min(s.end.astimezone(tz), until)
+        load, sun = expected_load(profile, a, b), _solar_in(solar, a, b)
+        need.append(max(load - sun, 0.0) / EFFICIENCY)
+        add = min(max(sun - load, 0.0) * SOLAR_CHARGE, cap)
+        cap -= add
+        pool.append(add)
+    if usable_kwh <= 0.05 and not any(pool):
+        return [], None
+    e0 = usable_kwh
+    covered, short = set(), 0.0
+    for k in sorted(range(len(horizon)), key=lambda k: (-horizon[k].price, horizon[k].start)):
+        n = need[k]
+        if n <= 0:
+            continue
+        took = 0.0
+        for j in range(k - 1, -1, -1):          # solens overskud fra før dette tidsrum – det seneste først
+            if n <= 0:
+                break
+            d = min(pool[j], n)
+            pool[j] -= d
+            n -= d
+            took += d
+        d = min(e0, n)
+        e0 -= d
+        n -= d
+        took += d
+        if took > 0:
+            covered.add(horizon[k].start)
+        short += n
+    spare = e0 + sum(pool)
+    if short <= 0 and spare > (HOLD_STICKY_KWH if previous else 0):
         return [], None                       # nok til det hele – intet at gemme
+    if not covered:
+        return [], None
     limit = min(s.price for s in horizon if s.start in covered)
     # Gem i et tidsrum, batteriet ikke skal dække, hvis det senere skal dække et tidsrum, der er mindst
     # `min_gain` dyrere – ellers ville strømmen blive brugt nu og mangle der.
@@ -209,7 +254,8 @@ def plan_hold(slots: list, profile: Profile, now: datetime, until: datetime, usa
         later[k] = best
         if horizon[k].start in covered:
             best = max(best, horizon[k].price)
-    flag = [s.start not in covered and (later[k] - s.price >= min_gain or (s.start in previous and later[k] > s.price))
+    flag = [s.start not in covered and need[k] > 0
+            and (later[k] - s.price >= min_gain or (s.start in previous and later[k] > s.price))
             for k, s in enumerate(horizon)]
     # Glat ud: korte huller (højst 30 min) mellem to perioder lukkes, hvis batteriet alligevel ikke dækker dem …
     i = 0
@@ -249,7 +295,7 @@ def _blank_day() -> dict:
 
 def forecast_battery(slots: list, profile: Profile, now: datetime, *, battery_kwh: float, floor_kwh: float,
                      full_kwh: float, charge: list, hold: list, sell: list, stock_price: float,
-                     can_hold: bool) -> dict:
+                     can_hold: bool, solar: dict | None = None) -> dict:
     """Skøn over batteriet time for time: hvornår det lades, gemmes, dækker huset og sælger – og hvad det sparer.
 
     * Ladetidsrum fylder batteriet op til `full_kwh` (ladepris = købsprisen).
@@ -281,7 +327,14 @@ def forecast_battery(slots: list, profile: Profile, now: datetime, *, battery_kw
     for i, s in enumerate(fut):
         d = days.setdefault(s.start.astimezone(tz).date().isoformat(), _blank_day())
         a, b = max(s.start.astimezone(tz), now), s.end.astimezone(tz)
-        load = expected_load(profile, a, b)
+        sun = _solar_in(solar, a, b)
+        load_all = expected_load(profile, a, b)
+        load = max(load_all - sun, 0.0)              # solen dækker huset først
+        extra = min(max(sun - load_all, 0.0) * SOLAR_CHARGE, max(full_kwh - bat, 0.0))
+        if extra > 0:                                # … og overskuddet lader batteriet
+            avg = (avg * max(bat, 0.0) + extra * max(s.sale, 0.0)) / max(bat + extra, 0.01)   # solstrøm koster salgsprisen
+            bat += extra
+            d["solar_kwh"] = d.get("solar_kwh", 0.0) + extra
         if s.start in ch:
             j = block_end(i, ch)
             add = max(full_kwh - bat, 0.0) / (j - i + 1)
@@ -292,7 +345,8 @@ def forecast_battery(slots: list, profile: Profile, now: datetime, *, battery_kw
                 d["charge_cost"] += add * s.price
             if i == j and can_hold:      # opladningen er færdig: hvornår skal batteriet gemmes til næste gang?
                 rest = [x for x in fut if x.start not in ch]
-                hd |= {x.start for x in plan_hold(rest, profile, b, next_charge(s.end), max(bat - floor_kwh, 0.0))[0]}
+                hd |= {x.start for x in plan_hold(rest, profile, b, next_charge(s.end), max(bat - floor_kwh, 0.0),
+                                                  solar=solar, room_kwh=max(full_kwh - bat, 0.0))[0]}
             continue
         if s.start in hd:
             continue
@@ -305,7 +359,7 @@ def forecast_battery(slots: list, profile: Profile, now: datetime, *, battery_kw
             left = block_end(i, sl) - i + 1
             sold = max(min((avail - used - need) / left, avail - used), 0.0)
         bat -= used + sold
-        if avail > 0.005:                  # batteriet står klar og dækker huset (også når det bruger meget lidt)
+        if avail > 0.005 and load > 0.0005:  # batteriet dækker huset (også når det bruger meget lidt)
             use.append(s)
             d["house_kwh"] += used
             d["house_value"] += used * s.price

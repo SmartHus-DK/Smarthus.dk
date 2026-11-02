@@ -223,7 +223,7 @@ SENSORS: tuple[SmartHusSensorDescription, ...] = (
     SmartHusSensorDescription(key="cheapest_hour", icon="mdi:clock-star-four-points",
                               device_class=SensorDeviceClass.TIMESTAMP, value_fn=_cheapest_hour),
     SmartHusSensorDescription(key="battery_status", icon="mdi:home-battery", device_class=SensorDeviceClass.ENUM,
-                              options=["charge", "discharge", "normal", "sell_solar", "off"], value_fn=_battery_status),
+                              options=["charge", "discharge", "normal", "sell_solar", "hold", "off"], value_fn=_battery_status),
     SmartHusSensorDescription(key="status", icon="mdi:home-lightning-bolt", value_fn=_status),
     SmartHusSensorDescription(key="savings_today", icon="mdi:piggy-bank", value_fn=_savings("today"),
                               attrs_fn=_savings_attrs("today"), **MONEY),

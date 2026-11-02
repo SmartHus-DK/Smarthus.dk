@@ -115,3 +115,27 @@ def merge_wh(*sources: dict[str, float]) -> dict[str, float]:
         for k, v in (src or {}).items():
             out[k] = out.get(k, 0.0) + float(v or 0)
     return out
+
+
+def solar_by_hour(wh_hours: dict[str, float], tz: tzinfo, key_is_end: bool = False) -> dict[datetime, float]:
+    """Prognosen som kWh pr. lokal time (nøgle: timens start). Bruges til at regne med, at solen lader batteriet."""
+    points = []
+    for key, wh in wh_hours.items():
+        try:
+            t = datetime.fromisoformat(str(key))
+        except (TypeError, ValueError):
+            continue
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=tz)
+        points.append((t, float(wh or 0)))
+    points.sort()
+    out: dict[datetime, float] = {}
+    hour, limit = timedelta(hours=1), timedelta(hours=3)
+    for i, (t, wh) in enumerate(points):
+        if key_is_end:
+            start = points[i - 1][0] if i > 0 and t - points[i - 1][0] <= limit else t - hour
+        else:
+            start = t
+        h = start.astimezone(tz).replace(minute=0, second=0, microsecond=0)
+        out[h] = out.get(h, 0.0) + wh / 1000
+    return out
