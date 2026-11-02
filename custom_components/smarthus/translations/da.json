@@ -5,7 +5,8 @@
         "title": "SmartHus",
         "description": "Intelligent styring af solceller, batteri, elbil og varmepumpe efter elprisen. Enhederne tilføjes bagefter under Konfigurer.",
         "data": {
-          "name": "Navn"
+          "name": "Navn",
+          "password": "Installatørens adgangskode"
         }
       },
       "prices": {
@@ -60,7 +61,8 @@
     },
     "error": {
       "stromligning_missing": "Sensoren findes ikke. Installér Strømligning-integrationen (HACS) og vælg dit elselskab og produkt der først.",
-      "stromligning_no_prices": "Sensoren har ingen priser (attributten 'prices' mangler). Vælg Strømligning-sensoren for den aktuelle pris inkl. moms."
+      "stromligning_no_prices": "Sensoren har ingen priser (attributten 'prices' mangler). Vælg Strømligning-sensoren for den aktuelle pris inkl. moms.",
+      "wrong_password": "Forkert adgangskode"
     }
   },
   "options": {
@@ -349,6 +351,26 @@
         "data": {
           "device": "Lader"
         }
+      },
+      "menu": {
+        "title": "SmartHus – opsætning",
+        "menu_options": {
+          "preset": "Vælg dit anlæg (automatisk opsætning)",
+          "battery": "Batteri / inverter",
+          "solar": "Solceller",
+          "ev": "Elbiler",
+          "hotwater": "Varmt vand",
+          "heating": "Varme / varmepumpe",
+          "prices": "Elpris og tariffer",
+          "weather": "Vejr og udetemperatur"
+        }
+      },
+      "unlock": {
+        "title": "SmartHus – adgangskode",
+        "description": "Opsætningen er beskyttet. Skriv installatørens adgangskode.",
+        "data": {
+          "password": "Adgangskode"
+        }
       }
     },
     "error": {
@@ -358,7 +380,8 @@
       "export_number_values": "Du har valgt et tal – udfyld begge værdier (ved stop og ved normal eksport).",
       "export_scripts_pair": "Vælg både et script til at stoppe og et til at starte eksporten igen.",
       "preset_integration_missing": "Integrationen **{integration}** er ikke installeret. Installér den først: {url}",
-      "charger_not_found": "Der blev ikke fundet en lader i **{integration}**. Tjek at integrationen er sat op, og at laderens entiteter er slået til ({url})."
+      "charger_not_found": "Der blev ikke fundet en lader i **{integration}**. Tjek at integrationen er sat op, og at laderens entiteter er slået til ({url}).",
+      "wrong_password": "Forkert adgangskode"
     }
   },
   "selector": {

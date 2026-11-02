@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 from typing import Any
 
 import voluptuous as vol
@@ -280,6 +282,17 @@ def _price_errors(hass, user_input: dict) -> dict:
     return {}
 
 
+# Adgangskode til opsætningen (installatøren). Kun et hash står i koden, ikke selve koden.
+SETUP_PASSWORD_SHA256 = "70d988996048a07ac7c04a37e185bb4088912623ad5784438fcab3976a8730a0"
+CONF_PASSWORD = "password"
+PASSWORD = selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD))
+
+
+def _password_ok(value: str | None) -> bool:
+    digest = hashlib.sha256((value or "").encode()).hexdigest()
+    return hmac.compare_digest(digest, SETUP_PASSWORD_SHA256)
+
+
 def _opt(key: str, current: dict, sel: Any, default: str | None = None) -> tuple:
     value = current.get(key, default)
     return vol.Optional(key, description={"suggested_value": value} if value not in (None, "") else None), sel
@@ -299,12 +312,19 @@ class SmartHusConfigFlow(ConfigFlow, domain=DOMAIN):
         self._data: dict[str, Any] = {}
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
         if user_input is not None:
-            self._data[CONF_NAME] = user_input[CONF_NAME]
-            return await self.async_step_prices()
+            if not _password_ok(user_input.get(CONF_PASSWORD)):
+                errors[CONF_PASSWORD] = "wrong_password"
+            else:
+                self._data[CONF_NAME] = user_input[CONF_NAME]
+                return await self.async_step_prices()
         return self.async_show_form(
-            step_id="user",
-            data_schema=vol.Schema({vol.Required(CONF_NAME, default="SmartHus"): str}),
+            step_id="user", errors=errors,
+            data_schema=vol.Schema({
+                vol.Required(CONF_NAME, default=(user_input or {}).get(CONF_NAME, "SmartHus")): str,
+                vol.Required(CONF_PASSWORD): PASSWORD,
+            }),
         )
 
     async def async_step_prices(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
@@ -374,9 +394,27 @@ class SmartHusOptionsFlow(OptionsFlow):
                 new[key] = val
         return self.async_create_entry(data=new)
 
+    _unlocked: bool = False
+
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Opsætningen kræver installatørens adgangskode – én gang pr. gang den åbnes."""
+        if not self._unlocked:
+            return await self.async_step_unlock()
+        return await self.async_step_menu()
+
+    async def async_step_unlock(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            if _password_ok(user_input.get(CONF_PASSWORD)):
+                self._unlocked = True
+                return await self.async_step_menu()
+            errors[CONF_PASSWORD] = "wrong_password"
+        return self.async_show_form(step_id="unlock", errors=errors,
+                                    data_schema=vol.Schema({vol.Required(CONF_PASSWORD): PASSWORD}))
+
+    async def async_step_menu(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         return self.async_show_menu(
-            step_id="init",
+            step_id="menu",
             menu_options=["preset", "battery", "solar", "ev", "hotwater", "heating", "weather", "prices"],
         )
 

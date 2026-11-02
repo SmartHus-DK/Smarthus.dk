@@ -5,7 +5,8 @@
         "title": "SmartHus",
         "description": "Smart control of solar, battery, EV charger and heat pump based on electricity prices. Devices are added afterwards under Configure.",
         "data": {
-          "name": "Name"
+          "name": "Name",
+          "password": "Installer password"
         }
       },
       "prices": {
@@ -55,7 +56,8 @@
     },
     "error": {
       "stromligning_missing": "The sensor does not exist. Install the Strømligning integration (HACS) and choose your supplier and product there first.",
-      "stromligning_no_prices": "The sensor has no prices (the 'prices' attribute is missing). Choose the Strømligning current price incl. VAT sensor."
+      "stromligning_no_prices": "The sensor has no prices (the 'prices' attribute is missing). Choose the Strømligning current price incl. VAT sensor.",
+      "wrong_password": "Wrong password"
     }
   },
   "options": {
@@ -337,6 +339,26 @@
         "data": {
           "device": "Charger"
         }
+      },
+      "menu": {
+        "title": "SmartHus – setup",
+        "menu_options": {
+          "preset": "Choose your system (automatic setup)",
+          "battery": "Battery / inverter",
+          "solar": "Solar",
+          "ev": "EVs",
+          "hotwater": "Hot water",
+          "heating": "Heating / heat pump",
+          "prices": "Electricity price and tariffs",
+          "weather": "Weather and outdoor temperature"
+        }
+      },
+      "unlock": {
+        "title": "SmartHus – password",
+        "description": "The configuration is protected. Enter the installer password.",
+        "data": {
+          "password": "Password"
+        }
       }
     },
     "error": {
@@ -346,7 +368,8 @@
       "export_number_values": "You chose a number – fill in both values.",
       "export_scripts_pair": "Choose both a stop script and a start script.",
       "preset_integration_missing": "The integration **{integration}** is not installed. Install it first: {url}",
-      "charger_not_found": "No charger was found in **{integration}**. Check that the integration is set up and the charger's entities are enabled ({url})."
+      "charger_not_found": "No charger was found in **{integration}**. Check that the integration is set up and the charger's entities are enabled ({url}).",
+      "wrong_password": "Wrong password"
     }
   },
   "selector": {
