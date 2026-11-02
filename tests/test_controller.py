@@ -654,7 +654,7 @@ def test_split_power_sensors_give_energy_flow():
     assert abs(c3.export_kw - (-0.3)) < 1e-9
 
 
-def test_growatt_hold_writes_battery_first_without_grid():
+def test_growatt_hold_blocks_discharge_without_grid_charge():
     from datetime import datetime, timedelta
     tz = ZoneInfo("Europe/Copenhagen")
     q = timedelta(minutes=15)
@@ -664,9 +664,11 @@ def test_growatt_hold_writes_battery_first_without_grid():
     assert c.has_hold
     c.plan = planner.Plan(current=hold[1], battery_hold=hold)
     asyncio.run(c._apply_battery("hold", False))
-    assert [x[1] for x in h.services.calls] == ["write_ac_discharge_times", "write_ac_charge_times"]
+    # Grid First med afladestop ved 100 %: ingen afladning og ingen netopladning (Battery First ladede fra nettet)
+    assert [x[1] for x in h.services.calls] == ["write_ac_charge_times", "write_ac_discharge_times"]
+    assert h.services.calls[0][2]["mains_enabled"] is False and h.services.calls[0][2]["period_1_enabled"] is False
     d = h.services.calls[1][2]
-    assert d["mains_enabled"] is False and (d["period_1_start"], d["period_1_end"], d["period_1_enabled"]) == ("11:00", "14:00", True)
+    assert d["discharge_stop_soc"] == 100 and (d["period_1_start"], d["period_1_end"], d["period_1_enabled"]) == ("11:00", "14:00", True)
     # MIN kan ikke stå stille: normal drift
     c2, h2 = make({"battery_growatt_device": "gw1", "battery_growatt_type": "min"}, {})
     assert not c2.has_hold
@@ -722,7 +724,7 @@ def test_charge_target_reached_holds_rest_of_block():
     assert hold[0].start == ch[5].start and hold[-1].end == ch[-1].end          # resten af blokken som ét tidsrum
     asyncio.run(c._apply_battery("hold", False))
     d = h.services.calls[-1][2]
-    assert d["mains_enabled"] is False and (d["period_1_start"], d["period_1_end"]) == ("03:15", "05:00")
+    assert d["discharge_stop_soc"] == 100 and (d["period_1_start"], d["period_1_end"]) == ("03:15", "05:00")
 
 
 

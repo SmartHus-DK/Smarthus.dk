@@ -115,7 +115,7 @@ const HELP = {
     { k: ["battery_discharge_hours"], t: "Timer at sælge",
       d: "Højst så mange timer sælger batteriet til nettet med fuld kraft ('Batteri sælger' i grafen) – og kun når salgsprisen er mindst 'min. prisforskel' højere end ladeprisen inkl. ca. 10 % tab. Ellers er strømmen mere værd i huset, og der sælges ikke. Der holdes altid så meget tilbage, at huset klarer sig, til strømmen bliver billig igen. Resten af tiden dækker batteriet husets forbrug." },
     { k: ["battery_capacity"], t: "Gem batteriet til de dyre timer",
-      d: "Rækker batteriet ikke til hele døgnet – også når solens forventede overskud er regnet med – gemmes det i de billige timer ('Batteri gemmes' i grafen): huset kører på nettet, solen må stadig lade, og strømmen bruges i stedet i de dyreste timer før næste opladning ('Batteri bruges'). Under reserven ses, hvad det sparer i dag – målt indtil nu plus et skøn for resten af dagen. Kræver at anlægget kan stå stille – fx Growatt SPH, SigEnergy eller et script." },
+      d: "Rækker batteriet ikke til hele døgnet – også når solens forventede overskud er regnet med – gemmes det i de billige timer ('Batteri gemmes' i grafen): huset kører på nettet (og solen), batteriet hverken aflader eller lades fra nettet, og strømmen bruges i stedet i de dyreste timer før næste opladning ('Batteri bruges'). Under reserven ses, hvad det sparer i dag – målt indtil nu plus et skøn for resten af dagen. Kræver at anlægget kan stå stille – fx Growatt SPH, SigEnergy eller et script." },
     { k: ["battery_discharge_from"], t: "Tidsrum for afladning",
       d: "De dyre timer søges kun inden for dette tidsrum, fx 16–21 for kun at bruge batteriet i aftenspidsen." },
     { k: ["battery_min_spread"], t: "Min. prisforskel",
