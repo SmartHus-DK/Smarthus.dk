@@ -6,8 +6,9 @@ kender sluttidspunktet, stopper inverteren også til tiden, hvis Home Assistant 
 forsvinder midt i en blok.
 
 - SPH (hybrid med batteri): write_ac_charge_times / write_ac_discharge_times
-  "Gem batteriet" er et afladetidsrum (Grid First) med stop ved 100 %: batteriet aflader ikke, og huset kører
-  på solen og nettet. (Battery First uden netopladning blev opgivet: SPH lader alligevel fra nettet.)
+  "Gem batteriet" er et ladetidsrum (Battery First) med ladeeffekt 1 % og uden netopladning: batteriet aflader
+  ikke, og huset kører på nettet. Afprøvet på SPH: med 100 % ladede det alligevel fra nettet (op til 1,5 kW),
+  og Grid First med afladestop 100 % lod batteriet dække huset – med 1 % står batteriet stille.
 - MIN TL-XH: update_time_segment (tidsrum 1: Battery First / Grid First)
 """
 
@@ -19,6 +20,7 @@ DOMAIN = "growatt_server"
 TYPE_SPH = "sph"
 TYPE_MIN = "min"
 
+HOLD_CHARGE_POWER = 1   # % – "gem batteriet" på SPH: Battery First med (næsten) ingen opladning
 _OFF3 = {"period_1_enabled": False, "period_2_enabled": False, "period_3_enabled": False}
 
 
@@ -80,11 +82,10 @@ def commands(kind: str, device: str, action: str, window: tuple[str, str] | None
             "device_id": device, "charge_power": power, "charge_stop_soc": max_soc, "mains_enabled": True,
             **_OFF3, "period_1_start": start, "period_1_end": end, "period_1_enabled": True})]
     if action == "hold":
-        # Grid First med afladestop ved 100 %: batteriet aflader ikke, og der lades ikke fra nettet. Battery First
-        # uden netopladning (mains fra) blev opgivet – SPH lader alligevel batteriet fra nettet i Battery First.
-        # Solens overskud går i nettet, mens batteriet gemmes.
-        return [charge_off, ("write_ac_discharge_times", {
-            "device_id": device, "discharge_power": power, "discharge_stop_soc": 100,
+        # Battery First med ladeeffekt 1 % og uden netopladning: batteriet aflader ikke, og der lades næsten intet
+        # (SPH lader fra nettet i Battery First, selv med netopladning slået fra – 1 % holder det på ca. 0 W)
+        return [discharge_off, ("write_ac_charge_times", {
+            "device_id": device, "charge_power": HOLD_CHARGE_POWER, "charge_stop_soc": max_soc, "mains_enabled": False,
             **_OFF3, "period_1_start": start, "period_1_end": end, "period_1_enabled": True})]
     if action == "discharge":
         return [charge_off, ("write_ac_discharge_times", {
