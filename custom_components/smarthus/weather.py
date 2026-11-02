@@ -139,3 +139,40 @@ def solar_by_hour(wh_hours: dict[str, float], tz: tzinfo, key_is_end: bool = Fal
         h = start.astimezone(tz).replace(minute=0, second=0, microsecond=0)
         out[h] = out.get(h, 0.0) + wh / 1000
     return out
+
+
+class SunTracker:
+    """Sammenligner solcellernes faktiske produktion i dag med prognosen for de samme timer.
+
+    Giver solen f.eks. kun 15 % af prognosen indtil nu, regnes der også kun med 15 % resten af dagen.
+    Først når prognosen indtil nu er mindst `min_kwh`, bruges forholdet – før det er det for usikkert.
+    Nulstilles ved midnat (og ved genstart).
+    """
+
+    def __init__(self, min_kwh: float = 0.3) -> None:
+        self.day = None
+        self.measured = 0.0
+        self.forecast = 0.0
+        self.last: datetime | None = None
+        self.min_kwh = min_kwh
+
+    def update(self, now: datetime, measured_kw: float | None, forecast_kw: float | None) -> None:
+        if self.day != now.date():
+            self.day, self.measured, self.forecast, self.last = now.date(), 0.0, 0.0, None
+        if self.last is not None and measured_kw is not None and forecast_kw is not None:
+            hours = min(max((now - self.last).total_seconds(), 0.0), 180.0) / 3600   # højst 3 min pr. skridt
+            self.measured += max(measured_kw, 0.0) * hours
+            self.forecast += max(forecast_kw, 0.0) * hours
+        self.last = now
+
+    @property
+    def ratio(self) -> float | None:
+        """Faktisk ÷ prognose indtil nu i dag (None, hvis det endnu er for usikkert)."""
+        if self.forecast < self.min_kwh:
+            return None
+        return min(max(self.measured / self.forecast, 0.05), 1.5)
+
+    def factor(self, base: float) -> float:
+        """Andel af prognosen, der regnes med resten af i dag: aldrig mere end `base`, mindre hvis solen svigter."""
+        r = self.ratio
+        return base if r is None else min(base, r)

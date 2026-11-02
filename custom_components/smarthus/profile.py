@@ -264,8 +264,9 @@ def plan_hold(slots: list, profile: Profile, now: datetime, until: datetime, usa
             j = i
             while j < len(horizon) and not flag[j]:
                 j += 1
-            if 0 < i and j < len(horizon) and j - i <= HOLD_MIN_SLOTS \
-                    and all(horizon[k].start not in covered for k in range(i, j)):
+            sun_only = all(need[k] <= 0 for k in range(i, j))        # solen dækker huset alene: gem koster intet
+            if 0 < i and j < len(horizon) and (sun_only or (j - i <= HOLD_MIN_SLOTS
+                                                            and all(horizon[k].start not in covered for k in range(i, j)))):
                 for k in range(i, j):
                     flag[k] = True
             i = j

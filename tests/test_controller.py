@@ -66,6 +66,7 @@ def make(config, states):
     c.tz = ZoneInfo("Europe/Copenhagen")
     c.enabled = {"master": True}
     c.plan = planner.Plan()
+    c.sun = sys.modules["smarthus.weather"].SunTracker()
     return c, hass
 
 async def main():

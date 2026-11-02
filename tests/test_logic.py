@@ -1380,3 +1380,26 @@ def test_plan_hold_counts_on_solar_refill():
     # Når batteriet er fuldt, dækker solen huset alene (vises som lys sol i grafen)
     assert f["sun_cover"] and not set(f["sun_cover"]) & set(f["solar"]) and all(10 <= s.start.hour < 15 for s in f["sun_cover"])
 
+
+def test_sun_tracker_scales_rest_of_day():
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    W = _load("weather")
+    tz = ZoneInfo("Europe/Copenhagen")
+    t = W.SunTracker()
+    now = datetime(2026, 11, 2, 8, 0, tzinfo=tz)
+    for i in range(121):                      # 08:00–10:00 hvert minut: prognose 1 kW, faktisk 0,15 kW
+        t.update(now + timedelta(minutes=i), 0.15, 1.0)
+    assert abs(t.forecast - 2.0) < 0.02 and abs(t.ratio - 0.15) < 0.01
+    assert abs(t.factor(0.7) - 0.15) < 0.01   # solen svigter: regn kun med 15 %
+    t2 = W.SunTracker()
+    for i in range(121):
+        t2.update(now + timedelta(minutes=i), 1.2, 1.0)
+    assert t2.factor(0.7) == 0.7              # mere sol end ventet: stadig forsigtigt (70 %)
+    t2.update(now + timedelta(days=1), 0.0, 0.0)
+    assert t2.ratio is None and t2.factor(0.7) == 0.7    # nyt døgn: forfra
+    # Lange huller (fx genstart) tæller højst 3 minutter
+    t3 = W.SunTracker()
+    t3.update(now, 1.0, 1.0); t3.update(now + timedelta(hours=2), 1.0, 1.0)
+    assert abs(t3.forecast - 0.05) < 1e-9
+

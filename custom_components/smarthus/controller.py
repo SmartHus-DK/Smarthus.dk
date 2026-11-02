@@ -139,7 +139,7 @@ from .flow import energy_flow, to_kw
 from .pricing import has_vat, vat_factor
 from .plug import pick_connected, plug_state
 from .solar import EvSolarState, regulate_ev
-from .weather import forecast_sensor_ids, merge_wh, pick_weather_entity, solar_by_hour, summarize_forecast
+from .weather import SunTracker, forecast_sensor_ids, merge_wh, pick_weather_entity, solar_by_hour, summarize_forecast
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -233,6 +233,7 @@ class SmartHusController:
         self._heat_cum = {"heatpump": 0.0, "hotwater": 0.0}         # varmt vand via knap: trykket i den nuværende periode
         # Solprognose (Wh pr. periode) fra Forecast.Solar/Solcast – hentes hvert 15. minut
         self._forecast_wh: dict[str, float] = {}
+        self.sun = SunTracker()        # faktisk sol i dag ÷ prognosen – justerer resten af dagens prognose
         self._forecast_key_is_end = False
         self._forecast_fetched = 0.0
         self._fc_ids: dict[str, str] = {}
@@ -703,7 +704,7 @@ class SmartHusController:
             soc=self._float_state(self.config.get(CONF_BATTERY_SOC)),
             capacity=self.settings[S_BATTERY_CAPACITY], min_soc=self.settings[S_BATTERY_MIN_SOC],
             solar_remaining=((self._energy_kwh(CONF_SOLAR_FORECAST) if self.has(CONF_SOLAR_FORECAST)
-                              else self.solar_forecast.get("remaining_kwh")) or 0) * SOLAR_FORECAST_FACTOR,
+                              else self.solar_forecast.get("remaining_kwh")) or 0) * self.solar_factor_today,
         )
         # Sælg kun det, der er ud over reserven
         if self.plan.battery_action == ACTION_DISCHARGE and self.reserve.sellable_kwh is not None \
@@ -740,7 +741,8 @@ class SmartHusController:
             day, kwh, from_h = local + timedelta(days=1), fc.get("tomorrow_kwh"), SUN_START
         if kwh is None:
             return
-        kwh *= SOLAR_FORECAST_FACTOR                # forsigtigt: prognosen rammer ofte for højt
+        # forsigtigt: prognosen rammer ofte for højt – og i dag justeret efter den faktiske sol
+        kwh *= self.solar_factor_today if day.date() == local.date() else SOLAR_FORECAST_FACTOR
         surplus = solar_surplus(self.profile, day, kwh, from_h)
         sun_at = day.replace(hour=min(max(from_h, SUN_START) + 3, 23), minute=0, second=0, microsecond=0)
         until_sun = expected_load(self.profile, local, max(sun_at, local))
@@ -842,11 +844,27 @@ class SmartHusController:
         if p.battery_action == ACTION_NORMAL and p.current in hold:
             p.battery_action = ACTION_HOLD
 
+    def _track_sun(self) -> None:
+        """Læg solcellernes faktiske effekt og prognosens effekt for samme tidspunkt sammen (til SunTracker)."""
+        if not self._forecast_wh or not self.has(CONF_SOLAR_POWER):
+            return
+        now = dt_util.now().astimezone(self.tz)
+        raw = solar_by_hour(self._forecast_wh, self.tz, self._forecast_key_is_end)
+        self.sun.update(now, self.solar_kw, raw.get(now.replace(minute=0, second=0, microsecond=0), 0.0))
+
+    @property
+    def solar_factor_today(self) -> float:
+        """Andel af prognosen, der regnes med resten af i dag (lavere, hvis solen har svigtet indtil nu)."""
+        sun = getattr(self, "sun", None)
+        return sun.factor(SOLAR_FORECAST_FACTOR) if sun else SOLAR_FORECAST_FACTOR
+
     def _solar_hours(self) -> dict | None:
-        """Solprognosen som kWh pr. lokal time (tom, hvis der ikke er en prognose)."""
+        """Solprognosen som kWh pr. lokal time – forsigtigt, og resten af i dag justeret efter den faktiske sol."""
         if not self._forecast_wh:
             return None
-        return {h: kwh * SOLAR_FORECAST_FACTOR
+        today = dt_util.now().astimezone(self.tz).date()
+        f_today = self.solar_factor_today
+        return {h: kwh * (f_today if h.date() == today else SOLAR_FORECAST_FACTOR)
                 for h, kwh in solar_by_hour(self._forecast_wh, self.tz, self._forecast_key_is_end).items()}
 
     def _forecast_battery(self, now: datetime) -> None:
@@ -894,6 +912,10 @@ class SmartHusController:
             "tomorrow": f["days"].get((today + timedelta(days=1)).isoformat()),
             "cost_per_kwh": round(stock / 0.9, 3),
             "best_sale": round(max((s.sale for s in (self.coordinator.data or []) if s.end > now), default=0.0), 3),
+            "solar_factor": round(self.solar_factor_today, 2),
+            "solar_ratio_today": round(self.sun.ratio, 2) if getattr(self, "sun", None) and self.sun.ratio is not None else None,
+            "solar_measured_kwh": round(self.sun.measured, 2) if getattr(self, "sun", None) else None,
+            "solar_forecast_so_far_kwh": round(self.sun.forecast, 2) if getattr(self, "sun", None) else None,
             "days": keys,
         }
 
@@ -1034,6 +1056,7 @@ class SmartHusController:
             self._update_surplus()
         self._log_ev_charging()
         self._track_soc()
+        self._track_sun()
         self.recalculate()
         await self.async_apply()
         self._update_savings()

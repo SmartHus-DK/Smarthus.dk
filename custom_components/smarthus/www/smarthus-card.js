@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.50.0";
+const SMARTHUS_CARD_VERSION = "1.51.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -1686,7 +1686,10 @@ class SmartHusCard extends HTMLElement {
       ? `<div class="cmp-sub" style="margin-left:0">Indtil nu ${sign(gainDone)} · resten af dagen ca. ${sign(gainRest)}</div>` : "";
     const anySell = (t?.sell_kwh || 0) + (f.tomorrow?.sell_kwh || 0) > 0.05;
     const note = anySell ? "" : `<div class="cmp-sub" style="margin-left:0">Intet salg til nettet: den bedste salgspris (${nf(f.best_sale)} kr/kWh) dækker ikke strømmens pris inkl. tab (${nf(f.cost_per_kwh)} kr/kWh). Strømmen er mere værd i huset.</div>`;
-    return `<div class="cycle">${block(t, "today", "I dag", split)}${parts}${block(f.tomorrow, "tomorrow", "I morgen")}${note}</div>`;
+    const sunNote = f.solar_ratio_today != null
+      ? `<div class="cmp-sub" style="margin-left:0">Solen har indtil nu givet ${nf(f.solar_measured_kwh, 1)} kWh – ${nf(f.solar_ratio_today * 100, 0)} % af prognosen (${nf(f.solar_forecast_so_far_kwh, 1)} kWh). Resten af dagen regnes med ${nf(f.solar_factor * 100, 0)} % af prognosen.</div>`
+      : f.solar_factor != null ? `<div class="cmp-sub" style="margin-left:0">Der regnes med ${nf(f.solar_factor * 100, 0)} % af solprognosen, til solen har vist, hvad den giver i dag.</div>` : "";
+    return `<div class="cycle">${block(t, "today", "I dag", split)}${parts}${block(f.tomorrow, "tomorrow", "I morgen")}${note}${sunNote}</div>`;
   }
 
   /** Kommende perioder for en plan (fx afladning) med gennemsnitlig salgs- og købspris. */
