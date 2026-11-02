@@ -442,6 +442,11 @@ class SmartHusOptionsFlow(OptionsFlow):
         p = m.preset
         for role, entity_id in m.roles.items():
             new[pz.ROLE_KEYS[role]] = entity_id
+        # To sensorer (lad/aflad, køb/salg) erstatter en tidligere samlet sensor – den samlede ville ellers have forrang
+        if "battery_charge_power" in m.roles and "battery_discharge_power" in m.roles and "battery_power" not in m.roles:
+            new.pop(CONF_BATTERY_POWER, None)
+        if "grid_import_power" in m.roles and "grid_export_power" in m.roles and "grid_power" not in m.roles:
+            new.pop(CONF_GRID_POWER, None)
         if "battery_power" in m.roles and p.battery_sign:
             new[CONF_BATTERY_POWER_SIGN] = p.battery_sign
         if "grid_power" in m.roles and p.grid_sign:
