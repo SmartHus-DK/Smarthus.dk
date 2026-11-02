@@ -272,6 +272,9 @@ class SmartHusController:
         self._ev_full_key: dict[str, str] = {}     # uden SoC: bilen er fuld for dette klar-tidspunkt
         # Elbilens planlagte kvarterer, der er gået i gang – så de stadig kan ses på grafen bagefter
         self._ev_past: dict[str, set] = {}
+        # Batteriets fremskrivning (bruges, gemmes, sol) regnes kun fra nu – de kvarterer, der er gået i gang,
+        # huskes her, så grafen stadig viser dem bagefter. {navn: {start: Slot}}
+        self._plan_past: dict[str, dict] = {}
         # "Lad nu" startet, mens SmartHus' styring af bilen er slået fra
         self._ev_manual: dict[str, bool] = {}
         self._unsub = None
@@ -1060,6 +1063,7 @@ class SmartHusController:
             if self.ev_force.get(cid) and ep.target_reached:
                 self.ev_force[cid] = False  # "Lad nu" slukker selv ved mål-SoC
         self._update_reserve()
+        self._remember_past(now)
         if self.has(CONF_HEATING_CLIMATE):
             self._update_heating_outdoor()   # så kortet viser pause/aktiv med det samme
         async_dispatcher_send(self.hass, SIGNAL_TICK.format(entry_id=self.entry.entry_id))
@@ -1323,6 +1327,24 @@ class SmartHusController:
                 await self._apply_current(car, int(car_settings(self.settings, cid)["solar_max_a"]), force)
         elif self._ev_manual.pop(cid, False):
             await self._set_charger(car, False, True)
+
+    PAST_KINDS = ("battery_use", "battery_hold", "battery_solar", "solar_cover")
+
+    def _remember_past(self, now: datetime) -> None:
+        for kind in self.PAST_KINDS:
+            past = self._plan_past.setdefault(kind, {})
+            for sl in getattr(self.plan, kind, []) or []:
+                if sl.start <= now:
+                    past[sl.start] = sl
+            self._plan_past[kind] = {t: sl for t, sl in past.items() if now - t < timedelta(hours=36)}
+
+    def slots_shown(self, kind: str, slots: list) -> list:
+        """Planens kvarterer + dem, der allerede er gået i gang (til grafen og periodelisten)."""
+        past = self._plan_past.get(kind)
+        if not past:
+            return slots
+        now_starts = {sl.start for sl in slots}
+        return list(slots) + [sl for t, sl in past.items() if t not in now_starts]
 
     def ev_slots_shown(self, cid: str) -> list[str]:
         """Elbilens kvarterer til grafen: det der var planlagt (også overståede) + den kommende plan."""

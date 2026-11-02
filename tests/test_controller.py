@@ -737,3 +737,19 @@ def test_full_charge_hours_setting():
     assert c.full_charge_hours == 1.75
     c.flags["battery_full_charge"] = False
     assert c.full_charge_hours is None
+
+
+def test_past_forecast_slots_kept():
+    """"Batteri bruges/gemmes" og sol forsvinder ikke fra grafen, når tiden er gået."""
+    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+    c, h = make({}, {})
+    c._plan_past = {}
+    n = _dt(2026, 11, 2, 15, 0, tzinfo=_tz.utc)
+    sl = lambda hh: planner.Slot(n + _td(hours=hh), n + _td(hours=hh, minutes=15), 2.0, 1.0, 0.4)
+    c.plan.battery_use = [sl(-1), sl(0), sl(2)]
+    c._remember_past(n)
+    c.plan.battery_use = [sl(2)]                     # næste fremskrivning starter fra nu
+    shown = sorted(x.start for x in c.slots_shown("battery_use", c.plan.battery_use))
+    assert shown == [n - _td(hours=1), n, n + _td(hours=2)]
+    c._remember_past(n + _td(hours=40))              # ældre end 36 timer glemmes
+    assert c.slots_shown("battery_use", []) == []

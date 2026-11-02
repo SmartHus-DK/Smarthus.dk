@@ -82,6 +82,9 @@ class SmartHusBinary(SmartHusEntity, BinarySensorEntity):
         if not fn:
             return None
         slots = [] if self._heating_paused else fn(self.controller.plan)
+        kind = self.entity_description.key.removesuffix("_now")
+        if kind in self.controller.PAST_KINDS:
+            slots = self.controller.slots_shown(kind, slots)   # vis også det, der allerede er sket i dag
         attrs = {
             "periods": merge_periods(slots, self.controller.tz),
             "slots": [s.start.isoformat() for s in sorted(slots, key=lambda s: s.start)],
