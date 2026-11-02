@@ -313,6 +313,7 @@ def forecast_battery(slots: list, profile: Profile, now: datetime, *, battery_kw
     bat, avg = battery_kwh, stock_price
     days: dict[str, dict] = {}
     use: list = []
+    sunny: list = []
 
     def next_charge(t: datetime) -> datetime:
         later = [s.start for s in fut if s.start in ch and s.start >= t]
@@ -335,6 +336,8 @@ def forecast_battery(slots: list, profile: Profile, now: datetime, *, battery_kw
             avg = (avg * max(bat, 0.0) + extra * max(s.sale, 0.0)) / max(bat + extra, 0.01)   # solstrøm koster salgsprisen
             bat += extra
             d["solar_kwh"] = d.get("solar_kwh", 0.0) + extra
+            if extra > 0.005:
+                sunny.append(s)
         if s.start in ch:
             j = block_end(i, ch)
             add = max(full_kwh - bat, 0.0) / (j - i + 1)
@@ -374,4 +377,4 @@ def forecast_battery(slots: list, profile: Profile, now: datetime, *, battery_kw
         for k in list(d):
             d[k] = round(d[k], 2)
     held = [s for s in fut if s.start in hd]
-    return {"days": days, "use": use, "hold": held}
+    return {"days": days, "use": use, "hold": held, "solar": sunny}

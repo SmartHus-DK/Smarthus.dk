@@ -671,17 +671,14 @@ class SmartHusController:
         self.recalculate()
 
     def _reserve_until(self, now: datetime) -> datetime:
-        """Hvornår bliver strømmen billig igen? Næste planlagte opladning, ellers næste billige tidsrum."""
+        """Hvor længe skal batteriet række? Til næste planlagte opladning – ellers til den sidste kendte pris.
+        (Ikke "næste billige tidsrum": det kunne være midt på dagen, så aftenens forbrug ikke blev regnet med.)"""
         charge = [s.start for s in self.plan.battery_charge if s.start > now]
         if charge:
             return min(charge)
         future = [s for s in (self.coordinator.data or []) if s.start > now]
         if future:
-            prices = sorted(s.price for s in future)
-            lo = prices[len(prices) // 4]
-            cheap = [s.start for s in future if s.price <= lo]
-            if cheap:
-                return min(cheap)
+            return max(s.end for s in future)
         local = now.astimezone(self.tz)
         return (local.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)).astimezone(now.tzinfo)
 
@@ -690,6 +687,7 @@ class SmartHusController:
         self.battery_hold = None
         self.battery_forecast = None
         self.plan.battery_use = []
+        self.plan.battery_solar = []
         self._hold_prev = {s.start for s in self.plan.battery_hold} or getattr(self, "_hold_prev", set())
         self.plan.battery_hold = []
         self.sell_solar = None
@@ -865,6 +863,7 @@ class SmartHusController:
                              hold=p.battery_hold, sell=p.battery_discharge, stock_price=stock, can_hold=self.has_hold,
                              solar=self._solar_hours())
         p.battery_use = f["use"]
+        p.battery_solar = f["solar"]
         # Vis også gem-tidsrummene efter næste opladning (de nuværende styrer stadig inverteren)
         now_hold = {s.start for s in p.battery_hold}
         p.battery_hold = p.battery_hold + [s for s in f["hold"] if s.start not in now_hold]
@@ -882,6 +881,7 @@ class SmartHusController:
         so_far["house_saving"] = so_far["house_value"] - so_far["house_cost"]
         so_far["sell_gain"] = so_far["sell_income"] - so_far["sell_cost"]
         whole = {k: round(so_far.get(k, 0.0) + rest.get(k, 0.0), 2) for k in so_far}
+        whole["solar_kwh"] = round(rest.get("solar_kwh", 0.0), 2)        # skøn: solens opladning resten af dagen
         self.battery_forecast = {
             "today": whole,
             "today_so_far": {k: round(v, 2) for k, v in so_far.items()},

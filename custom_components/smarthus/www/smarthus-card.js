@@ -17,6 +17,7 @@ const COLORS = {
   battery_sell: "#3C1A78",
   battery_hold: "#B8862B",
   battery_use: "#9F7AEA",
+  battery_solar: "#F2B705",
   hotwater: "#2BA3C9",
   heating_boost: "#E0902F",
   heating_reduce: "#7B8794",
@@ -51,6 +52,7 @@ const MONTHS = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "
 
 const LANES = [
   { key: "battery_charge_now", label: "Batteri lader", color: COLORS.battery_charge, module: "control_battery" },
+  { key: "battery_solar_now", label: "Solen lader", color: COLORS.battery_solar, module: "control_battery" },
   { key: "battery_use_now", label: "Batteri bruges", color: COLORS.battery_use, module: "control_battery" },
   { key: "battery_discharge_now", label: "Batteri sælger", color: COLORS.battery_sell, module: "control_battery" },
   { key: "battery_hold_now", label: "Batteri gemmes", color: COLORS.battery_hold, module: "control_battery" },
@@ -1513,7 +1515,9 @@ class SmartHusCard extends HTMLElement {
     const charge = this._salePeriod("battery_charge_now");
     const leg = (c, t, cls = "") => `<span><i class="${cls}" style="--c:${c};background:${c}"></i>${t}</span>`;
     let result;
-    if (sell > 0.05) {
+    if (sell > 0.05 && !sale) {
+      result = `Batteriet har ${nf(bat, 1)} kWh · ${nf(sell, 1)} kWh mere end huset forventes at bruge – sælges ikke, fordi salgsprisen ikke dækker strømmens pris`;
+    } else if (sell > 0.05) {
       result = `Batteriet har ${nf(bat, 1)} kWh · må sælge <b>${nf(sell, 1)} kWh</b>${sale ? ` ${esc(sale.when)}` : " i de dyre timer"}`;
       if (sale) result += `<div class="res-sale">Forventet salgspris ca. <b>${nf(sale.avgSale)} kr/kWh</b> → ca. <b>${nf(sell * sale.avgSale, 0)} kr</b></div>`;
     } else {
@@ -1544,8 +1548,8 @@ class SmartHusCard extends HTMLElement {
         <div class="cmp-title">Reserve til huset frem til ${untilTxt}</div>
         <div class="res-line">Forventet forbrug <b>${nf(a.expected_house_kwh, 1)} kWh</b>${a.expected_solar_kwh > 0.05 ? ` − sol <b>${nf(a.expected_solar_kwh, 1)} kWh</b>` : ""} → gem <b>${nf(need, 1)} kWh</b></div>
         ${bat != null ? `
-        <div class="res-bar">${seg(floor, COLORS.mid)}${seg(have, COLORS.battery_charge)}${seg(missing, COLORS.battery_charge, "miss")}${seg(sell, COLORS.battery_sell)}</div>
-        <div class="res-leg">${leg(COLORS.mid, "Laveste niveau")}${leg(COLORS.battery_charge, "Reserve")}${missing > 0.05 ? leg(COLORS.battery_charge, "Mangler", "miss") : ""}${leg(COLORS.battery_sell, `Kan sælges${sell > 0.05 ? "" : " (0 kWh)"}`)}</div>
+        <div class="res-bar">${seg(floor, COLORS.mid)}${seg(have, COLORS.battery_charge)}${seg(missing, COLORS.battery_charge, "miss")}${seg(sell, sale ? COLORS.battery_sell : COLORS.battery_use)}</div>
+        <div class="res-leg">${leg(COLORS.mid, "Laveste niveau")}${leg(COLORS.battery_charge, "Reserve")}${missing > 0.05 ? leg(COLORS.battery_charge, "Mangler", "miss") : ""}${sale ? leg(COLORS.battery_sell, `Kan sælges${sell > 0.05 ? "" : " (0 kWh)"}`) : sell > 0.05 ? leg(COLORS.battery_use, "Mere end huset skal bruge") : ""}</div>
         <div class="cmp-result">${result}</div>${solarLine}${a.forecast ? this._forecastBox(a.forecast) : this._cycleBox(a, sale, charge)}` :
         `<div class="cmp-sub" style="margin-left:0">Vælg en sensor for batteriniveau for at se, hvor meget der må sælges.</div>`}
         <div class="tr-head prof-head"><span class="prof-title" style="margin:0">Husets forbrug pr. time</span>${ptabs ? `<span class="tabs" role="group" aria-label="Forbrugsmønster">${ptabs}</span>` : ""}</div>
@@ -1644,6 +1648,10 @@ class SmartHusCard extends HTMLElement {
       if (!d) return "";
       const use = periods("battery_use_now", day);
       const rows = [];
+      if ((d.solar_kwh || 0) > 0.05) {
+        const sun = periods("battery_solar_now", day);
+        rows.push(`<div class="tr-row"><span>Solen lader ca. ${nf(d.solar_kwh, 1)} kWh i batteriet${sun ? ` <small class="muted">${esc(sun)}</small>` : ""}</span><b></b></div>`);
+      }
       if (d.house_kwh > 0.05) {
         const more = split && split.rest > 0.05 && split.done > 0.05 ? ` <small class="muted">${nf(split.done, 1)} indtil nu${use ? ` · ${esc(use)}` : ""}</small>`
           : use ? ` <small class="muted">${esc(use)}</small>` : "";
