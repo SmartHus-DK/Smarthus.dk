@@ -109,6 +109,7 @@ from .const import (
     HEATING_BOOST,
     HEATING_REDUCE,
     MIN_COMMAND_INTERVAL,
+    SOLAR_FORECAST_FACTOR,
     CONF_BATTERY_ACTIONS,
     MODULE_BATTERY,
     MODULE_HEATING,
@@ -701,8 +702,8 @@ class SmartHusController:
             self.profile, now.astimezone(self.tz), until.astimezone(self.tz),
             soc=self._float_state(self.config.get(CONF_BATTERY_SOC)),
             capacity=self.settings[S_BATTERY_CAPACITY], min_soc=self.settings[S_BATTERY_MIN_SOC],
-            solar_remaining=self._energy_kwh(CONF_SOLAR_FORECAST) if self.has(CONF_SOLAR_FORECAST)
-            else self.solar_forecast.get("remaining_kwh"),
+            solar_remaining=((self._energy_kwh(CONF_SOLAR_FORECAST) if self.has(CONF_SOLAR_FORECAST)
+                              else self.solar_forecast.get("remaining_kwh")) or 0) * SOLAR_FORECAST_FACTOR,
         )
         # Sælg kun det, der er ud over reserven
         if self.plan.battery_action == ACTION_DISCHARGE and self.reserve.sellable_kwh is not None \
@@ -739,6 +740,7 @@ class SmartHusController:
             day, kwh, from_h = local + timedelta(days=1), fc.get("tomorrow_kwh"), SUN_START
         if kwh is None:
             return
+        kwh *= SOLAR_FORECAST_FACTOR                # forsigtigt: prognosen rammer ofte for højt
         surplus = solar_surplus(self.profile, day, kwh, from_h)
         sun_at = day.replace(hour=min(max(from_h, SUN_START) + 3, 23), minute=0, second=0, microsecond=0)
         until_sun = expected_load(self.profile, local, max(sun_at, local))
@@ -844,7 +846,8 @@ class SmartHusController:
         """Solprognosen som kWh pr. lokal time (tom, hvis der ikke er en prognose)."""
         if not self._forecast_wh:
             return None
-        return solar_by_hour(self._forecast_wh, self.tz, self._forecast_key_is_end)
+        return {h: kwh * SOLAR_FORECAST_FACTOR
+                for h, kwh in solar_by_hour(self._forecast_wh, self.tz, self._forecast_key_is_end).items()}
 
     def _forecast_battery(self, now: datetime) -> None:
         """Skøn over batteriet resten af i dag og i morgen: brug i huset, besparelse og salg."""

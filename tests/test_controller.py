@@ -705,7 +705,7 @@ def test_charge_target_reached_holds_rest_of_block():
     t0 = datetime(2026, 11, 2, 2, 0, tzinfo=tz).astimezone(timezone.utc)
     ch = [planner.Slot(t0 + i * q, t0 + (i + 1) * q, 2.4, 2.4, 1.6) for i in range(12)]
     c, h = make({"battery_growatt_device": "gw1", "battery_growatt_type": "sph", "battery_soc_sensor": "sensor.soc"},
-                {"sensor.soc": State("60")})
+                {"sensor.soc": State("85")})
     c.settings.update(battery_capacity=5.6, battery_max_soc=95, battery_min_soc=15)
     c.plan = planner.Plan(current=ch[5], battery_charge=ch, battery_action="charge")
     c.plan.battery_hold = []

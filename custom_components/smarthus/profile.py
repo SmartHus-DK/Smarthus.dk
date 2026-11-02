@@ -337,7 +337,7 @@ def forecast_battery(slots: list, profile: Profile, now: datetime, *, battery_kw
             avg = (avg * max(bat, 0.0) + extra * max(s.sale, 0.0)) / max(bat + extra, 0.01)   # solstrøm koster salgsprisen
             bat += extra
             d["solar_kwh"] = d.get("solar_kwh", 0.0) + extra
-            if extra > 0.005:
+            if extra >= 0.1 * (b - a).total_seconds() / 3600:   # mindst ca. 0,1 kW – ellers er det ikke værd at vise
                 sunny.append(s)
         if sun > 0.005 and load <= 0.0005 and s not in sunny:
             sun_cover.append(s)                      # solen dækker huset alene – batteriet er fuldt eller står stille
