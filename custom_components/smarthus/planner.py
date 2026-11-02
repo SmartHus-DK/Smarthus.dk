@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, tzinfo
 
@@ -550,7 +552,8 @@ def build_plan(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
                              min_gap_h=BATTERY_MIN_GAP_H)
         pool = [s for s in win("battery_discharge") if s not in ch]
         dear = cheapest(pool, settings["battery_discharge_hours"], most_expensive=True)
-        if ch and dear and (avg(dear) or 0) - (avg(ch) or 0) >= settings["battery_min_spread"]:
+        full = bool(settings.get("battery_full_charge"))   # "lad helt op": lad i de billigste timer uanset prisforskel
+        if ch and (full or (dear and (avg(dear) or 0) - (avg(ch) or 0) >= settings["battery_min_spread"])):
             plan.battery_charge += ch
             cost = (avg(ch) or 0) / BATTERY_ROUND_TRIP
             sellable = [s for s in pool if s.sale - cost >= settings["battery_min_spread"]]
@@ -701,6 +704,17 @@ def _done_at(plan: list[Slot], now: datetime, hours: float | None) -> datetime |
             return max(s.start, now) + timedelta(hours=left) if h > left + 1e-6 else s.end
         left -= h
     return seq[-1].end
+
+
+BATTERY_CHARGE_EFF = 0.95   # tab i inverter og batteri ved opladning
+
+
+def full_charge_hours(capacity: float, min_soc: float, max_soc: float, kw: float) -> float | None:
+    """Timer til at lade batteriet fra laveste til højeste niveau ved `kw` (rundet op til kvarterer)."""
+    if kw <= 0 or capacity <= 0 or max_soc <= min_soc:
+        return None
+    h = capacity * (max_soc - min_soc) / 100 / kw / BATTERY_CHARGE_EFF
+    return min(max(math.ceil(h * 4) / 4, 0.25), 24.0)
 
 
 def charge_cost(seq: list[Slot], energy: float, kw: float) -> float | None:

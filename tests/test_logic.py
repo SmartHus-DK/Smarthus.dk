@@ -109,6 +109,20 @@ def test_battery_spread_blocks_flat_prices():
     assert p.battery_charge == [] and p.battery_action == "normal"
 
 
+def test_battery_full_charge():
+    """"Lad helt op": timerne regnes ud fra ladeeffekten, og der lades uanset prisforskel."""
+    assert planner.full_charge_hours(10, 15, 95, 5.0) == 1.75        # 8 kWh / 5 kW / 0,95 = 1,68 t
+    assert planner.full_charge_hours(10, 15, 95, 0) is None
+    assert planner.full_charge_hours(30, 10, 100, 1.0) == 24.0       # højst et døgn
+    slots = model().build_slots(records("2026-10-18", [0.5] * 24))
+    s = dict(const.DEFAULT_SETTINGS)
+    s["battery_min_spread"] = 5.0
+    s["battery_charge_hours"] = 1.75
+    s["battery_full_charge"] = True
+    p = planner.build_plan(slots, slots[10].start, TZ, s)
+    assert abs(sum(x.hours for x in p.battery_charge) - 1.75) < 0.3
+
+
 def test_ev_window_and_fallback():
     recs = records("2026-10-18", CURVE) + records("2026-10-19", CURVE)
     slots = model().build_slots(recs)

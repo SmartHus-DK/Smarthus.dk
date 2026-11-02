@@ -607,6 +607,9 @@
       },
       "heating_off_in_reduce": {
         "name": "Heating: off in saving hours (air-to-air)"
+      },
+      "battery_full_charge": {
+        "name": "Fully charge the battery in the cheapest hours"
       }
     },
     "number": {
@@ -735,6 +738,9 @@
       },
       "heating_min_indoor": {
         "name": "Heating: minimum indoor temperature"
+      },
+      "battery_max_charge_kw": {
+        "name": "Battery: max charging power from the grid"
       }
     },
     "select": {

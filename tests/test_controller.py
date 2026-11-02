@@ -724,3 +724,16 @@ def test_charge_target_reached_holds_rest_of_block():
     d = h.services.calls[-1][2]
     assert d["mains_enabled"] is False and (d["period_1_start"], d["period_1_end"]) == ("03:15", "05:00")
 
+
+
+def test_full_charge_hours_setting():
+    """"Lad batteriet helt op" virker først, når maks. ladeeffekt er tastet ind."""
+    c, h = make({}, {})
+    c.settings.update({"battery_capacity": 10.0, "battery_min_soc": 15.0, "battery_max_soc": 95.0, "battery_max_charge_kw": 0.0})
+    assert c.full_charge_hours is None
+    c.flags["battery_full_charge"] = True
+    assert c.full_charge_hours is None                  # ingen effekt tastet ind endnu
+    c.settings["battery_max_charge_kw"] = 5.0
+    assert c.full_charge_hours == 1.75
+    c.flags["battery_full_charge"] = False
+    assert c.full_charge_hours is None

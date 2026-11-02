@@ -15,7 +15,7 @@ EDS_DAYAHEAD_FROM: Final = date(2025, 10, 1)
 
 STATIC_URL: Final = "/smarthus_static"
 CARD_URL: Final = f"{STATIC_URL}/smarthus-card.js"
-CARD_VERSION: Final = "1.51.1"
+CARD_VERSION: Final = "1.52.0"
 
 PLATFORMS: Final = ["sensor", "binary_sensor", "switch", "number", "select"]
 
@@ -156,6 +156,7 @@ SURPLUS_CONFIRM_TICKS: Final = 4     # betingelsen skal holde i 4 × 30 s (undg�
 TICK_SECONDS: Final = 30
 CONF_SOLAR_POWER: Final = "solar_power_sensor"
 F_HOTWATER_SURPLUS_SMART: Final = "hotwater_surplus_smart"
+F_BATTERY_FULL_CHARGE: Final = "battery_full_charge"   # lad batteriet helt op i de billigste timer
 F_HEATING_AUTO: Final = "heating_auto"   # varmeplanen vælges automatisk ud fra dagens priser
 HOTWATER_HYSTERESIS: Final = 3.0  # °C – start igen når vandet er kølet så meget af
 # Varme / varmepumpe
@@ -258,6 +259,7 @@ S_BATTERY_MAX_SOC: Final = "battery_max_soc"
 S_BATTERY_CAPACITY: Final = "battery_capacity"
 # Sælg solstrøm i stedet for at lade batteriet, når salgsprisen slår prisen for at lade billigt senere med mindst dette
 S_SOLAR_SELL_MARGIN: Final = "battery_solar_sell_margin"
+S_BATTERY_MAX_CHARGE_KW: Final = "battery_max_charge_kw"   # maks. ladeeffekt fra nettet (til "lad helt op")
 S_EV_HOURS: Final = "ev_hours"
 S_EV_READY_HOUR: Final = "ev_ready_hour"
 S_EV_TARGET_SOC: Final = "ev_target_soc"
@@ -296,6 +298,7 @@ DEFAULT_SETTINGS: Final = {
     S_BATTERY_MAX_SOC: 95.0,
     S_BATTERY_CAPACITY: 10.0,
     S_SOLAR_SELL_MARGIN: 0.10,
+    S_BATTERY_MAX_CHARGE_KW: 0.0,
     S_EV_HOURS: 4.0,
     S_EV_READY_HOUR: 7.0,
     S_EV_TARGET_SOC: 80.0,

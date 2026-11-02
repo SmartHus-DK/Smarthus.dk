@@ -43,6 +43,8 @@ from .const import (
     CONF_BATTERY_SCRIPT_HOLD,
     CONF_BATTERY_OPT_HOLD,
     S_SOLAR_SELL_MARGIN,
+    S_BATTERY_MAX_CHARGE_KW,
+    S_BATTERY_CHARGE_HOURS,
     S_BATTERY_MAX_SOC,
     BATTERY_SCRIPTS,
     CONF_HUAWEI_DEVICE,
@@ -97,6 +99,7 @@ from .const import (
     CONF_SOLAR_POWER,
     F_HOTWATER_SURPLUS_SMART,
     F_HEATING_AUTO,
+    F_BATTERY_FULL_CHARGE,
     SURPLUS_STOP_IMPORT_KW,
     HOTWATER_HYSTERESIS,
     CONF_HOUSE_ENERGY,
@@ -129,7 +132,7 @@ from .const import (
 )
 from .coordinator import SmartHusPriceCoordinator
 from . import growatt as gw
-from .planner import CHARGE_EFFICIENCY, CarInput, Plan, build_plan, car_ready, car_settings, heating_outdoor_ok
+from .planner import CHARGE_EFFICIENCY, full_charge_hours, CarInput, Plan, build_plan, car_ready, car_settings, heating_outdoor_ok
 from .profile import (EFFICIENCY, plan_hold, forecast_battery, LEARN_DAYS, SUN_END, SUN_START, Profile, Reserve, build_profile, calc_reserve,
                       expected_load, grid_charge_target, solar_surplus)
 from .savings import SavingsCalculator
@@ -716,6 +719,16 @@ class SmartHusController:
         self._decide_hold(now, until)
         self._forecast_battery(now)
 
+    @property
+    def full_charge_hours(self) -> float | None:
+        """"Lad batteriet helt op": timer der skal til fra laveste til højeste niveau ved den indtastede
+        maks. ladeeffekt (inkl. ca. 5 % tab), rundet op til hele kvarterer. None = slået fra / ingen effekt."""
+        kw = float(self.settings.get(S_BATTERY_MAX_CHARGE_KW, 0) or 0)
+        if not self.flags.get(F_BATTERY_FULL_CHARGE) or kw <= 0:
+            return None
+        return full_charge_hours(self.settings[S_BATTERY_CAPACITY], self.settings[S_BATTERY_MIN_SOC],
+                                 self.settings[S_BATTERY_MAX_SOC], kw)
+
     def _decide_grid_charge(self, now: datetime) -> None:
         """Lad kun fra nettet, hvad solen ikke selv kan fylde.
 
@@ -755,8 +768,8 @@ class SmartHusController:
         margin = float(self.settings.get(S_SOLAR_SELL_MARGIN, 0.10))
         sell_better = (self.has_sell_solar and sale_mid is not None
                        and sale_mid - p.current.price / EFFICIENCY >= margin)
-        if sell_better:
-            target = cap * mx / 100
+        if sell_better or self.full_charge_hours:
+            target = cap * mx / 100                  # sælg solen – eller "lad helt op" er slået til
         soc_kwh = cap * soc / 100
         skip = soc_kwh >= target - 0.05
         self.grid_charge = {
@@ -1032,6 +1045,10 @@ class SmartHusController:
             for car in self.cars
         ]
         settings = {**self.settings, "heating_auto": bool(self.flags.get(F_HEATING_AUTO, False))}
+        full_h = self.full_charge_hours
+        if full_h:
+            settings[S_BATTERY_CHARGE_HOURS] = full_h      # lad helt op: timerne regnes ud fra ladeeffekten
+            settings["battery_full_charge"] = True
         self.plan = build_plan(slots, dt_util.utcnow(), self.tz, settings, soc=soc, cars=cars)
         self._update_hotwater_demand()
         now = dt_util.utcnow()

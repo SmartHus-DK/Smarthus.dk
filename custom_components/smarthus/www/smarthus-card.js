@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.51.1";
+const SMARTHUS_CARD_VERSION = "1.52.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -71,6 +71,8 @@ const MODULES = [
       { title: "Brug af batteriet", items: ["battery_discharge_hours", ["battery_discharge_from", "battery_discharge_to"]] },
       { title: "Grænser", items: ["battery_min_spread", "battery_min_soc", "battery_max_soc", "battery_capacity"] },
       { title: "Solstrøm: sælg eller gem", items: ["battery_solar_sell_margin"] },
+      { title: "Batteri fra nettet", items: [{ sw: "battery_full_charge", label: "Lad batteriet helt op i de billigste timer",
+      note: "Fra laveste til højeste niveau – tast maks. ladeeffekt ind" }, "battery_max_charge_kw"] },
     ],
   },
   {
@@ -97,7 +99,9 @@ const MODULES = [
     ],
   },
   { id: "solar", name: "Solceller", icon: "mdi:solar-power", sw: "control_solar",
-    groups: [{ title: null, items: ["solar_export_min_price"] }] },
+    groups: [{ title: null, items: ["solar_export_min_price"] },
+      { title: "Batteri fra nettet", items: [{ sw: "battery_full_charge", label: "Lad batteriet helt op i de billigste timer",
+      note: "Fra laveste til højeste niveau – tast maks. ladeeffekt ind" }, "battery_max_charge_kw"] }] },
 ];
 
 // Forklaringer under "Sådan virker indstillingerne" (foldet sammen). k = indstillingen(e), der skal
@@ -152,6 +156,8 @@ const HELP = {
       d: "Frostsikring: bliver det koldere inde, springes sparetimerne over." },
   ],
   solar: [
+    { k: ["battery_full_charge"], t: "Lad batteriet helt op",
+      d: "Slået til lader batteriet fra nettet fra laveste til højeste niveau i døgnets billigste timer – også når solen ventes at fylde det, og uanset prisforskellen. Antallet af timer regnes ud fra batteriets størrelse og den maks. ladeeffekt, du taster ind (fx 5 kW). 0 kW = ikke sat, så sker der intet." },
     { k: ["solar_export_min_price"], t: "Stop eksport under",
       d: "Er salgsprisen under denne grænse, stoppes eksporten (kræver at inverteren kan begrænse eksport), og batteriet lader af solstrømmen i stedet, hvis der er plads. 0 kr. betyder kun ved negativ pris." },
   ],
@@ -220,6 +226,7 @@ const NUMBER_LABELS = {
   battery_max_soc: "Højeste niveau",
   battery_capacity: "Batteriets størrelse",
   battery_solar_sell_margin: "Sælg når gevinsten er mindst",
+  battery_max_charge_kw: "Maks. ladeeffekt",
   hotwater_hours: "Timer at opvarme",
   hotwater_boost_temp: "Opvarm til",
   hotwater_normal_temp: "Normal temperatur",
@@ -1136,6 +1143,16 @@ class SmartHusCard extends HTMLElement {
       <span><ha-icon class="help-ic" icon="mdi:information-outline"></ha-icon>Sådan virker indstillingerne</span><ha-icon class="chev${open ? " up" : ""}" icon="mdi:chevron-down"></ha-icon></button>${body}</div>`;
   }
 
+  /** "Lad batteriet helt op": hvor lang tid en fuld opladning tager ved den indtastede effekt. */
+  _fullChargeNote() {
+    const n = (k) => parseFloat(this._st("number", k)?.state);
+    const kw = n("battery_max_charge_kw"), cap = n("battery_capacity"), lo = n("battery_min_soc"), hi = n("battery_max_soc");
+    if (!(kw > 0)) return "Tast inverterens maks. ladeeffekt ind – 0 = ikke sat";
+    if (!(cap > 0) || !(hi > lo)) return "Sæt batteriets størrelse og grænser";
+    const h = Math.min(Math.max(Math.ceil((cap * (hi - lo) / 100 / kw / 0.95) * 4) / 4, 0.25), 24);
+    return `Fuld opladning (${nf(lo, 0)}–${nf(hi, 0)} %) ≈ ${nf(h, h % 1 ? 2 : 0)} t i de billigste timer`;
+  }
+
   /** Indstillinger, der ikke har nogen virkning lige nu, vises ikke. */
   _unusedSetting(m, k, evHasSoc) {
     const val = (key) => { const v = parseFloat(this._st("number", key)?.state); return isNaN(v) ? null : v; };
@@ -1151,6 +1168,11 @@ class SmartHusCard extends HTMLElement {
       if ([`${c}_solar_start_kw`, `${c}_solar_min_a`, `${c}_solar_max_a`].includes(k) && !on(`${c}_solar`)) return true;
       return false;
     }
+    if (["battery_full_charge", "battery_max_charge_kw"].includes(k)) {
+      if (m.id === "battery" && this._st("switch", "control_solar")) return true;    // vises under Solceller
+      if (k === "battery_max_charge_kw" && !on("battery_full_charge")) return true;
+    }
+    if (m.id === "battery" && k === "battery_charge_hours" && on("battery_full_charge") && val("battery_max_charge_kw") > 0) return true;
     if (m.id === "heating") {
       const auto = on("heating_auto");
       if (auto && (k === "heating_boost_hours" || k === "heating_reduce_hours")) return true;   // vælges automatisk
@@ -1770,7 +1792,7 @@ class SmartHusCard extends HTMLElement {
     const unused = autoHeat || (key.endsWith("_ready_hour") && this._st("select", key.replace("_ready_hour", "_ready_day"))?.attributes?.uses_ready_hour === false);
     return `
       <div class="step${unused ? " unused" : ""}">
-        <span class="step-lbl">${esc(this._label(key))}${autoHeat ? `<span class="win-note">Vælges automatisk ud fra dagens priser</span>` : unused ? `<span class="win-note">Bruges ikke – perioden er valgt nedenfor</span>` : ""}${key === "ev_max_total_power" ? `<span class="win-note">0 = ingen grænse</span>` : key === "hotwater_surplus_kw" ? `<span class="win-note">0 = fra · eksport lige nu ${nf(this._st("binary_sensor", "hotwater_now")?.attributes?.export_kw, 1)} kW</span>` : key === "heating_min_indoor" ? `<span class="win-note">Frostsikring – koldere end dette inde, springes sparetimerne over</span>` : key === "hotwater_watch_temp" ? `<span class="win-note">0 = fra · varm op i en billig time, før vandet når den laveste temperatur</span>` : key === "hotwater_min_temp" ? `<span class="win-note">Varm op, før vandet når hertil – fx varmepumpens egen grænse</span>` : key === "heating_boost_degrees" || key === "heating_reduce_degrees" ? `<span class="win-note">0 = fra</span>` : key.endsWith("_manual_soc") ? `<span class="win-note">${blank ? "Uden måler: tast bilens niveau ind, så beregnes ladetiden" : "Skønnes videre, mens bilen lader · glemmes, når bilen kobles fra"}</span>` : key.endsWith("_extra_hours") ? `<span class="win-note">Ud over den beregnede ladetid</span>` : ""}</span>
+        <span class="step-lbl">${esc(this._label(key))}${autoHeat ? `<span class="win-note">Vælges automatisk ud fra dagens priser</span>` : unused ? `<span class="win-note">Bruges ikke – perioden er valgt nedenfor</span>` : ""}${key === "ev_max_total_power" ? `<span class="win-note">0 = ingen grænse</span>` : key === "hotwater_surplus_kw" ? `<span class="win-note">0 = fra · eksport lige nu ${nf(this._st("binary_sensor", "hotwater_now")?.attributes?.export_kw, 1)} kW</span>` : key === "heating_min_indoor" ? `<span class="win-note">Frostsikring – koldere end dette inde, springes sparetimerne over</span>` : key === "hotwater_watch_temp" ? `<span class="win-note">0 = fra · varm op i en billig time, før vandet når den laveste temperatur</span>` : key === "hotwater_min_temp" ? `<span class="win-note">Varm op, før vandet når hertil – fx varmepumpens egen grænse</span>` : key === "heating_boost_degrees" || key === "heating_reduce_degrees" ? `<span class="win-note">0 = fra</span>` : key.endsWith("_manual_soc") ? `<span class="win-note">${blank ? "Uden måler: tast bilens niveau ind, så beregnes ladetiden" : "Skønnes videre, mens bilen lader · glemmes, når bilen kobles fra"}</span>` : key.endsWith("_extra_hours") ? `<span class="win-note">Ud over den beregnede ladetid</span>` : key === "battery_max_charge_kw" ? `<span class="win-note">${this._fullChargeNote()}</span>` : ""}</span>
         <span class="step-ctl">
           <button data-action="step" data-entity="${s.entity_id}" data-dir="-1" aria-label="Mindre ${esc(this._label(key))}">−</button>
           <span class="step-val">${shown}</span>
