@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.51.0";
+const SMARTHUS_CARD_VERSION = "1.51.1";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -507,15 +507,15 @@ class SmartHusCard extends HTMLElement {
       </div>`;
   }
 
-  /** Fordeling af månedens SmartHus-besparelse på elbil, batteri, varme og varmt vand. */
+  /** Fordeling af den samlede SmartHus-besparelse (i alt) på elbil, batteri, varme og varmt vand. */
   _savingParts() {
-    const month = this._st("sensor", "savings_month")?.attributes || {};
-    const parts = SAVING_PARTS.filter((p) => this._st("sensor", `savings_month_${p.key}`) && month[p.key] != null)
-      .map((p) => ({ ...p, v: month[p.key] }))
+    const total = this._st("sensor", "savings_total")?.attributes || {};
+    const parts = SAVING_PARTS.filter((p) => total[p.key] != null)
+      .map((p) => ({ ...p, v: total[p.key] }))
       .filter((p) => Math.abs(p.v) >= 0.005 || this._partConfigured(p.key));
     if (!parts.length) return "";
-    return `<div class="parts" aria-label="Denne måned fordelt">
-      ${parts.map((p) => `<button class="part" data-action="more" data-entity="${this._id("sensor", `savings_month_${p.key}`)}">
+    return `<div class="parts-title">I alt fordelt på</div><div class="parts" aria-label="Besparelse i alt fordelt">
+      ${parts.map((p) => `<button class="part" data-action="more" data-entity="${this._id("sensor", "savings_total")}">
         <ha-icon icon="${p.icon}"></ha-icon><span class="p-lbl">${p.label}</span><span class="p-val ${p.v < 0 ? "neg" : ""}">${nf(p.v, 0)} kr</span></button>`).join("")}
     </div>`;
   }
@@ -1879,7 +1879,8 @@ class SmartHusCard extends HTMLElement {
       .sec-title { display: flex; align-items: center; gap: 6px; margin-top: 14px; font-size: 12px; font-weight: 600;
                    letter-spacing: .04em; text-transform: uppercase; color: var(--secondary-text-color); }
       .sec-title ha-icon { --mdc-icon-size: 18px; color: ${COLORS.solar_sold}; }
-      .parts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+      .parts-title { margin-top: 12px; font-size: 12px; color: var(--secondary-text-color); }
+      .parts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
       .part { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px 5px 8px; border-radius: 999px;
               background: var(--sh-track); font-size: 12px; }
       .part ha-icon { --mdc-icon-size: 16px; color: var(--secondary-text-color); }
