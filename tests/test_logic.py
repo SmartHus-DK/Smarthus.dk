@@ -1377,4 +1377,6 @@ def test_plan_hold_counts_on_solar_refill():
                                  hold=with_sun, sell=[], stock_price=2.4, can_hold=True, solar=sun)
     d = f["days"]["2026-11-02"]
     assert d["solar_kwh"] >= 3.0 and {7, 16, 17, 18, 19, 20} <= {s.start.hour for s in f["use"]}
+    # Når batteriet er fuldt, dækker solen huset alene (vises som lys sol i grafen)
+    assert f["sun_cover"] and not set(f["sun_cover"]) & set(f["solar"]) and all(10 <= s.start.hour < 15 for s in f["sun_cover"])
 

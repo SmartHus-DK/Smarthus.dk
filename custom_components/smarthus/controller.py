@@ -688,6 +688,7 @@ class SmartHusController:
         self.battery_forecast = None
         self.plan.battery_use = []
         self.plan.battery_solar = []
+        self.plan.solar_cover = []
         self._hold_prev = {s.start for s in self.plan.battery_hold} or getattr(self, "_hold_prev", set())
         self.plan.battery_hold = []
         self.sell_solar = None
@@ -864,6 +865,7 @@ class SmartHusController:
                              solar=self._solar_hours())
         p.battery_use = f["use"]
         p.battery_solar = f["solar"]
+        p.solar_cover = f["sun_cover"]
         # Vis også gem-tidsrummene efter næste opladning (de nuværende styrer stadig inverteren)
         now_hold = {s.start for s in p.battery_hold}
         p.battery_hold = p.battery_hold + [s for s in f["hold"] if s.start not in now_hold]

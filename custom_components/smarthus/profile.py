@@ -314,6 +314,7 @@ def forecast_battery(slots: list, profile: Profile, now: datetime, *, battery_kw
     days: dict[str, dict] = {}
     use: list = []
     sunny: list = []
+    sun_cover: list = []
 
     def next_charge(t: datetime) -> datetime:
         later = [s.start for s in fut if s.start in ch and s.start >= t]
@@ -338,6 +339,8 @@ def forecast_battery(slots: list, profile: Profile, now: datetime, *, battery_kw
             d["solar_kwh"] = d.get("solar_kwh", 0.0) + extra
             if extra > 0.005:
                 sunny.append(s)
+        if sun > 0.005 and load <= 0.0005 and s not in sunny:
+            sun_cover.append(s)                      # solen dækker huset alene – batteriet er fuldt eller står stille
         if s.start in ch:
             j = block_end(i, ch)
             add = max(full_kwh - bat, 0.0) / (j - i + 1)
@@ -377,4 +380,4 @@ def forecast_battery(slots: list, profile: Profile, now: datetime, *, battery_kw
         for k in list(d):
             d[k] = round(d[k], 2)
     held = [s for s in fut if s.start in hd]
-    return {"days": days, "use": use, "hold": held, "solar": sunny}
+    return {"days": days, "use": use, "hold": held, "solar": sunny, "sun_cover": sun_cover}

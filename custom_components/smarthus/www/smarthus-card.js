@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.47.0";
+const SMARTHUS_CARD_VERSION = "1.48.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -52,7 +52,8 @@ const MONTHS = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "
 
 const LANES = [
   { key: "battery_charge_now", label: "Batteri lader", color: COLORS.battery_charge, module: "control_battery" },
-  { key: "battery_solar_now", label: "Solen lader", color: COLORS.battery_solar, module: "control_battery" },
+  { key: "battery_solar_now", label: "Sol", color: COLORS.battery_solar, module: "control_battery",
+    light: "solar_cover_now", lightText: "dækker huset", mainText: "lader batteriet" },
   { key: "battery_use_now", label: "Batteri bruges", color: COLORS.battery_use, module: "control_battery" },
   { key: "battery_discharge_now", label: "Batteri sælger", color: COLORS.battery_sell, module: "control_battery" },
   { key: "battery_hold_now", label: "Batteri gemmes", color: COLORS.battery_hold, module: "control_battery" },
@@ -789,13 +790,21 @@ class SmartHusCard extends HTMLElement {
         const slots = this._st("binary_sensor", l.key).attributes.slots || [];
         const y = li * (laneH + gap);
         const op = this._st("switch", l.module)?.state === "on" ? 1 : 0.3;
-        const rects = slots
-          .map((s) => {
-            const t = new Date(s).getTime();
-            if (t < t0 || t >= t1) return "";
-            return `<rect x="${xOf(t)}" y="${y}" width="${xOf(t + 900e3) - xOf(t) + 0.3}" height="${laneH}" fill="${l.color}" opacity="${op}"></rect>`;
-          })
-          .join("");
+        const rect = (s, o) => {
+          const t = new Date(s).getTime();
+          if (t < t0 || t >= t1) return "";
+          return `<rect x="${xOf(t)}" y="${y}" width="${xOf(t + 900e3) - xOf(t) + 0.3}" height="${laneH}" fill="${l.color}" opacity="${o}"></rect>`;
+        };
+        // Lys nuance: fx solen dækker huset alene (batteriet er fuldt)
+        let light = "";
+        if (l.light) {   // sammenhængende perioder som ét felt (gennemsigtige felter må ikke overlappe)
+          const ts = (this._st("binary_sensor", l.light)?.attributes?.slots || []).map((s) => new Date(s).getTime())
+            .filter((t) => t >= t0 && t < t1).sort((x, z) => x - z);
+          const runs = [];
+          for (const t of ts) { const r = runs[runs.length - 1]; if (r && r[1] === t) r[1] = t + 900e3; else runs.push([t, t + 900e3]); }
+          light = runs.map(([a, b]) => `<rect x="${xOf(a)}" y="${y}" width="${xOf(b) - xOf(a)}" height="${laneH}" fill="${l.color}" opacity="${op * 0.35}"></rect>`).join("");
+        }
+        const rects = light + slots.map((s) => rect(s, op)).join("");
         return `<rect x="0" y="${y}" width="${W}" height="${laneH}" fill="var(--sh-track)"></rect>${rects}`;
       })
       .join("");
@@ -822,8 +831,12 @@ class SmartHusCard extends HTMLElement {
 
     const legend = lanes
       .map((l) => {
-        const periods = upcoming(this._st("binary_sensor", l.key).attributes.slots);
-        const txt = periods.length ? periods.map((p) => (p.active ? `nu–${p.text.split("–")[1]}` : p.text)).join(", ") : "Intet planlagt";
+        const per = (key) => upcoming(this._st("binary_sensor", key)?.attributes?.slots || []).map((p) => (p.active ? `nu–${p.text.split("–")[1]}` : p.text)).join(", ");
+        let txt = per(l.key) || "Intet planlagt";
+        if (l.light) {
+          const main = per(l.key), lt = per(l.light);
+          txt = [main && `${l.mainText} ${main}`, lt && `${l.lightText} ${lt}`].filter(Boolean).join(" · ") || "Intet planlagt";
+        }
         const off = this._st("switch", l.module)?.state !== "on";
         return `<div class="lg ${off ? "off" : ""}"><i style="background:${l.color}"></i><span class="lg-name">${l.label}</span><span class="lg-val">${esc(txt)}</span></div>`;
       })

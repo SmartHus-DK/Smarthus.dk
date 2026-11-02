@@ -34,6 +34,8 @@ BINARY: tuple[SmartHusBinaryDescription, ...] = (
                               slots_fn=lambda p: p.battery_use),
     SmartHusBinaryDescription(key="battery_solar_now", icon="mdi:solar-power",
                               is_on_fn=lambda p: p.current in p.battery_solar, slots_fn=lambda p: p.battery_solar),
+    SmartHusBinaryDescription(key="solar_cover_now", icon="mdi:solar-power-variant",
+                              is_on_fn=lambda p: p.current in p.solar_cover, slots_fn=lambda p: p.solar_cover),
     SmartHusBinaryDescription(key="battery_hold_now", icon="mdi:battery-lock",
                               is_on_fn=lambda p: p.battery_action == "hold", slots_fn=lambda p: p.battery_hold),
     SmartHusBinaryDescription(key="solar_curtail_now", icon="mdi:solar-power-variant-outline",
