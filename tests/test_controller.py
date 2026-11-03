@@ -910,3 +910,43 @@ def test_learn_solar_adjusts_forecast_and_plan():
     assert c.solar_factor_today == 0.4
     c.settings.pop("battery_solar_forecast_pct")
     assert c.solar_caution == 0.7    # installationer fra før indstillingen fandtes
+
+
+def test_planned_charge_can_be_read_in_advance():
+    """Hvor meget der lades i nat, står klar før opladningen – og skønnet følger samme mål som styringen."""
+    prof = sys.modules["smarthus.profile"]
+    tz = ZoneInfo("Europe/Copenhagen")
+    now = _dt.datetime(2026, 11, 3, 19, 0, tzinfo=tz)
+    week = [0.38, 0.27, 0.52, 0.33, 0.3, 0.3, 0.42, 0.42, 0.27, 0.27, 0.45, 0.27, 0.42, 0.27, 0.3, 0.27, 0.32, 0.84, 1, 0.67, 0.62, 0.63, 0.4, 0.27]
+    om = {7: .01025, 8: .27825, 9: .6235, 10: .97225, 11: 1.47425, 12: 1.6725, 13: 1.539, 14: 1.22625, 15: .7775, 16: .14325}
+    c, _ = make({"battery_mode_entity": "select.mode", "battery_soc_sensor": "sensor.soc"}, {"sensor.soc": State("84")})
+    c.settings.update(battery_capacity=5.6, battery_min_soc=10, battery_max_soc=100, battery_max_charge_kw=3)
+    c.profile = prof.Profile(weekday=week, weekend=week, days=9, weekday_days=7, weekend_days=2)
+    c._forecast_wh = {_dt.datetime(2026, 11, 4, h, tzinfo=tz).isoformat(): v * 1000 for h, v in om.items()}
+    slots, t = [], now.replace(minute=0)
+    while t < _dt.datetime(2026, 11, 5, tzinfo=tz):
+        slots.append(planner.Slot(t, t + _dt.timedelta(minutes=15), 0, 2.17 if 3 <= t.hour < 4 and t.day == 4 else 3.0, 1.4))
+        t += _dt.timedelta(minutes=15)
+    c.coordinator = types.SimpleNamespace(data=slots)
+    c.plan.battery_charge = [s for s in slots if s.price == 2.17]
+    c.plan.current = slots[0]
+    c.flags["battery_sell_solar"] = False
+    pc = c._plan_grid_charge(now)
+    assert pc["start"].startswith("2026-11-04T03:00") and pc["end"].startswith("2026-11-04T04:00")
+    assert 2.2 <= pc["kwh"] <= 2.85, pc                      # højst det, 1 time ved 3 kW kan nå
+    assert 55 <= pc["target_soc"] <= 75, pc
+    assert abs(pc["cost"] - pc["kwh"] * 2.17) < 0.15
+    target = c._charge_target(c.plan.battery_charge[0].start, 2.17)
+    assert 3.3 < target < 3.9, target                        # ikke fuldt op
+    # Fremskrivningen lader også kun op til målet
+    f = prof.forecast_battery(slots, c.profile, now, battery_kwh=4.7, floor_kwh=0.56, full_kwh=5.6, charge=c.plan.battery_charge,
+                              hold=[], sell=[], stock_price=2.2, can_hold=False, solar=c._solar_hours(),
+                              charge_target=lambda s: target)
+    assert 2.0 < f["days"]["2026-11-04"]["charge_kwh"] < 3.2, f["days"]["2026-11-04"]
+    # Batteriet har rigeligt: ingen opladning
+    c.hass.states = types.SimpleNamespace(get={"sensor.soc": State("100")}.get)
+    c.profile = prof.Profile(weekday=[0.02] * 24, weekend=[0.02] * 24, days=9, weekday_days=7, weekend_days=2)
+    assert c._plan_grid_charge(now) is None
+    # Intet ladetidsrum
+    c.plan.battery_charge = []
+    assert c._plan_grid_charge(now) is None

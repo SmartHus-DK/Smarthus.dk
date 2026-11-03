@@ -300,10 +300,11 @@ def _blank_day() -> dict:
 
 def forecast_battery(slots: list, profile: Profile, now: datetime, *, battery_kwh: float, floor_kwh: float,
                      full_kwh: float, charge: list, hold: list, sell: list, stock_price: float,
-                     can_hold: bool, solar: dict | None = None) -> dict:
+                     can_hold: bool, solar: dict | None = None, charge_target=None) -> dict:
     """Skøn over batteriet time for time: hvornår det lades, gemmes, dækker huset og sælger – og hvad det sparer.
 
-    * Ladetidsrum fylder batteriet op til `full_kwh` (ladepris = købsprisen).
+    * Ladetidsrum fylder batteriet op til `full_kwh` eller det mål, `charge_target(ladeblokkens start)` giver
+      (kWh, samme mål som styringen bruger). Ladepris = købsprisen.
     * Gem-tidsrum: batteriet står stille. Efter hver opladning planlægges nye gem-tidsrum (hvis anlægget kan).
     * Ellers dækker batteriet husets forventede forbrug, til det når laveste niveau.
     * I salgstidsrum sælges det, der er ud over husets behov frem til næste opladning.
@@ -320,6 +321,7 @@ def forecast_battery(slots: list, profile: Profile, now: datetime, *, battery_kw
     use: list = []
     sunny: list = []
     sun_cover: list = []
+    goals: dict[int, float] = {}
 
     def next_charge(t: datetime) -> datetime:
         later = [s.start for s in fut if s.start in ch and s.start >= t]
@@ -348,7 +350,9 @@ def forecast_battery(slots: list, profile: Profile, now: datetime, *, battery_kw
             sun_cover.append(s)                      # solen dækker huset alene – batteriet er fuldt eller står stille
         if s.start in ch:
             j = block_end(i, ch)
-            add = max(full_kwh - bat, 0.0) / (j - i + 1)
+            if j not in goals:
+                goals[j] = min(charge_target(s.start), full_kwh) if charge_target else full_kwh
+            add = max(goals[j] - bat, 0.0) / (j - i + 1)
             if add > 0:
                 avg = (avg * max(bat, 0.0) + add * s.price) / max(bat + add, 0.01)
                 bat += add

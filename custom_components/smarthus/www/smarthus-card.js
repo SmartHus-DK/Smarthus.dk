@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.57.1";
+const SMARTHUS_CARD_VERSION = "1.58.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -63,6 +63,19 @@ const LANES = [
 ];
 
 // Indstillinger pr. modul, i grupper. ["a_from","a_to"] vises som ét tidsrum.
+/** Næste opladning fra nettet som tekst, fx "Lader i nat 03:00–04:00: ca. 2,5 kWh op til 64 %". */
+function chargePlanText(a) {
+  if (!("planned_charge" in a) || a.battery_kwh == null) return "";
+  const c = a.planned_charge;
+  if (!c) return "<b>Ingen opladning fra nettet planlagt</b>";
+  const s = new Date(c.start), e = new Date(c.end), now = new Date();
+  const clock = (d) => d.toLocaleTimeString("da-DK", { hour: "2-digit", minute: "2-digit" }).replace(".", ":");
+  const nextDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const word = s <= now ? "nu" : s.getHours() < 6 && s - now < 12 * 3600e3 ? "i nat" : s < nextDay ? "i dag" : "i morgen";
+  const dec = (v) => String(v).replace(".", ",");
+  return `<b>Lader ${word} ${clock(s)}–${clock(e)}</b>: ca. ${dec(c.kwh)} kWh op til ${c.target_soc} % · ca. ${dec(c.cost.toFixed(0))} kr`;
+}
+
 const MODULES = [
   {
     id: "battery", name: "Batteri", icon: "mdi:home-battery", sw: "control_battery",
@@ -1587,6 +1600,8 @@ class SmartHusCard extends HTMLElement {
           : `Salg giver kun ${nf(ss.sale_now)} kr/kWh, mens det koster ${nf(ss.charge_price_later)} kr/kWh (plus tab) at lade fra nettet senere – så solstrømmen er mere værd i batteriet.`;
       solarLine = `<div class="res-solar ${ss.active ? "on" : ""}"><b>${ss.active ? "Sælger solstrømmen nu" : "Gemmer solstrømmen i batteriet"}</b> · ${why}</div>`;
     }
+    const planLine = chargePlanText(a);
+    if (planLine) solarLine = `<div class="res-solar">${planLine}</div>` + solarLine;
     const gc = a.grid_charge;
     if (gc) {
       const txt = gc.sell_solar_better

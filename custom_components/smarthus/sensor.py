@@ -261,6 +261,7 @@ def _reserve_attrs(c: SmartHusController) -> dict:
         "battery_hold": c.battery_hold,
         "forecast": c.battery_forecast,
         "grid_charge": c.grid_charge,
+        "planned_charge": c.planned_charge,
     })
     return attrs
 

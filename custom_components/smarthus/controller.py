@@ -214,6 +214,7 @@ class SmartHusController:
         self.battery_hold: dict | None = None  # beslutning om at gemme batteriet til de dyre timer
         self.battery_forecast: dict | None = None  # skøn: hvornår batteriet bruges, og hvad det sparer
         self.sell_solar: dict | None = None  # beslutning om at sælge solstrøm i stedet for at lade batteriet
+        self.planned_charge: dict | None = None  # næste opladning fra nettet (kan aflæses på forhånd)
         self.grid_charge: dict | None = None  # hvor meget der lades fra nettet, når solen kan fylde resten
         self._unsub_learn = None
         self._unsub_learn_first = None
@@ -762,6 +763,7 @@ class SmartHusController:
         self.reserve, self.reserve_holds = None, False
         self.battery_hold = None
         self.battery_forecast = None
+        self.planned_charge = None
         self.plan.battery_use = []
         self.plan.battery_solar = []
         self.plan.solar_cover = []
@@ -816,6 +818,60 @@ class SmartHusController:
         end = (day + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
         need = battery_need_at(self.profile, solar, sun, end, floor=floor, full=full)
         return {"sun": sun, "need_at_sun": need, "floor": floor, "full": full, "solar": solar}
+
+    def _sell_solar_better(self, day: datetime, price: float) -> tuple[float | None, bool]:
+        """(salgspris midt på dagen, om det slår at lade til `price` og i stedet sælge solstrømmen)."""
+        mid = [s for s in (self.coordinator.data or [])
+               if s.start.astimezone(self.tz).date() == day.date() and 10 <= s.start.astimezone(self.tz).hour < 15]
+        sale_mid = sum(s.sale for s in mid) / len(mid) if mid else None
+        margin = float(self.settings.get(S_SOLAR_SELL_MARGIN, 0.10))
+        return sale_mid, bool(self.has_sell_solar and sale_mid is not None and sale_mid - price / EFFICIENCY >= margin)
+
+    def _charge_target(self, start: datetime, price: float) -> float:
+        """Hvor mange kWh batteriet skal lades op til fra nettet i en ladeblok, der starter på `start`."""
+        cap, mx = self.settings[S_BATTERY_CAPACITY], self.settings[S_BATTERY_MAX_SOC]
+        full = cap * mx / 100
+        n = self._night_need(start)
+        if n is None or self.full_charge_hours:
+            return full
+        local = start.astimezone(self.tz)
+        day = local if local.hour < SUN_END - 3 else local + timedelta(days=1)
+        if self._sell_solar_better(day, price)[1]:
+            return full
+        return min(n["need_at_sun"] + expected_load(self.profile, local, n["sun"]) / EFFICIENCY, full)
+
+    def _plan_grid_charge(self, now: datetime) -> dict | None:
+        """Næste opladning fra nettet: tidsrum, kWh, SoC og pris. None = ingen opladning planlagt."""
+        p = self.plan
+        later = sorted((s for s in p.battery_charge if s.end > now), key=lambda s: s.start)
+        soc = self._float_state(self.config.get(CONF_BATTERY_SOC))
+        cap = self.settings[S_BATTERY_CAPACITY]
+        if not later or soc is None or cap <= 0:
+            return None
+        block = [later[0]]
+        for s in later[1:]:
+            if s.start != block[-1].end:
+                break
+            block.append(s)
+        start, end = max(block[0].start, now), block[-1].end
+        price = sum(s.price for s in block) / len(block)
+        floor, full = cap * self.settings[S_BATTERY_MIN_SOC] / 100, cap * self.settings[S_BATTERY_MAX_SOC] / 100
+        e = cap * soc / 100
+        if start > now and self.profile.ready:      # batteriet dækker huset frem til ladeblokken
+            solar = self._solar_hours() or {}
+            _, e = simulate_battery(e, self.profile, solar, now.astimezone(self.tz), start.astimezone(self.tz),
+                                    floor=floor, full=full)
+            e = max(e, floor)
+        target = self._charge_target(start, price)
+        kwh = max(target - e, 0.0)
+        kw = float(self.settings.get(S_BATTERY_MAX_CHARGE_KW, 0) or 0)
+        if kw > 0:                                  # kan ikke lade mere, end tidsrummet giver plads til
+            kwh = min(kwh, kw * 0.95 * (end - start).total_seconds() / 3600)
+        if kwh <= 0.05:
+            return None
+        return {"start": start.isoformat(), "end": end.isoformat(), "kwh": round(kwh, 1),
+                "soc_at_start": round(e / cap * 100), "target_soc": round((e + kwh) / cap * 100),
+                "avg_price": round(price, 2), "cost": round(kwh * price, 2)}
 
     def _grid_charge_hours(self, now: datetime, soc: float | None) -> float | None:
         """Timer der skal lades fra nettet i nat ved den indtastede maks. ladeeffekt. None = ingen ladeeffekt/data."""
@@ -876,12 +932,7 @@ class SmartHusController:
             # Time for time: det batteriet skal have ved solopgang + husets forbrug indtil da
             target = min(n["need_at_sun"] + expected_load(self.profile, local, n["sun"]) / EFFICIENCY, cap * mx / 100)
         # Er salg af solstrøm midt på dagen bedre end at bruge den selv? Så lades der fuldt fra nettet.
-        mid = [s for s in (self.coordinator.data or [])
-               if s.start.astimezone(self.tz).date() == day.date() and 10 <= s.start.astimezone(self.tz).hour < 15]
-        sale_mid = sum(s.sale for s in mid) / len(mid) if mid else None
-        margin = float(self.settings.get(S_SOLAR_SELL_MARGIN, 0.10))
-        sell_better = (self.has_sell_solar and sale_mid is not None
-                       and sale_mid - p.current.price / EFFICIENCY >= margin)
+        sale_mid, sell_better = self._sell_solar_better(day, p.current.price)
         if sell_better or self.full_charge_hours:
             target = cap * mx / 100                  # sælg solen – eller "lad helt op" er slået til
         soc_kwh = cap * soc / 100
@@ -1003,6 +1054,7 @@ class SmartHusController:
     def _forecast_battery(self, now: datetime) -> None:
         """Skøn over batteriet resten af i dag og i morgen: brug i huset, besparelse og salg."""
         p = self.plan
+        self.planned_charge = self._plan_grid_charge(now)
         soc = self._float_state(self.config.get(CONF_BATTERY_SOC))
         if soc is None or p.current is None:
             return
@@ -1012,11 +1064,13 @@ class SmartHusController:
             stock = (t.get("stock_grid", 0) + t.get("stock_solar", 0)) / t["stock_kwh"]
         else:
             stock = (sum(s.price for s in p.battery_charge) / len(p.battery_charge)) if p.battery_charge else p.current.price
+        by_start = {s.start: s.price for s in p.battery_charge}
         f = forecast_battery(self.coordinator.data or [], self.profile, now.astimezone(self.tz),
                              battery_kwh=cap * soc / 100, floor_kwh=cap * self.settings[S_BATTERY_MIN_SOC] / 100,
                              full_kwh=cap * self.settings[S_BATTERY_MAX_SOC] / 100, charge=p.battery_charge,
                              hold=p.battery_hold, sell=p.battery_discharge, stock_price=stock, can_hold=self.has_hold,
-                             solar=self._solar_hours())
+                             solar=self._solar_hours(),
+                             charge_target=lambda t: self._charge_target(t, by_start[t]))
         p.battery_use = f["use"]
         p.battery_solar = f["solar"]
         p.solar_cover = f["sun_cover"]
