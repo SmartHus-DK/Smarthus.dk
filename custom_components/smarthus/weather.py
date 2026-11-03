@@ -33,8 +33,22 @@ def pick_weather_entity(entity_ids: list[str]) -> str | None:
     return ids[0] if ids else None
 
 
+_OM_REMAINING = "energy_production_today_remaining"   # Forecast.Solar og Open-Meteo Solar Forecast (fx sensor.hus_…)
+
+
+def _sibling_ids(remaining_id: str, existing: set[str]) -> dict[str, str]:
+    """Open-Meteo Solar Forecast navngiver sensorerne efter opsætningens navn: sensor.<navn>_energy_production_…"""
+    prefix = remaining_id[: -len(_OM_REMAINING)]
+    names = {"today": "energy_production_today", "remaining": _OM_REMAINING,
+             "tomorrow": "energy_production_tomorrow", "power_now": "power_production_now"}
+    return {k: prefix + v for k, v in names.items() if prefix + v in existing or k == "remaining"}
+
+
 def forecast_sensor_ids(remaining_id: str | None, existing: set[str]) -> dict[str, str]:
     """Find prognose-sensorerne: ud fra den valgte 'resterende i dag'-sensor, ellers kendte navne."""
+    if remaining_id and remaining_id.endswith(_OM_REMAINING) and \
+            not remaining_id.startswith(FORECAST_SENSORS["forecast_solar"]["remaining"]):
+        return _sibling_ids(remaining_id, existing)
     for names in FORECAST_SENSORS.values():
         base = names["remaining"]
         if remaining_id:
@@ -48,7 +62,11 @@ def forecast_sensor_ids(remaining_id: str | None, existing: set[str]) -> dict[st
             found["remaining"] = remaining_id
         if found:
             return found
-    return {"remaining": remaining_id} if remaining_id else {}
+    if remaining_id:
+        return {"remaining": remaining_id}
+    # Intet valgt og ingen kendte navne: Open-Meteo Solar Forecast (sensor.<navn>_energy_production_today_remaining)
+    om = sorted(e for e in existing if e.endswith("_" + _OM_REMAINING))
+    return _sibling_ids(om[0], existing) if om else {}
 
 
 def summarize_forecast(wh_hours: dict[str, float], now: datetime, tz: tzinfo,

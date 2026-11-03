@@ -22,6 +22,9 @@ from . import chargers as cz
 
 from .tariffs import GRID_COMPANIES
 from .const import (
+    CONF_FORECAST_SOURCE,
+    FORECAST_AUTO,
+    FORECAST_SOURCES,
     AREAS,
     CONF_GRID_COMPANY,
     GRID_MANUAL,
@@ -601,6 +604,10 @@ class SmartHusOptionsFlow(OptionsFlow):
         ]
         cur = {**self._current(), **(user_input or {})}
         schema = _entity_schema(fields, cur).extend({
+            vol.Optional(CONF_FORECAST_SOURCE, default=cur.get(CONF_FORECAST_SOURCE) or FORECAST_AUTO):
+                selector.SelectSelector(selector.SelectSelectorConfig(
+                    options=[FORECAST_AUTO, *(d for d, _ in FORECAST_SOURCES)], translation_key="forecast_source",
+                    mode=selector.SelectSelectorMode.DROPDOWN)),
             vol.Optional(CONF_SOLAR_INVESTMENT, description={"suggested_value": cur.get(CONF_SOLAR_INVESTMENT)}):
                 selector.NumberSelector(selector.NumberSelectorConfig(
                     min=0, max=10_000_000, step=1, unit_of_measurement="kr", mode=selector.NumberSelectorMode.BOX)),

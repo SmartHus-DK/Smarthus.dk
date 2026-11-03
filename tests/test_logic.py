@@ -1432,3 +1432,16 @@ def test_sun_tracker_scales_rest_of_day():
     t3.update(now, 1.0, 1.0); t3.update(now + timedelta(hours=2), 1.0, 1.0)
     assert abs(t3.forecast - 0.05) < 1e-9
 
+
+
+def test_forecast_sensor_ids_open_meteo():
+    weather = _load("weather")
+    ex = {"sensor.hus_energy_production_today", "sensor.hus_energy_production_today_remaining",
+          "sensor.hus_energy_production_tomorrow", "sensor.hus_power_production_now"}
+    ids = weather.forecast_sensor_ids(None, ex)                                  # fundet automatisk
+    assert ids == {"today": "sensor.hus_energy_production_today", "remaining": "sensor.hus_energy_production_today_remaining",
+                   "tomorrow": "sensor.hus_energy_production_tomorrow", "power_now": "sensor.hus_power_production_now"}
+    assert weather.forecast_sensor_ids("sensor.hus_energy_production_today_remaining", ex) == ids  # valgt
+    fs = {"sensor.energy_production_today", "sensor.energy_production_today_remaining"}
+    assert weather.forecast_sensor_ids(None, fs | ex)["remaining"] == "sensor.energy_production_today_remaining"
+    assert weather.forecast_sensor_ids(None, set()) == {}

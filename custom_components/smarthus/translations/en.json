@@ -147,7 +147,8 @@
           "grid_import_energy_sensor": "Energy meter: grid import (kWh) – optional",
           "solar_investment": "System price (DKK) – optional",
           "grid_import_power_sensor": "Grid import power now (W/kW) – instead of one sensor",
-          "grid_export_power_sensor": "Grid export power now (W/kW) – instead of one sensor"
+          "grid_export_power_sensor": "Grid export power now (W/kW) – instead of one sensor",
+          "solar_forecast_source": "Solar forecast from"
         },
         "data_description": {
           "solar_forecast_sensor": "Makes the battery reserve more accurate by subtracting expected solar. Solcast: sensor.solcast_pv_forecast_forecast_remaining_today. Forecast.Solar: sensor.energy_production_today_remaining. Without a forecast, solar is assumed not to cover any house consumption – the cautious choice.",
@@ -166,7 +167,8 @@
           "grid_import_energy_sensor": "Increasing meter (kWh) of all energy bought from the grid, e.g. from a P1 meter. The card then shows how much you bought, what it cost and your average price.",
           "solar_investment": "What the solar system cost in total incl. installation. Used to show how much of the system has been paid back (ROI) and when it will be paid back.",
           "grid_import_power_sensor": "Only if the inverter shows import and export separately (e.g. Growatt via cloud). Pick both. Used only when 'grid power' is empty.",
-          "grid_export_power_sensor": "Export to the grid now – together with import above."
+          "grid_export_power_sensor": "Export to the grid now – together with import above.",
+          "solar_forecast_source": "Which integration the hourly forecast comes from. Automatic uses the first installed: Forecast.Solar, Solcast, Open-Meteo Solar Forecast."
         }
       },
       "ev": {
@@ -395,6 +397,14 @@
       "options": {
         "incl": "Including VAT",
         "excl": "Excluding VAT"
+      }
+    },
+    "forecast_source": {
+      "options": {
+        "auto": "Automatic",
+        "forecast_solar": "Forecast.Solar",
+        "solcast_solar": "Solcast",
+        "open_meteo_solar_forecast": "Open-Meteo Solar Forecast"
       }
     }
   },

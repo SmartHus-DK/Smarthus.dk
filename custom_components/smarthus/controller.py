@@ -15,6 +15,9 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CONF_FORECAST_SOURCE,
+    FORECAST_AUTO,
+    FORECAST_SOURCES,
     API_URL,
     S_HOTWATER_HOURS,
     CONF_HOTWATER_MIN_ENTITY,
@@ -2099,12 +2102,14 @@ class SmartHusController:
         }
 
     async def _async_refresh_forecast(self) -> None:
-        """Hent timeprognosen fra Forecast.Solar eller Solcast (samme data som energi-dashboardet)."""
+        """Hent timeprognosen fra Forecast.Solar, Solcast eller Open-Meteo Solar Forecast (samme data som energi-dashboardet)."""
         try:
             from homeassistant.loader import async_get_integration
         except ImportError:
             return
-        for domain, key_is_end in (("forecast_solar", True), ("solcast_solar", False)):
+        chosen = self.config.get(CONF_FORECAST_SOURCE) or FORECAST_AUTO
+        sources = [s for s in FORECAST_SOURCES if chosen in (FORECAST_AUTO, s[0])]
+        for domain, key_is_end in sources:
             try:
                 entries = self.hass.config_entries.async_entries(domain)
             except AttributeError:

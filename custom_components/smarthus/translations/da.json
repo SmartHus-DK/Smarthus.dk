@@ -154,10 +154,11 @@
           "grid_import_energy_sensor": "Energimåler: købt fra nettet i alt (kWh) – valgfri",
           "solar_investment": "Anlæggets pris (kr) – valgfri",
           "grid_import_power_sensor": "Køb fra nettet lige nu (W/kW) – i stedet for én sensor",
-          "grid_export_power_sensor": "Salg til nettet lige nu (W/kW) – i stedet for én sensor"
+          "grid_export_power_sensor": "Salg til nettet lige nu (W/kW) – i stedet for én sensor",
+          "solar_forecast_source": "Solprognose fra"
         },
         "data_description": {
-          "solar_forecast_sensor": "Gør batteriets reserve mere præcis, fordi forventet sol trækkes fra. Solcast: sensor.solcast_pv_forecast_forecast_remaining_today. Forecast.Solar: sensor.energy_production_today_remaining.",
+          "solar_forecast_sensor": "Gør batteriets reserve mere præcis, fordi forventet sol trækkes fra. Solcast: sensor.solcast_pv_forecast_forecast_remaining_today. Forecast.Solar: sensor.energy_production_today_remaining. Open-Meteo: sensor.[navn]_energy_production_today_remaining.",
           "solar_energy_sensor": "En stigende måler (kWh) for al strøm, solcellerne har produceret, fx 'PV yield total' / 'Total PV generation'. Bruges til solcelleoverblikket.",
           "grid_export_energy_sensor": "En stigende måler (kWh) for al strøm, der er sendt ud på nettet, fx 'Grid exported total' eller fra en P1-måler. Bruges til at skelne mellem sparet (brugt selv) og tjent ved salg.",
           "solar_curtail_entity": "Den entitet der stopper eksport til nettet. Kontakt (switch/input_boolean): tændes ved stop. Rullemenu (select): udfyld de to navne nedenfor. Tal (number), fx Huawei number.inverter_grid_export_limit eller en eksportgrænse i watt: udfyld de to værdier nedenfor. Lad stå tomt, hvis du bruger scripts.",
@@ -173,7 +174,8 @@
           "grid_import_energy_sensor": "En stigende måler (kWh) for al strøm, du har købt fra nettet, fx fra en P1-måler (HomeWizard, DSMR) eller inverteren ('Grid imported total'). Så viser kortet under Solceller, hvor meget du har købt, hvad det har kostet, og din gennemsnitspris.",
           "solar_investment": "Hvad solcelleanlægget kostede i alt inkl. montering. Bruges til at vise, hvor stor en del af anlægget strømmen har tjent hjem (ROI) og hvornår det er tilbagebetalt.",
           "grid_import_power_sensor": "Kun hvis inverteren ikke har én sensor for nettet, men viser køb og salg hver for sig (fx Growatt via skyen). Begge skal vælges. Bruges kun, når feltet 'Effekt til/fra nettet' er tomt.",
-          "grid_export_power_sensor": "Salget til nettet lige nu – sammen med købet ovenfor."
+          "grid_export_power_sensor": "Salget til nettet lige nu – sammen med købet ovenfor.",
+          "solar_forecast_source": "Hvilken integration timeprognosen hentes fra. Automatisk bruger den første, der er installeret: Forecast.Solar, Solcast, Open-Meteo Solar Forecast."
         }
       },
       "ev": {
@@ -407,6 +409,14 @@
       "options": {
         "incl": "Inkl. moms",
         "excl": "Ekskl. moms"
+      }
+    },
+    "forecast_source": {
+      "options": {
+        "auto": "Automatisk",
+        "forecast_solar": "Forecast.Solar",
+        "solcast_solar": "Solcast",
+        "open_meteo_solar_forecast": "Open-Meteo Solar Forecast"
       }
     }
   },

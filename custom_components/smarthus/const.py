@@ -15,7 +15,7 @@ EDS_DAYAHEAD_FROM: Final = date(2025, 10, 1)
 
 STATIC_URL: Final = "/smarthus_static"
 CARD_URL: Final = f"{STATIC_URL}/smarthus-card.js"
-CARD_VERSION: Final = "1.54.0"
+CARD_VERSION: Final = "1.55.0"
 
 PLATFORMS: Final = ["sensor", "binary_sensor", "switch", "number", "select"]
 
@@ -133,6 +133,10 @@ CONF_EXPORT_SCRIPT_START: Final = "export_script_start"
 EXPORT_SCRIPTS: Final = [CONF_EXPORT_SCRIPT_STOP, CONF_EXPORT_SCRIPT_START]
 # Solprognose (valgfri): sensor med forventet resterende produktion i dag (kWh)
 CONF_SOLAR_FORECAST: Final = "solar_forecast_sensor"
+CONF_FORECAST_SOURCE: Final = "solar_forecast_source"   # auto eller integrationens domæne
+FORECAST_AUTO: Final = "auto"
+# Solprognoser, der kan bruges (domæne, nøglen er periodens slutning?) – i den rækkefølge "auto" prøver dem
+FORECAST_SOURCES: Final = (("forecast_solar", True), ("solcast_solar", False), ("open_meteo_solar_forecast", False))
 # Elbil
 CONF_EV_SWITCH: Final = "ev_charger_entity"
 CONF_EV_ENERGY: Final = "ev_energy_sensor"
@@ -203,7 +207,7 @@ BATTERY_KEYS: Final = [
     CONF_BATTERY_CHARGE_POWER,
     CONF_BATTERY_DISCHARGE_POWER,
 ]
-SOLAR_KEYS: Final = [CONF_SOLAR_INVESTMENT, CONF_SOLAR_ENERGY, CONF_EXPORT_ENERGY, CONF_IMPORT_ENERGY, CONF_SOLAR_CURTAIL, CONF_SOLAR_FORECAST,
+SOLAR_KEYS: Final = [CONF_FORECAST_SOURCE, CONF_SOLAR_INVESTMENT, CONF_SOLAR_ENERGY, CONF_EXPORT_ENERGY, CONF_IMPORT_ENERGY, CONF_SOLAR_CURTAIL, CONF_SOLAR_FORECAST,
                      CONF_GRID_POWER, CONF_GRID_POWER_SIGN, CONF_GRID_IMPORT_POWER, CONF_GRID_EXPORT_POWER,
                      CONF_SOLAR_POWER,
                      CONF_EXPORT_OPT_STOP, CONF_EXPORT_OPT_NORMAL, CONF_EXPORT_VALUE_STOP,
