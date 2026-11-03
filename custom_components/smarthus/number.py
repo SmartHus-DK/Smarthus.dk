@@ -252,8 +252,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
         elif d.requires is None or controller.has(d.requires):
             entities.append(SmartHusNumber(entry, controller, d))
     for car in controller.cars:
-        if not controller.has_soc_sensor(car):
-            entities.append(ManualSocNumber(entry, controller, car["id"], car.get("name") or "Elbil"))
+        # Også for biler med SoC-sensor: bruges, når sensoren ikke svarer (fx bilens sky er nede)
+        entities.append(ManualSocNumber(entry, controller, car["id"], car.get("name") or "Elbil"))
     async_add_entities(entities)
 
 

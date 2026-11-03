@@ -1319,6 +1319,10 @@ class SmartHusController:
         return hours if key == self._ready_key(cid) else 0.0
 
     # --- Biler uden SoC-sensor ----------------------------------------------
+    def soc_sensor_ok(self, car: dict | None) -> bool:
+        """Er der valgt en SoC-sensor, og giver den et tal lige nu? Ellers bruges det indtastede batteriniveau."""
+        return self.has_soc_sensor(car) and self._float_state(car.get("soc")) is not None
+
     def has_soc_sensor(self, car: dict | None) -> bool:
         return bool(car and car.get("soc"))
 
@@ -1591,9 +1595,11 @@ class SmartHusController:
         now = dt_util.utcnow()
         for car in self.cars:
             cid = car["id"]
-            if not self.has_soc_sensor(car):
-                self._track_manual(car, now)
+            if not self.soc_sensor_ok(car):
+                self._track_manual(car, now)      # ingen sensor – eller den svarer ikke: brug det indtastede tal
                 continue
+            if self.has_soc_sensor(car):
+                self.manual_soc.pop(cid, None)    # sensoren virker igen: det indtastede tal er forældet
             rep = self._float_state(car.get("soc"))
             if rep is None:
                 continue
@@ -1608,7 +1614,7 @@ class SmartHusController:
     def car_soc(self, car: dict) -> float | None:
         """Bilens batteriniveau – skønnet ud fra den ladede energi, hvis bilen ikke har meldt et
         nyt tal, mens den lader (så den ikke lader forbi lademålet på et forældet tal)."""
-        if not self.has_soc_sensor(car):
+        if not self.soc_sensor_ok(car):
             return self.manual_soc_value(car["id"])
         rep = self._float_state(car.get("soc"))
         st = self._soc_est.get(car["id"])

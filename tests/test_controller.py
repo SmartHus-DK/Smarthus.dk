@@ -64,6 +64,7 @@ def make(config, states):
     c._ev_hold, c._restore_pending, c._ev_stray, c._soc_est = {}, {}, {}, {}
     c.connected = {}
     c._ev_past, c._ev_manual = {}, {}
+    c.manual_soc, c._ev_idle, c._ev_full_key = {}, {}, {}
     c.tz = ZoneInfo("Europe/Copenhagen")
     c.enabled = {"master": True}
     c.plan = planner.Plan()
@@ -950,3 +951,21 @@ def test_planned_charge_can_be_read_in_advance():
     # Intet ladetidsrum
     c.plan.battery_charge = []
     assert c._plan_grid_charge(now) is None
+
+
+def test_manual_soc_when_sensor_unavailable():
+    """Bilens SoC-sensor svarer ikke: det indtastede batteriniveau bruges – og glemmes, når sensoren virker igen."""
+    car = {"id": "ev", "name": "Bil", "charger": "switch.lader", "soc": "sensor.bil_soc"}
+    states = {"switch.lader": State("off"), "sensor.bil_soc": State("unavailable")}
+    c, h = make({}, states)
+    c.cars, c.manual_soc, c._ev_idle, c._ev_full_key = [car], {}, {}, {}
+    c.connected, c.connected_source = {"ev": True}, {"ev": "assumed"}
+    c.ready_at = lambda cid: __import__("datetime").datetime.now(timezone.utc) + __import__("datetime").timedelta(hours=8)
+    c.recalculate = lambda: None
+    assert not c.soc_sensor_ok(car) and c.car_soc(car) is None
+    c.set_manual_soc("ev", 35)
+    assert c.car_soc(car) == 35.0
+    states["sensor.bil_soc"] = State("62")
+    assert c.soc_sensor_ok(car) and c.car_soc(car) == 62.0
+    c._track_soc()
+    assert "ev" not in c.manual_soc
