@@ -32,7 +32,7 @@ pkg = types.ModuleType("smarthus"); pkg.__path__ = [str(PKG)]; sys.modules["smar
 def load(n):
     spec = importlib.util.spec_from_file_location(f"smarthus.{n}", PKG / f"{n}.py")
     m = importlib.util.module_from_spec(spec); sys.modules[f"smarthus.{n}"] = m; spec.loader.exec_module(m); return m
-for n in ("const", "planner", "pricing", "savings", "profile", "solar", "plug", "flow", "weather", "coordinator", "controller"):
+for n in ("const", "planner", "pricing", "savings", "profile", "solar", "plug", "flow", "weather", "suncal", "coordinator", "controller"):
     load(n)
 ctl_mod = sys.modules["smarthus.controller"]; planner = sys.modules["smarthus.planner"]
 
@@ -68,6 +68,8 @@ def make(config, states):
     c.enabled = {"master": True}
     c.plan = planner.Plan()
     c.sun = sys.modules["smarthus.weather"].SunTracker()
+    c.solar_cal = sys.modules["smarthus.suncal"].SolarCalibration()
+    c._forecast_domain = None
     return c, hass
 
 async def main():
@@ -827,3 +829,84 @@ def test_growatt_normal_resets_charge_power():
     cmds = gw.commands("sph", "gw1", "normal", None, 100, 10, 100)
     charge = [d for s, d in cmds if s == "write_ac_charge_times"][0]
     assert charge["charge_power"] == 100 and charge["mains_enabled"] is False
+
+
+def test_learn_solar_adjusts_forecast_and_plan():
+    """Hele vejen: statistik og tidligere prognose → faktorer → justeret prognose til kort og batteriplan."""
+    suncal = sys.modules["smarthus.suncal"]
+    tz = ZoneInfo("Europe/Copenhagen")
+    now = _dt.datetime.now(tz)
+    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    forecast_rows, meter_rows = [], []
+    for d in range(1, 13):
+        for hour, fc, actual in ((7, 0.2, 0.0), (10, 1.0, 2.0), (14, 1.0, 0.2)):
+            start = (midnight - _dt.timedelta(days=d)).astimezone(timezone.utc).replace(hour=hour)
+            forecast_rows.append({"start": start.timestamp(), "mean": fc})
+            meter_rows.append({"start": start.timestamp(), "change": actual})
+    stats = {"sensor.fc_power_production_now": forecast_rows, "sensor.solar": meter_rows}
+    asked = {}
+
+    def during(_hass, _start, _end, ids, period, units, types_):
+        asked.update(ids=ids, period=period, units=units, types=types_)
+        return stats
+
+    class Rec:
+        async def async_add_executor_job(self, fn, *args):
+            return fn(*args)
+
+    class Saved:
+        data = None
+        async def async_save(self, data):
+            Saved.data = data
+
+    entries = [types.SimpleNamespace(entity_id="sensor.fc_power_production_now"), types.SimpleNamespace(entity_id="sensor.fc_energy")]
+    stub("homeassistant.components"); stub("homeassistant.components.recorder", get_instance=lambda h: Rec())
+    stub("homeassistant.components.recorder.statistics", statistics_during_period=during)
+    registry = stub("homeassistant.helpers.entity_registry", async_get=lambda h: None,
+                    async_entries_for_config_entry=lambda reg, entry_id: entries)
+    sys.modules["homeassistant.helpers"].entity_registry = registry
+
+    c, h = make({"solar_energy_sensor": "sensor.solar", "solar_power_sensor": "sensor.solar_power"}, {})
+    h.config_entries = types.SimpleNamespace(async_entries=lambda domain: [types.SimpleNamespace(entry_id="1")])
+    c._solar_cal_store = Saved()
+    c.recalculate = lambda: None
+    c._forecast_domain = "forecast_solar"
+    c._forecast_ids = lambda: {}
+    c._fc_ids = {}
+    asyncio.run(c.async_learn_solar())
+    assert asked["ids"] == {"sensor.solar", "sensor.fc_power_production_now"} and asked["period"] == "hour"
+    assert c.solar_cal.active and c.solar_cal.days == 12 and Saved.data is c.solar_cal.data
+
+    # Kort og plan bruger den justerede prognose: morgen og eftermiddag ned, formiddag op
+    tomorrow = midnight + _dt.timedelta(days=1)
+    wh = {}
+    for hour in (7, 10, 14):
+        wh[(tomorrow + _dt.timedelta(hours=12)).astimezone(timezone.utc).replace(hour=hour).isoformat()] = 1000.0
+    c._forecast_wh = wh
+    plan = {k.astimezone(timezone.utc).hour: v for k, v in c._solar_hours().items()}
+    assert plan[7] < 0.3 * 0.7
+    assert plan[10] > 1.5 * 0.7
+    assert plan[14] < 0.5 * 0.7
+    shown = c.solar_forecast
+    assert shown["adjusted"] and shown["learned_days"] == 12
+    assert abs(shown["tomorrow_kwh"] - sum(v for v in plan.values()) / 0.7) < 0.02
+
+    # Uden læring er prognosen præcis, som den plejer
+    c2, _ = make({}, {})
+    c2._forecast_wh = wh
+    c2._forecast_ids = lambda: {}
+    assert {k: round(v, 6) for k, v in c2._solar_hours().items()} == {
+        k: round(1.0 * 0.7, 6) for k in c2._solar_hours()}
+    assert not c2.solar_forecast["adjusted"]
+
+    # Forsigtigheden kan justeres: 100 % bruger hele prognosen, 40 % kun en del – kortet viser den fulde
+    c.settings["battery_solar_forecast_pct"] = 100
+    full = {k.astimezone(timezone.utc).hour: v for k, v in c._solar_hours().items()}
+    assert abs(full[10] - plan[10] / 0.7) < 1e-6
+    c.settings["battery_solar_forecast_pct"] = 40
+    low = {k.astimezone(timezone.utc).hour: v for k, v in c._solar_hours().items()}
+    assert abs(low[10] - full[10] * 0.4) < 1e-6
+    assert c.solar_forecast["tomorrow_kwh"] == shown["tomorrow_kwh"]
+    assert c.solar_factor_today == 0.4
+    c.settings.pop("battery_solar_forecast_pct")
+    assert c.solar_caution == 0.7    # installationer fra før indstillingen fandtes

@@ -117,7 +117,7 @@ from .const import (
     HEATING_BOOST,
     HEATING_REDUCE,
     MIN_COMMAND_INTERVAL,
-    SOLAR_FORECAST_FACTOR,
+    S_SOLAR_FORECAST_PCT,
     CONF_BATTERY_ACTIONS,
     MODULE_BATTERY,
     MODULE_HEATING,
@@ -147,6 +147,7 @@ from .flow import energy_flow, to_kw
 from .pricing import has_vat, vat_factor
 from .plug import pick_connected, plug_state
 from .solar import EvSolarState, regulate_ev
+from .suncal import SolarCalibration, hour_key
 from .weather import SunTracker, forecast_sensor_ids, merge_wh, pick_weather_entity, solar_by_hour, summarize_forecast
 
 _LOGGER = logging.getLogger(__name__)
@@ -216,6 +217,8 @@ class SmartHusController:
         self.grid_charge: dict | None = None  # hvor meget der lades fra nettet, når solen kan fylde resten
         self._unsub_learn = None
         self._unsub_learn_first = None
+        self._unsub_sun_learn = None
+        self._unsub_sun_learn_first = None
         self._unsub_energy = None
         self._unsub_energy_first = None
         self._energy_store: Store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}.energy")
@@ -243,7 +246,10 @@ class SmartHusController:
         self._forecast_wh: dict[str, float] = {}
         self.sun = SunTracker()        # faktisk sol i dag ÷ prognosen – justerer resten af dagens prognose
         self._forecast_key_is_end = False
+        self._forecast_domain: str | None = None
         self._forecast_fetched = 0.0
+        self.solar_cal = SolarCalibration()   # den indlærte forskel mellem solprognosen og anlægget
+        self._solar_cal_store: Store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}.solar_calibration")
         self._fc_ids: dict[str, str] = {}
         # Opvarmning med solcelleoverskud
         self.hotwater_surplus = False
@@ -294,6 +300,10 @@ class SmartHusController:
             self.energy = EnergyBook(await self._energy_store.async_load())
         except Exception as err:  # noqa: BLE001
             _LOGGER.warning("SmartHus: kunne ikke hente energioverblikket: %s", err)
+        try:
+            self.solar_cal = SolarCalibration(await self._solar_cal_store.async_load())
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("SmartHus: kunne ikke hente solprognosens læring: %s", err)
         self._savings_loaded = True
 
     async def async_start(self) -> None:
@@ -311,6 +321,10 @@ class SmartHusController:
             # Lær forbrugsmønsteret hver nat og kort efter opstart (når historikken er klar)
             self._unsub_learn = async_track_time_change(self.hass, self.async_learn, hour=0, minute=20, second=30)
             self._unsub_learn_first = async_call_later(self.hass, 60, self.async_learn)
+        if self.has(CONF_SOLAR_ENERGY) or self.has(CONF_SOLAR_POWER):
+            # Sammenlign solprognosen med den faktiske produktion hver nat og kort efter opstart
+            self._unsub_sun_learn = async_track_time_change(self.hass, self.async_learn_solar, hour=0, minute=25, second=30)
+            self._unsub_sun_learn_first = async_call_later(self.hass, 75, self.async_learn_solar)
         # Energioverblik: bygges kort efter opstart og opdateres hver time (når timens statistik er klar)
         self._unsub_energy = async_track_time_change(self.hass, self.async_refresh_energy, minute=14, second=10)
         self._unsub_energy_first = async_call_later(self.hass, 90, self.async_refresh_energy)
@@ -695,6 +709,55 @@ class SmartHusController:
         local = now.astimezone(self.tz)
         return (local.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)).astimezone(now.tzinfo)
 
+    async def async_learn_solar(self, *_args) -> None:
+        """Lær forskellen mellem solprognosen og den faktiske produktion ud fra statistikken."""
+        if not self._forecast_domain:
+            return
+        try:
+            from homeassistant.components.recorder import get_instance
+            from homeassistant.components.recorder.statistics import statistics_during_period
+            from homeassistant.helpers import entity_registry as er
+        except ImportError:
+            return
+        meter = self.config.get(CONF_SOLAR_ENERGY)
+        power = None if meter else self.config.get(CONF_SOLAR_POWER)
+        if not meter and not power:
+            return
+        # Prognosens egen effekt-sensor har historikken fra før læringen begyndte
+        reg = er.async_get(self.hass)
+        past_ids = {e.entity_id for entry in self.hass.config_entries.async_entries(self._forecast_domain)
+                    for e in er.async_entries_for_config_entry(reg, entry.entry_id)
+                    if e.entity_id.endswith("power_production_now")}
+        now = dt_util.now().astimezone(self.tz)
+        ids = {meter or power} | past_ids
+        try:
+            stats = await get_instance(self.hass).async_add_executor_job(
+                statistics_during_period, self.hass, now - timedelta(days=30), now, ids, "hour",
+                {"energy": "kWh", "power": "kW"}, {"change", "mean"},
+            )
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("SmartHus kunne ikke hente solproduktionens historik: %s", err)
+            return
+
+        def series(entity_id: str, field: str) -> dict[str, float]:
+            out: dict[str, float] = {}
+            for row in stats.get(entity_id, []):
+                st, val = row.get("start"), row.get(field)
+                if st is None or val is None:
+                    continue
+                ts = datetime.fromtimestamp(st, self.tz) if isinstance(st, (int, float)) else dt_util.as_local(st)
+                out[hour_key(ts)] = float(val)
+            return out
+
+        past: dict[str, float] = {}
+        for entity_id in past_ids:
+            for key, kw in series(entity_id, "mean").items():
+                past[key] = past.get(key, 0.0) + kw
+        self.solar_cal.backfill(past)
+        self.solar_cal.learn(series(meter, "change") if meter else series(power, "mean"), now)
+        await self._solar_cal_store.async_save(self.solar_cal.data)
+        self.recalculate()
+
     def _update_reserve(self) -> None:
         self.reserve, self.reserve_holds = None, False
         self.battery_hold = None
@@ -714,7 +777,7 @@ class SmartHusController:
             self.profile, now.astimezone(self.tz), until.astimezone(self.tz),
             soc=self._float_state(self.config.get(CONF_BATTERY_SOC)),
             capacity=self.settings[S_BATTERY_CAPACITY], min_soc=self.settings[S_BATTERY_MIN_SOC],
-            solar_remaining=((self._energy_kwh(CONF_SOLAR_FORECAST) if self.has(CONF_SOLAR_FORECAST)
+            solar_remaining=((self._energy_kwh(CONF_SOLAR_FORECAST) if self.has(CONF_SOLAR_FORECAST) and not self.solar_cal.active
                               else self.solar_forecast.get("remaining_kwh")) or 0) * self.solar_factor_today,
         )
         # Sælg kun det, der er ud over reserven
@@ -802,7 +865,7 @@ class SmartHusController:
         if kwh is None:
             return
         # forsigtigt: prognosen rammer ofte for højt – og i dag justeret efter den faktiske sol
-        kwh *= self.solar_factor_today if day.date() == local.date() else SOLAR_FORECAST_FACTOR
+        kwh *= self.solar_factor_today if day.date() == local.date() else self.solar_caution
         surplus = solar_surplus(self.profile, day, kwh, from_h)
         sun_at = day.replace(hour=min(max(from_h, SUN_START) + 3, 23), minute=0, second=0, microsecond=0)
         until_sun = expected_load(self.profile, local, max(sun_at, local))
@@ -914,13 +977,19 @@ class SmartHusController:
             return
         now = dt_util.now().astimezone(self.tz)
         raw = solar_by_hour(self._forecast_wh, self.tz, self._forecast_key_is_end)
-        self.sun.update(now, self.solar_kw, raw.get(now.replace(minute=0, second=0, microsecond=0), 0.0))
+        hour = now.replace(minute=0, second=0, microsecond=0)
+        self.sun.update(now, self.solar_kw, raw.get(hour, 0.0) * self.solar_cal.factor(hour))
 
     @property
     def solar_factor_today(self) -> float:
         """Andel af prognosen, der regnes med resten af i dag (lavere, hvis solen har svigtet indtil nu)."""
         sun = getattr(self, "sun", None)
-        return sun.factor(SOLAR_FORECAST_FACTOR) if sun else SOLAR_FORECAST_FACTOR
+        return sun.factor(self.solar_caution) if sun else self.solar_caution
+
+    @property
+    def solar_caution(self) -> float:
+        """Den andel af solprognosen, batteriet planlægges ud fra (indstilling)."""
+        return min(max(float(self.settings.get(S_SOLAR_FORECAST_PCT, 70.0)), 0.0), 100.0) / 100
 
     def _solar_hours(self) -> dict | None:
         """Solprognosen som kWh pr. lokal time – forsigtigt, og resten af i dag justeret efter den faktiske sol."""
@@ -928,7 +997,7 @@ class SmartHusController:
             return None
         today = dt_util.now().astimezone(self.tz).date()
         f_today = self.solar_factor_today
-        return {h: kwh * (f_today if h.date() == today else SOLAR_FORECAST_FACTOR)
+        return {h: kwh * self.solar_cal.factor(h) * (f_today if h.date() == today else self.solar_caution)
                 for h, kwh in solar_by_hour(self._forecast_wh, self.tz, self._forecast_key_is_end).items()}
 
     def _forecast_battery(self, now: datetime) -> None:
@@ -984,7 +1053,7 @@ class SmartHusController:
         }
 
     async def async_stop(self) -> None:
-        for name in ("_unsub_learn", "_unsub_learn_first", "_unsub_energy", "_unsub_energy_first"):
+        for name in ("_unsub_learn", "_unsub_learn_first", "_unsub_sun_learn", "_unsub_sun_learn_first", "_unsub_energy", "_unsub_energy_first"):
             unsub = getattr(self, name, None)
             if unsub:
                 unsub()
@@ -1132,6 +1201,8 @@ class SmartHusController:
         self._log_ev_charging()
         self._track_soc()
         self._track_sun()
+        if getattr(self.plan, "solar_curtail", False):
+            self.solar_cal.mark_curtailed(dt_util.now().astimezone(self.tz))
         self.recalculate()
         await self.async_apply()
         self._update_savings()
@@ -2180,6 +2251,10 @@ class SmartHusController:
                 continue
             if wh:
                 self._forecast_wh, self._forecast_key_is_end = wh, key_is_end
+                self._forecast_domain = domain
+                self.solar_cal.set_source(domain)
+                self.solar_cal.record(solar_by_hour(wh, self.tz, key_is_end), dt_util.now().astimezone(self.tz))
+                self._solar_cal_store.async_delay_save(lambda: self.solar_cal.data, 300)
                 return
         self._forecast_wh = {}
 
@@ -2199,17 +2274,28 @@ class SmartHusController:
     @property
     def solar_forecast(self) -> dict:
         """Solprognose for i dag, resten af dagen og i morgen + timekurve for i dag."""
-        out = summarize_forecast(self._forecast_wh, dt_util.utcnow(), self.tz, self._forecast_key_is_end) \
-            if self._forecast_wh else {}
+        cal = self.solar_cal
+        learned = cal.active and bool(self._forecast_wh)
+        out = summarize_forecast(self._forecast_wh, dt_util.utcnow(), self.tz, self._forecast_key_is_end,
+                                 scale=cal.factor if learned else None) if self._forecast_wh else {}
         ids = self._forecast_ids()
-        # Sensorerne er det, brugeren kender – de vinder over vores egen sum
+        # Sensorerne er det, brugeren kender – de vinder over vores egen sum.
+        # Når prognosen er justeret efter anlægget, er det den justerede sum, der gælder.
         for key, out_key in (("today", "today_kwh"), ("remaining", "remaining_kwh"), ("tomorrow", "tomorrow_kwh")):
             val = self._energy_entity_kwh(ids.get(key))
-            if val is not None:
+            if val is None:
+                continue
+            if learned:
+                out[f"unadjusted_{out_key}"] = round(val, 2)
+            else:
                 out[out_key] = round(val, 2)
         power = self._power_kw(ids.get("power_now"))
         if power is not None:
-            out["power_now_kw"] = round(power, 2)
+            out["power_now_kw"] = round(power * (cal.factor(dt_util.utcnow()) if learned else 1.0), 2)
+        out["learned_days"] = cal.days
+        out["learned_factor"] = cal.data.get("day_factor")
+        out["adjusted"] = learned
+        out["source"] = self._forecast_domain
         out["available"] = any(out.get(k) is not None for k in ("today_kwh", "remaining_kwh", "tomorrow_kwh"))
         return out
 

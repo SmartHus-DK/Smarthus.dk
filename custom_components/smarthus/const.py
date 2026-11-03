@@ -15,7 +15,7 @@ EDS_DAYAHEAD_FROM: Final = date(2025, 10, 1)
 
 STATIC_URL: Final = "/smarthus_static"
 CARD_URL: Final = f"{STATIC_URL}/smarthus-card.js"
-CARD_VERSION: Final = "1.56.0"
+CARD_VERSION: Final = "1.57.0"
 
 PLATFORMS: Final = ["sensor", "binary_sensor", "switch", "number", "select"]
 
@@ -136,7 +136,7 @@ CONF_SOLAR_FORECAST: Final = "solar_forecast_sensor"
 CONF_FORECAST_SOURCE: Final = "solar_forecast_source"   # auto eller integrationens domæne
 FORECAST_AUTO: Final = "auto"
 # Solprognoser, der kan bruges (domæne, nøglen er periodens slutning?) – i den rækkefølge "auto" prøver dem
-FORECAST_SOURCES: Final = (("forecast_solar", True), ("solcast_solar", False), ("open_meteo_solar_forecast", False))
+FORECAST_SOURCES: Final = (("open_meteo_solar_forecast", False), ("solcast_solar", False), ("forecast_solar", True))
 # Elbil
 CONF_EV_SWITCH: Final = "ev_charger_entity"
 CONF_EV_ENERGY: Final = "ev_energy_sensor"
@@ -264,6 +264,8 @@ S_BATTERY_MAX_SOC: Final = "battery_max_soc"
 S_BATTERY_CAPACITY: Final = "battery_capacity"
 # Sælg solstrøm i stedet for at lade batteriet, når salgsprisen slår prisen for at lade billigt senere med mindst dette
 S_SOLAR_SELL_MARGIN: Final = "battery_solar_sell_margin"
+# Batteriet planlægges ud fra denne andel af solprognosen, så der hellere lades lidt for meget om natten end købes dyr strøm om aftenen
+S_SOLAR_FORECAST_PCT: Final = "battery_solar_forecast_pct"
 S_BATTERY_MAX_CHARGE_KW: Final = "battery_max_charge_kw"   # maks. ladeeffekt fra nettet (til "lad helt op")
 S_EV_HOURS: Final = "ev_hours"
 S_EV_READY_HOUR: Final = "ev_ready_hour"
@@ -303,6 +305,7 @@ DEFAULT_SETTINGS: Final = {
     S_BATTERY_MAX_SOC: 95.0,
     S_BATTERY_CAPACITY: 10.0,
     S_SOLAR_SELL_MARGIN: 0.10,
+    S_SOLAR_FORECAST_PCT: 70.0,
     S_BATTERY_MAX_CHARGE_KW: 0.0,
     S_EV_HOURS: 4.0,
     S_EV_READY_HOUR: 7.0,
@@ -355,6 +358,3 @@ SAVINGS_CATEGORIES: Final = [MODULE_BATTERY, MODULE_EV, "heatpump", MODULE_HOTWA
 
 # Minimum tid mellem to kald til samme enhed (sekunder)
 MIN_COMMAND_INTERVAL: Final = 90
-# Solprognoser rammer ofte for højt (skyer, dis, sne). Batteriet planlægges ud fra denne andel af prognosen,
-# så der hellere lades lidt for meget om natten end købes dyr strøm om aftenen.
-SOLAR_FORECAST_FACTOR: Final = 0.7

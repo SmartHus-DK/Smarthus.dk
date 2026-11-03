@@ -70,11 +70,12 @@ def forecast_sensor_ids(remaining_id: str | None, existing: set[str]) -> dict[st
 
 
 def summarize_forecast(wh_hours: dict[str, float], now: datetime, tz: tzinfo,
-                       key_is_end: bool = False) -> dict:
+                       key_is_end: bool = False, scale=None) -> dict:
     """Saml en prognose (Wh pr. periode) til i dag, resten af dagen, i morgen og en timekurve for i dag.
 
     key_is_end: Forecast.Solar angiver periodens slutning (fx solopgang 07:52, 08:00, 09:00 …),
     Solcast periodens start.
+    scale: valgfri funktion (periodens start) → faktor, fx den indlærte forskel til anlægget.
     """
     points = []
     for key, wh in wh_hours.items():
@@ -102,6 +103,8 @@ def summarize_forecast(wh_hours: dict[str, float], now: datetime, tz: tzinfo,
             end = points[i + 1][0] if i + 1 < len(points) and points[i + 1][0] - t <= limit else t + hour
         if end <= start:
             continue
+        if scale is not None:
+            wh *= scale(start)
         d = start.astimezone(tz).date()
         if d == tomorrow:
             tomorrow_wh += wh

@@ -175,7 +175,7 @@
           "solar_investment": "Hvad solcelleanlægget kostede i alt inkl. montering. Bruges til at vise, hvor stor en del af anlægget strømmen har tjent hjem (ROI) og hvornår det er tilbagebetalt.",
           "grid_import_power_sensor": "Kun hvis inverteren ikke har én sensor for nettet, men viser køb og salg hver for sig (fx Growatt via skyen). Begge skal vælges. Bruges kun, når feltet 'Effekt til/fra nettet' er tomt.",
           "grid_export_power_sensor": "Salget til nettet lige nu – sammen med købet ovenfor.",
-          "solar_forecast_source": "Hvilken integration timeprognosen hentes fra. Automatisk bruger den første, der er installeret: Forecast.Solar, Solcast, Open-Meteo Solar Forecast."
+          "solar_forecast_source": "Hvilken integration timeprognosen hentes fra. Automatisk bruger den første, der er installeret: Open-Meteo Solar Forecast, Solcast, Forecast.Solar."
         }
       },
       "ev": {
@@ -774,6 +774,9 @@
       },
       "heating_max_outdoor": {
         "name": "Varme: aktiv under udetemperatur"
+      },
+      "battery_solar_forecast_pct": {
+        "name": "Batteri: regn med af solprognosen"
       },
       "battery_solar_sell_margin": {
         "name": "Batteri: min. gevinst ved at sælge solstrøm"

@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.56.0";
+const SMARTHUS_CARD_VERSION = "1.57.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -71,6 +71,7 @@ const MODULES = [
       { title: "Brug af batteriet", items: ["battery_discharge_hours", ["battery_discharge_from", "battery_discharge_to"],
         { sw: "battery_sell", label: "Sælg fra batteriet til nettet", note: "Slået fra bruges batteriet kun i huset" }] },
       { title: "Grænser", items: ["battery_min_spread", "battery_min_soc", "battery_max_soc", "battery_capacity"] },
+      { title: "Solprognose", items: ["battery_solar_forecast_pct"] },
       { title: "Solstrøm: sælg eller gem", items: ["battery_solar_sell_margin"] },
       { title: "Batteri fra nettet", items: [{ sw: "battery_full_charge", label: "Lad batteriet helt op i de billigste timer",
       note: "Fra laveste til højeste niveau" }] },
@@ -131,6 +132,8 @@ const HELP = {
       d: "Opladning fra nettet stopper her. 90–95 % skåner batteriet og efterlader plads til solstrøm." },
     { k: ["battery_capacity"], t: "Batteriets størrelse",
       d: "Den brugbare kapacitet i kWh – står på batteriet eller i inverterens app. Bruges til at regne ud, hvor meget der skal lades, hvor meget huset skal have i reserve, og hvor meget der kan sælges. Et forkert tal giver forkerte beslutninger." },
+    { k: ["battery_solar_forecast_pct"], t: "Regn med af solprognosen",
+      d: "Så stor en del af solprognosen bruges, når SmartHus planlægger batteriet. Lavere tal er mere forsigtigt: der lades mere fra nettet om natten, så der ikke mangler strøm til de dyre timer, hvis solen svigter. Højere tal køber mindre natstrøm, men risikerer dyr strøm om aftenen. 100 % bruger hele prognosen, 0 % regner slet ikke med sol." },
     { k: ["battery_solar_sell_margin"], t: "Sælg når gevinsten er mindst",
       d: "Midt på dagen kan det betale sig at sælge solstrømmen og lade batteriet billigt fra nettet senere. Det sker kun, når salgsprisen nu slår prisen for at lade senere med mindst dette beløb pr. kWh." },
   ],
@@ -230,6 +233,7 @@ const NUMBER_LABELS = {
   battery_max_soc: "Højeste niveau",
   battery_capacity: "Batteriets størrelse",
   battery_solar_sell_margin: "Sælg når gevinsten er mindst",
+  battery_solar_forecast_pct: "Regn med af solprognosen",
   battery_max_charge_kw: "Maks. ladeeffekt fra nettet",
   hotwater_hours: "Timer at opvarme",
   hotwater_boost_temp: "Opvarm til",
@@ -649,6 +653,7 @@ class SmartHusCard extends HTMLElement {
           ${this._kpi("I morgen", kwh(a.tomorrow_kwh), null, "solar_forecast")}
         </div>
         ${chart}
+        ${a.adjusted ? `<div class="cmp-sub" style="margin-left:0">Justeret efter anlæggets faktiske produktion de seneste ${a.learned_days} dage.</div>` : ""}
       </div>`;
   }
 

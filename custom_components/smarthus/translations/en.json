@@ -168,7 +168,7 @@
           "solar_investment": "What the solar system cost in total incl. installation. Used to show how much of the system has been paid back (ROI) and when it will be paid back.",
           "grid_import_power_sensor": "Only if the inverter shows import and export separately (e.g. Growatt via cloud). Pick both. Used only when 'grid power' is empty.",
           "grid_export_power_sensor": "Export to the grid now – together with import above.",
-          "solar_forecast_source": "Which integration the hourly forecast comes from. Automatic uses the first installed: Forecast.Solar, Solcast, Open-Meteo Solar Forecast."
+          "solar_forecast_source": "Which integration the hourly forecast comes from. Automatic uses the first installed: Open-Meteo Solar Forecast, Solcast, Forecast.Solar."
         }
       },
       "ev": {
@@ -762,6 +762,9 @@
       },
       "heating_max_outdoor": {
         "name": "Heating: active below outdoor temperature"
+      },
+      "battery_solar_forecast_pct": {
+        "name": "Battery: share of solar forecast to count on"
       },
       "battery_solar_sell_margin": {
         "name": "Battery: min. gain from selling solar"

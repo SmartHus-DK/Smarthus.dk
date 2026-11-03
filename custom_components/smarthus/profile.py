@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 LEARN_DAYS = 14
 MIN_DAYS = 2  # så få dage med data før profilen bruges
 MAX_HOUR_KWH = 50.0  # spring urealistiske timer over (fx nulstillet måler)
+BASE_HOURS = range(0, 6)  # nattens timer: det laveste af dem er husets grundforbrug
 MIN_DAY_KWH = 0.2    # døgn med mindre forbrug end dette har ingen data (måleren fandtes ikke endnu) – tæller ikke med
 SUN_START, SUN_END = 6, 21  # timer hvor solceller regnes at producere (lokal tid)
 EFFICIENCY = 0.95  # tab ved afladning
@@ -73,7 +74,10 @@ def build_profile(hours: list[tuple[datetime, float]]) -> Profile:
     ]
     for kind in ("weekday", "weekend"):
         vals = [sums[kind][h] / counts[kind][h] if counts[kind][h] else all_avg[h] for h in range(24)]
-        setattr(p, kind, vals)
+        # Huset bruger aldrig mindre end sit grundforbrug. Nogle målere viser for lidt (eller minus),
+        # når solen står op – så ville solen se ud til at dække huset, længe før den gør det.
+        base = min(vals[h] for h in BASE_HOURS)
+        setattr(p, kind, [max(v, base) for v in vals])
     return p
 
 
