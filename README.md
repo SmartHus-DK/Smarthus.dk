@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.53.1** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
+**Version 1.54.0** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
 
 SmartHus bruger strømmen, når den er billigst, og sparer, når den er dyrest. Den lader elbilen og batteriet i de billige timer, varmer vandet med billig strøm eller solcelleoverskud, skruer lidt op og ned for varmen og stopper salg af solstrøm, når prisen er for lav. Du ser det hele – og hvad du har sparet – på ét kort.
 
@@ -363,7 +363,7 @@ Kræver **Effekt til/fra nettet lige nu** under Solceller (og gerne solcelleprod
 
 **Varmt vand:** Sæt **Overskud over** (fx 2 kW, 0 = fra). Starter efter 2 min med eksport over grænsen og stopper efter 2 min med køb over 0,3 kW. **Kun når det betaler sig** bruger kun overskuddet, hvis salgsprisen nu er lavere end prisen i den billige time senere. Der varmes højst én gang om dagen.
 
-**Elbil:** Ladestrømmen styres via Easee (indbygget), en tal-entitet for ladestrøm (fx Zaptec "Available current") eller et script med variablen `current`. Hver 30. sekund justeres 1 A ad gangen: ned ved køb > 0,3 kW, op ved eksport > 0,5 kW, når solen giver mindst **Start ved sol over**. Mellem **Mindste** og **Største ladestrøm**. Stopper efter 3 min uden sol. Kun én bil ad gangen.
+**Elbil:** Ladestrømmen styres via Easee (indbygget), en tal-entitet for ladestrøm (fx Zaptec "Available current") eller et script med variablen `current`. Laderen starter, når solen giver mindst **Start ved sol over** i 1 minut. Derefter justeres 1 A ad gangen, men først når køb (> 0,3 kW) eller eksport (> 0,5 kW) har holdt i 1 minut – så strømmen ikke vipper op og ned. Mellem **Mindste** og **Største ladestrøm**. Rækker overskuddet ikke, lades der videre på mindste strøm i stedet for at slukke og tænde. Laderen slukkes først, når solen er helt væk i 5 minutter (uden solsensor: 10 minutters køb på mindste strøm) – eller når solcelleladning slås fra. Kun én bil ad gangen. **Er styringen af bilen slået fra**, lades der kun med overskuddet (ikke efter prisplanen), så længe **Lad med solcelleoverskud** er slået til.
 </details>
 
 <details><summary><b>Easee – script (kun hvis du ikke bruger den indbyggede Easee-styring)</b></summary>

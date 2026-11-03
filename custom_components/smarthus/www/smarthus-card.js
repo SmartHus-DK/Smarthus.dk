@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.53.1";
+const SMARTHUS_CARD_VERSION = "1.54.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -969,7 +969,8 @@ class SmartHusCard extends HTMLElement {
       const p = this._periods(k);
       return p.length ? p[0] : null;
     };
-    if (!on) return "Styring slået fra";
+    if (!on) return m.car && this._st("switch", `${m.id}_solar`)?.state === "on"
+      ? "Styring fra · lader kun med solcelleoverskud" : "Styring slået fra";
     const prefix = "";
     if (m.car) {
       const a = this._st("sensor", `${m.id}_smart_saving`)?.attributes || {};

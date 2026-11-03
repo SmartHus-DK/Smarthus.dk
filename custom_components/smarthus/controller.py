@@ -1317,15 +1317,37 @@ class SmartHusController:
             _LOGGER.warning("SmartHus kunne ikke styre %s (%s.%s): %s", entity_id, domain, service, err)
 
     async def _apply_ev_manual(self, car: dict, ep, force: bool) -> None:
-        """Styringen af bilen er slået fra: "Lad nu" virker stadig. Når "Lad nu" slutter (slået fra
-        eller lademålet er nået), slukkes laderen igen – normal drift er slukket."""
+        """Styringen af bilen er slået fra: "Lad nu" virker stadig, og er "Lad med solcelleoverskud" slået til,
+        lades der kun med overskuddet (ikke efter prisplanen). Når det slutter, slukkes laderen igen – normal
+        drift er slukket."""
         cid = car["id"]
+        solar_manual = self.__dict__.setdefault("_ev_solar_manual", {})
+        st = self.ev_solar.setdefault(cid, EvSolarState())
         if self.ev_force.get(cid) and ep.connected and not ep.target_reached:
             self._ev_manual[cid] = True
+            st.reset()
+            solar_manual.pop(cid, None)
             await self._set_charger(car, True, force)
             if self.has_current_control(car):
                 await self._apply_current(car, int(car_settings(self.settings, cid)["solar_max_a"]), force)
-        elif self._ev_manual.pop(cid, False):
+            return
+        was_on = self._ev_manual.pop(cid, False) | solar_manual.pop(cid, False)
+        solar_on = (self.flags.get(f"{cid}_solar", False) and self.has_current_control(car)
+                    and self.export_kw is not None and ep.connected and not ep.target_reached)
+        other = next((c for c, s in self.ev_solar.items() if s.active and c != cid), None)
+        if solar_on and other is None:
+            cs = car_settings(self.settings, cid)
+            if not force:   # én reguleringsrunde pr. 30 sekunder
+                regulate_ev(st, self.export_kw, self.solar_kw, int(cs["solar_min_a"]), int(cs["solar_max_a"]),
+                            cs["solar_start_kw"])
+            if st.active:
+                solar_manual[cid] = True
+                await self._set_charger(car, True, force)
+                await self._apply_current(car, int(st.current), force)
+                return
+        else:
+            st.reset()
+        if was_on:
             await self._set_charger(car, False, True)
 
     PAST_KINDS = ("battery_use", "battery_hold", "battery_solar", "solar_cover")

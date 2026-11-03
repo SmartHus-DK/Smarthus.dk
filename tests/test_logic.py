@@ -418,27 +418,42 @@ def test_export_min_price():
 def test_ev_solar_regulation():
     solar = _load("solar")
     st = solar.EvSolarState()
+    reg = lambda exp, sun: solar.regulate_ev(st, exp, sun, 6, 16, 4.0)  # noqa: E731
     # Under 4 kW sol: start ikke
-    solar.regulate_ev(st, 1.0, 3.0, 6, 16, 4.0)
+    reg(1.0, 3.0)
     assert not st.active
     # 2 × 30 s med nok sol: start på mindste strøm
-    solar.regulate_ev(st, 1.0, 5.0, 6, 16, 4.0); solar.regulate_ev(st, 1.0, 5.0, 6, 16, 4.0)
+    reg(1.0, 5.0); reg(1.0, 5.0)
     assert st.active and st.current == 6
-    solar.regulate_ev(st, 0.8, 5.0, 6, 16, 4.0); assert st.current == 7      # eksport > 0,5: op
-    solar.regulate_ev(st, 0.2, 5.0, 6, 16, 4.0); assert st.current == 7      # lille eksport: hold
-    solar.regulate_ev(st, -0.6, 5.0, 6, 16, 4.0); assert st.current == 6     # køber: ned
-    for _ in range(20):
-        solar.regulate_ev(st, 3.0, 9.0, 6, 16, 4.0)
-    assert st.current == 16                                                   # aldrig over maks.
-    # Solen forsvinder: stop efter 6 × 30 s på laveste strøm med køb
-    st.current = 6
-    for _ in range(6):
-        solar.regulate_ev(st, -1.0, 1.0, 6, 16, 4.0)
-    assert not st.active and st.current is None
-    # Uden solsensor: start på eksport
-    st = solar.EvSolarState()
-    solar.regulate_ev(st, 4.5, None, 6, 16, 4.0); solar.regulate_ev(st, 4.5, None, 6, 16, 4.0)
+    # Op først når eksporten har holdt i 2 × 30 s – ingen vippen hvert halve minut
+    reg(0.8, 5.0); assert st.current == 6
+    reg(0.8, 5.0); assert st.current == 7
+    reg(0.2, 5.0); assert st.current == 7                     # lille eksport: hold
+    reg(-0.6, 5.0); assert st.current == 7                    # ét køb: vent
+    reg(0.8, 5.0); reg(-0.6, 5.0); assert st.current == 7     # skifter frem og tilbage: hold
+    reg(-0.6, 5.0); reg(-0.6, 5.0); assert st.current == 6    # køb i 2 × 30 s: ned
+    for _ in range(40):
+        reg(3.0, 9.0)
+    assert st.current == 16                                   # aldrig over maks.
+    # Overskuddet rækker ikke til laveste strøm: laderen bliver tændt på laveste strøm
+    for _ in range(40):
+        reg(-1.0, 1.5)
+    assert st.active and st.current == 6
+    # Solen er helt væk: stop efter 5 minutter
+    for _ in range(9):
+        reg(-1.5, 0.05)
     assert st.active
+    reg(-1.5, 0.05)
+    assert not st.active and st.current is None
+    # Uden solsensor: start på eksport – og stop først efter 10 minutters køb på laveste strøm
+    st = solar.EvSolarState()
+    reg(4.5, None); reg(4.5, None)
+    assert st.active
+    for _ in range(19):
+        reg(-1.0, None)
+    assert st.active and st.current == 6
+    reg(-1.0, None)
+    assert not st.active
 
 
 def test_plug_and_connected_car():

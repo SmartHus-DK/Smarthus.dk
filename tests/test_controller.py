@@ -224,7 +224,8 @@ async def main():
     grid.update(v="5000")
     assert c._ev_target(car, ep, None) == (False, None)         # 1. måling
     assert c._ev_target(car, ep, None) == (True, 6)             # starter på 6 A (ingen solsensor: eksport >= 4 kW)
-    assert c._ev_target(car, ep, None) == (True, 7)             # eksport: op
+    assert c._ev_target(car, ep, None) == (True, 6)             # eksport: vent 2 × 30 s
+    assert c._ev_target(car, ep, None) == (True, 7)             # eksport holdt: op
     assert c._ev_target(car, ep, "ev_tesla") == (False, None)   # en anden bil lader med sol
     c.flags["ev_solar"] = False
     assert c._ev_target(car, ep, None) == (False, None)         # slået fra: følg planen
@@ -755,3 +756,34 @@ def test_past_forecast_slots_kept():
     assert shown == [n - _td(hours=1), n, n + _td(hours=2)]
     c._remember_past(n + _td(hours=40))              # ældre end 36 timer glemmes
     assert c.slots_shown("battery_use", []) == []
+
+
+def test_solar_only_when_control_off():
+    """Styring af bilen slået fra + "lad med solcelleoverskud": lad kun med overskuddet, sluk når solen er væk."""
+    car = {"id": "ev", "name": "Bil", "charger": "switch.lader", "current_entity": "number.strom"}
+    states = {"switch.lader": State("off"), "number.strom": State("6"),
+              "sensor.grid": State("5000", unit_of_measurement="W"), "sensor.sol": State("6000", unit_of_measurement="W")}
+    c, h = make({"grid_power_sensor": "sensor.grid", "solar_power_sensor": "sensor.sol"}, states)
+    c.cars, c.flags["ev_solar"] = [car], True
+    c.ev_force = {}
+    ep = planner.EvPlan("ev")
+    asyncio.run(c._apply_ev_manual(car, ep, False)); assert not any(x[0] == "switch" for x in h.services.calls)
+    asyncio.run(c._apply_ev_manual(car, ep, False))          # 2 × 30 s med sol: start
+    assert ("switch", "turn_on", {"entity_id": "switch.lader"}) in h.services.calls
+    states["switch.lader"] = State("on")
+    states["sensor.sol"] = State("50", unit_of_measurement="W"); states["sensor.grid"] = State("-1500", unit_of_measurement="W")
+    for _ in range(10):
+        c._recently_sent = lambda e: False
+        asyncio.run(c._apply_ev_manual(car, ep, False))
+    assert h.services.calls[-1] == ("switch", "turn_off", {"entity_id": "switch.lader"})
+    # Slås solcelleladning fra, slukkes laderen med det samme
+    c2, h2 = make({"grid_power_sensor": "sensor.grid", "solar_power_sensor": "sensor.sol"},
+                  {**states, "sensor.sol": State("6000", unit_of_measurement="W"), "sensor.grid": State("5000", unit_of_measurement="W"),
+                   "switch.lader": State("off")})
+    c2.cars, c2.flags["ev_solar"] = [car], True
+    c2.ev_force = {}
+    asyncio.run(c2._apply_ev_manual(car, ep, False)); asyncio.run(c2._apply_ev_manual(car, ep, False))
+    c2.hass.states = types.SimpleNamespace(get={**states, "switch.lader": State("on")}.get)
+    c2.flags["ev_solar"] = False
+    asyncio.run(c2._apply_ev_manual(car, ep, True))
+    assert h2.services.calls[-1] == ("switch", "turn_off", {"entity_id": "switch.lader"})
