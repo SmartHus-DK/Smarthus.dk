@@ -1472,3 +1472,22 @@ def test_battery_need_at_and_sell_switch():
     st = dict(const.DEFAULT_SETTINGS, battery_charge_hours=3, battery_discharge_hours=2, battery_min_spread=0.5)
     assert planner.build_plan(slots, t0, tz, st).battery_discharge
     assert planner.build_plan(slots, t0, tz, dict(st, battery_sell=False)).battery_discharge == []
+
+
+def test_bil_uden_for_laderen_faar_pris_men_ingen_plan():
+    now = datetime(2026, 11, 3, 19, 0, tzinfo=TZ)
+    slots = []
+    for i in range(4 * 24):
+        t = now + timedelta(minutes=15 * i)
+        slots.append(planner.Slot(t, t + timedelta(minutes=15), 0, 1.0 if t.hour < 6 else 3.0, 0.5))
+    settings = dict(const.DEFAULT_SETTINGS)
+    settings.update(ev_target_soc=80, ev_battery_capacity=60, ev_charge_power=11, ev_ready_hour=7, ev_max_total_power=11)
+    cs = planner.CarInput
+    out = planner.plan_cars(slots, now, TZ, settings, [cs("ev", "Bil", soc=40, connected=False, force=True), cs("ev2", "Bil 2", soc=40, connected=True)])
+    a, b = out["ev"], out["ev2"]
+    assert not a.connected and not a.on and a.slots == [] and not a.limited
+    assert a.energy > 0 and a.cost_now > a.cost_planned > 0 and a.cost_horizon is not None
+    # Den andens plan er urørt af bilen uden for laderen, selv med en fælles effektgrænse
+    alone = planner.plan_cars(slots, now, TZ, settings, [cs("ev2", "Bil 2", soc=40, connected=True)])["ev2"]
+    assert b.connected and [s.start for s in b.slots] == [s.start for s in alone.slots]
+    assert b.cost_planned == alone.cost_planned

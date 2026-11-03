@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.58.0";
+const SMARTHUS_CARD_VERSION = "1.59.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -372,7 +372,7 @@ class SmartHusCard extends HTMLElement {
   }
   /** Biler i overblikket: en bil, der ikke sidder i laderen, skjules – medmindre ingen er tilsluttet. */
   _visibleCars(list) {
-    const shown = list.filter((c) => c.connected !== false);
+    const shown = list.filter((c) => c.connected !== false || c.cid === this._viewCar);
     return shown.length ? shown : list;
   }
   _forceKey(cid) {
@@ -925,7 +925,7 @@ class SmartHusCard extends HTMLElement {
           <button class="panel-close" data-action="close-panel" aria-label="Luk og vis overblikket">
             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 6 18 18M18 6 6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>Luk</button>
         </div>
-        ${g.id === "ev" ? this._connectedPicker() : ""}
+        ${g.id === "ev" ? this._carViewPicker() + this._connectedPicker() : ""}
         <div class="panel-mods${g.mods.length > 1 ? " multi" : ""}">${g.mods.map((m) => this._renderModule(m, true)).join("")}</div>
       </section>` : "";
     this._panelAnim = false;
@@ -1144,7 +1144,7 @@ class SmartHusCard extends HTMLElement {
     const help = this._helpFold(m);
     let actions = "";
     const force = m.car ? this._st("switch", this._forceKey(m.id)) : null;
-    if (force) {
+    if (force && (force.state === "on" || this._carPlugged(m.id))) {
       const fon = force.state === "on";
       actions = `<button class="action ${fon ? "active" : ""}" data-action="toggle" data-entity="${force.entity_id}">
         <ha-icon icon="mdi:lightning-bolt"></ha-icon>${fon ? "Stop opladning nu" : `Lad ${esc(m.name)} nu`}</button>`;
@@ -1167,11 +1167,17 @@ class SmartHusCard extends HTMLElement {
       <span><ha-icon class="help-ic" icon="mdi:information-outline"></ha-icon>Sådan virker indstillingerne</span><ha-icon class="chev${open ? " up" : ""}" icon="mdi:chevron-down"></ha-icon></button>${body}</div>`;
   }
 
+  /** Sidder bilen i laderen? Ellers skjules knapperne til at lade. */
+  _carPlugged(cid) {
+    return this._st("binary_sensor", `${cid}_charge_now`)?.attributes?.connected !== false;
+  }
+
   /** "Lad med sol" – knap i samme stil som "Lad nu", der slår solcelleladning til og fra. */
   _solarButton(cid, cls = "") {
     const sw = this._st("switch", `${cid}_solar`);
     if (!sw) return "";
     const on = sw.state === "on";
+    if (!on && !this._carPlugged(cid)) return "";      // står den til, kan den stadig slås fra
     return `<button class="action ${cls} ${on ? "active" : ""}" data-action="toggle" data-entity="${sw.entity_id}">
         <ha-icon icon="mdi:solar-power-variant"></ha-icon>${on ? "Stop solcelleladning" : "Lad med sol"}</button>`;
   }
@@ -1471,6 +1477,19 @@ class SmartHusCard extends HTMLElement {
     const ring = `<path d="M${p(a0)} A${r},${r} 0 1 1 ${p(a1)}" fill="none" stroke="${color}" stroke-width="${(r / 3.4).toFixed(1)}" stroke-linecap="round"/>
       <line x1="${x}" y1="${(y - r * 1.15).toFixed(1)}" x2="${x}" y2="${(y - r * 0.15).toFixed(1)}" stroke="${color}" stroke-width="${(r / 3.4).toFixed(1)}" stroke-linecap="round"/>`;
     return glow ? `<g><g filter="url(#sh-glow)" opacity=".7">${ring}</g>${ring}</g>` : ring;
+  }
+
+  /** Se pris og indstillinger for en bil, der ikke sidder i laderen. Ændrer intet i styringen. */
+  _carViewPicker() {
+    const cars = this._cars();
+    if (cars.length < 2 || !cars.some((c) => c.connected === false)) return "";
+    const shown = this._visibleCars(cars);
+    const chips = cars.map((c) => {
+      const on = c.cid === this._viewCar || (!this._viewCar && c.cid === shown[0]?.cid);
+      return `<button class="chip ${on ? "on" : ""}" data-action="view-car" data-cid="${esc(c.cid)}" aria-pressed="${on}">${esc(c.name)}${c.connected === false ? " · ikke i laderen" : ""}</button>`;
+    }).join("");
+    return `<div class="picker"><div class="picker-head"><ha-icon icon="mdi:car-search"></ha-icon><span>Vis bil</span>
+      <span class="picker-note">Se pris uden at sætte bilen til</span></div><div class="chips">${chips}</div></div>`;
   }
 
   _connectedPicker() {
@@ -1795,8 +1814,10 @@ class SmartHusCard extends HTMLElement {
         <span class="cmp-val">${nf(cost)} kr</span>
       </div>
       <div class="cmp-sub">${nf(price)} kr/kWh i snit</div>`;
+    const notIn = this._st("binary_sensor", `${cid}_charge_now`)?.attributes?.connected === false;
     return `
       <div class="cmp">
+        ${notIn ? `<div class="cmp-sub" style="margin-left:0">Bilen sidder ikke i laderen. Prisen gælder, hvis den sættes til nu.</div>` : ""}
         <div class="cmp-title">${nf(a.energy_kwh, 1)} kWh${a.soc != null ? ` fra ${nf(a.soc, 0)} % til ${nf(a.target_soc, 0)} %` : ""}</div>
         ${row("Lad nu", a.cost_now, a.price_now, COLORS.expensive)}
         ${row("Billigste timer", a.cost_planned, a.price_planned, COLORS.cheap)}
@@ -1861,6 +1882,11 @@ class SmartHusCard extends HTMLElement {
     const { action, entity } = el.dataset;
     if (action === "toggle") {
       this._hass.callService("switch", "toggle", { entity_id: entity });
+    } else if (action === "view-car") {
+      const cid = el.dataset.cid;
+      const connected = this._cars().find((c) => c.cid === cid)?.connected !== false;
+      this._viewCar = this._viewCar === cid || connected ? null : cid;
+      this._render();
     } else if (action === "panel") {
       const id = el.dataset.panel;
       this._panel = this._panel === id ? null : id;
@@ -2323,7 +2349,7 @@ class SmartHusEvCard extends SmartHusCard {
   _evCar() {
     const cars = this._cars();
     if (this._config.car) return cars.find((c) => c.cid === this._config.car) || null;
-    return this._visibleCars(cars)[0] || null;
+    return cars.find((c) => c.cid === this._viewCar) || this._visibleCars(cars)[0] || null;
   }
 
   _onClick(ev) {
@@ -2372,7 +2398,7 @@ class SmartHusEvCard extends SmartHusCard {
       </svg>`;
 
     const line = this._moduleLine(m, on);
-    const done = a.done_at && !a.target_reached && !a.short_of_time ? new Date(a.done_at) : null;
+    const done = connected && a.done_at && !a.target_reached && !a.short_of_time ? new Date(a.done_at) : null;
     const dayTxt = (d) => {
       const d0 = new Date(); d0.setHours(0, 0, 0, 0);
       const n = Math.round((new Date(d).setHours(0, 0, 0, 0) - d0) / 864e5);
@@ -2380,6 +2406,7 @@ class SmartHusEvCard extends SmartHusCard {
     };
     const facts = [
       !connected ? `<div class="ev-fact"><b>Ikke tilsluttet</b></div>` : "",
+      !connected && a.cost_now != null && !a.target_reached ? `<div class="ev-fact"><span>Prisen gælder, hvis bilen sættes til nu</span></div>` : "",
       connected && charging && kw != null ? `<div class="ev-fact"><span>Lader nu</span><b>${nf(kw, 1)} kW</b></div>` : "",
       done ? `<div class="ev-fact"><span>Klar</span><b>${whenText(done)}</b></div>` : "",
       a.waiting_for_prices ? `<div class="ev-fact"><span>Venter på priser</span><b class="wait">Ca. kl. 13</b></div>` : "",
@@ -2390,7 +2417,7 @@ class SmartHusEvCard extends SmartHusCard {
     const modeName = { next: `Til klar kl. ${String(this._num("number", `${cid}_ready_hour`) ?? "").padStart(2, "0")}`,
       today: "I dag", tomorrow: "I morgen", both: "Begge dage", horizon: "Billigste i sigte" }[mode];
     const priceRows = [];
-    if (!a.target_reached && !a.short_of_time && a.cost_now != null && connected) {
+    if (!a.target_reached && !a.short_of_time && a.cost_now != null) {
       priceRows.push(["Lad nu", a.cost_now, ""]);
       if (a.cost_planned != null && mode !== "horizon") priceRows.push([modeName, a.cost_planned, "sel"]);
       else if (a.waiting_for_prices) priceRows.push([modeName, null, "sel"]);
@@ -2402,13 +2429,14 @@ class SmartHusEvCard extends SmartHusCard {
 
     const force = this._st("switch", this._forceKey(cid));
     const fon = force?.state === "on";
-    const action = (force ? `<button class="action ev-go ${fon ? "active" : ""}" data-action="toggle" data-entity="${force.entity_id}">
+    const action = (force && (fon || connected) ? `<button class="action ev-go ${fon ? "active" : ""}" data-action="toggle" data-entity="${force.entity_id}">
         <ha-icon icon="mdi:lightning-bolt"></ha-icon>${fon ? "Stop opladning nu" : "Lad nu"}</button>` : "") + this._solarButton(cid, "ev-go");
     const step = (k) => (this._st("number", k) ? this._stepper(k) : "");
     const warn = a.short_of_time ? this._evCompare(cid) : "";
     const more = this._config.details ? `
       <button class="ev-morebtn" data-action="ev-more" aria-expanded="${this._evMore}">${this._evMore ? "Skjul" : "Mere"}<ha-icon class="chev${this._evMore ? " up" : ""}" icon="mdi:chevron-down"></ha-icon></button>
       ${this._evMore ? `<div class="ev-more">${a.short_of_time ? "" : this._evCompare(cid)}
+        <div class="ver">SmartHus v${SMARTHUS_CARD_VERSION}</div>
         ${step(`${cid}_battery_capacity`)}${step(`${cid}_charge_power`)}${this._st("switch", `${cid}_solar`)?.state === "on" ? `${step(`${cid}_solar_start_kw`)}${step(`${cid}_solar_min_a`)}${step(`${cid}_solar_max_a`)}` : ""}</div>` : ""}` : "";
 
     const html = `
@@ -2420,7 +2448,7 @@ class SmartHusEvCard extends SmartHusCard {
         </div>
         <div class="ev-main">${ring}<div class="ev-facts">${facts}</div></div>
         ${prices}
-        ${this._config.car ? "" : this._connectedPicker()}
+        ${this._config.car ? "" : this._carViewPicker() + this._connectedPicker()}
         ${warn}
         <div class="ev-rows">${a.soc_sensor ? "" : step(`${cid}_manual_soc`)}${step(`${cid}_target_soc`)}${this._st("select", `${cid}_ready_day`)?.attributes?.uses_ready_hour === false ? "" : step(`${cid}_ready_hour`)}${this._readyDayRow(cid)}${!a.soc_sensor && this._st("switch", `${cid}_car_target`) ? this._switchRow({ sw: `${cid}_car_target`, label: "Bilen stopper selv ved lademålet", note: "Laderen holdes tændt lidt længere end beregnet" }) + (this._st("switch", `${cid}_car_target`).state === "on" ? step(`${cid}_extra_hours`) : "") : ""}</div>
         ${action}
