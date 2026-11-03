@@ -110,12 +110,20 @@ def test_gemt_prognose_vinder_over_historik():
     assert cal.data["forecast"] == {"2026-11-10T10": 1.0, "2026-11-10T11": 2.0}
 
 
-def test_ny_prognosekilde_nulstiller():
+def test_hver_prognosekilde_har_sin_egen_laering():
     cal, actual = fill(10, {10: 1.0}, {10: 2.0})
-    cal.set_source("forecast_solar")
+    cal.set_source("open_meteo_solar_forecast")
     cal.learn(actual, NOW)
-    assert not cal.set_source("forecast_solar") and cal.active
-    assert cal.set_source("solcast_solar") and not cal.active and not cal.data["forecast"]
+    before = cal.factor(at(10))
+    assert not cal.set_source("open_meteo_solar_forecast") and cal.active
+    # Kort udfald: en anden prognose tager over og må ikke bruge eller slette det lærte
+    assert cal.set_source("forecast_solar") and not cal.active and not cal.data["forecast"]
+    assert cal.factor(at(10)) == 1.0
+    cal.record({datetime(2026, 11, 21, 10, tzinfo=TZ): 3.0}, NOW)
+    assert cal.set_source("open_meteo_solar_forecast") and cal.active
+    assert cal.factor(at(10)) == before and cal.days == 10
+    assert 3.0 not in cal.data["forecast"].values()
+    assert cal.set_source("forecast_solar") and list(cal.data["forecast"].values()) == [3.0]
 
 
 def test_vintertid_flytter_ikke_faktorerne():

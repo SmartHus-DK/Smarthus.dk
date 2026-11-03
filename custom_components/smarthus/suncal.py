@@ -25,6 +25,9 @@ MIN_DAY_FORECAST = 0.2 # kWh – døgn med næsten ingen forventet sol siger ikk
 MIN_DAY_SHARE = 0.05   # under 5 % af prognosen hele dagen: udfald, sne eller lignende – ikke anlæggets evne
 
 
+_PER_SOURCE = ("forecast", "curtailed", "factors", "day_factor", "days")
+
+
 def hour_key(t: datetime) -> str:
     """Timens nøgle i UTC, fx 2026-11-04T08."""
     return t.astimezone(timezone.utc).strftime("%Y-%m-%dT%H")
@@ -56,12 +59,17 @@ class SolarCalibration:
         return factors[t.astimezone(timezone.utc).hour] if factors else 1.0
 
     def set_source(self, source: str) -> bool:
-        """Skiftes prognose, gælder det lærte ikke længere. Returnerer True, hvis der blev nulstillet."""
+        """Hver prognose har sin egen læring. Ved skift gemmes den gamle og den nye hentes frem, så et kort
+        udfald (fx lige efter genstart, hvor prognosen ikke er klar) ikke sletter det lærte.
+        Returnerer True, hvis kilden blev skiftet."""
         old = self.data.get("source")
         self.data["source"] = source
         if old is None or old == source:
             return False
-        self.data.update(forecast={}, curtailed=[], factors=None, day_factor=None, days=0)
+        saved = self.data.setdefault("saved", {})
+        saved[old] = {k: self.data.get(k) for k in _PER_SOURCE}
+        self.data.update(saved.pop(source, None) or {"forecast": {}, "curtailed": [], "factors": None,
+                                                     "day_factor": None, "days": 0})
         return True
 
     def record(self, hours: dict[datetime, float], now: datetime) -> None:
