@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.55.0** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
+**Version 1.56.0** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
 
 SmartHus bruger strømmen, når den er billigst, og sparer, når den er dyrest. Den lader elbilen og batteriet i de billige timer, varmer vandet med billig strøm eller solcelleoverskud, skruer lidt op og ned for varmen og stopper salg af solstrøm, når prisen er for lav. Du ser det hele – og hvad du har sparet – på ét kort.
 
@@ -394,6 +394,9 @@ Har ladeboksens integration en **number**-entitet for ladestrøm (fx Zaptec "Ava
 - **Samme lader:** vælg samme lader til begge biler. Med bilens sensor "ladekabel tilsluttet" finder SmartHus selv bilen. Ellers vælger du bilen på kortet (Elbil → Tilsluttet bil) – indtil da, eller hvis du vælger **Ingen bil**, styres laderen ikke, og begge biler vises gennemsigtige. Bilen, der ikke er valgt, hverken planlægges, styres eller vises.
 - **Tidsrum:** batteri, varmt vand og varme har hvert sit fra–til (0–24 = hele døgnet, 22–06 går over midnat).
 - **Stop eksport under:** når salgsprisen er under grænsen, stoppes eksporten (standard 0 kr = kun ved negativ pris).
+- **Maks. ladeeffekt fra nettet:** inverterens ladeeffekt fra nettet (kW). Er den sat, regner SmartHus time for time ud – med husets forbrugsmønster og solprognosen – hvor meget batteriet skal have, når solen står op, og lader kun det, der mangler. Ladetiden er det, der mangler, delt med ladeeffekten; **Timer at lade** er loftet.
+- **Sælg fra batteriet til nettet:** slået fra sælger batteriet aldrig til nettet og bruges kun i huset.
+- **Elbil – Lad med sol:** knap ved siden af "Lad nu", der slår solcelleladning til og fra.
 - **Lad batteriet helt op i de billigste timer** (valgfri): batteriet lades fra nettet fra laveste til højeste niveau i døgnets billigste timer – også når solen ventes at fylde det, og uanset prisforskellen. Tast inverterens **maks. ladeeffekt** (kW) ind; antallet af timer regnes ud fra batteriets størrelse og grænser (inkl. ca. 5 % tab). Uden ladeeffekt (0 kW) sker der intet.
 - **Elbil i sammenhængende blokke:** opladningen planlægges i blokke på mindst 1 time, så laderen ikke starter og stopper for hvert kvarter, når et enkelt kvarter er lidt dyrere.
 - **Varme i hele timer:** ekstra varme og sparetimer vælges som hele klokketimer i højst to sammenhængende perioder pr. døgn, hver mindst 2 timer – så varmepumpens setpunkt ikke skifter hvert kvarter.

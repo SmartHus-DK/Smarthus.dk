@@ -1445,3 +1445,30 @@ def test_forecast_sensor_ids_open_meteo():
     fs = {"sensor.energy_production_today", "sensor.energy_production_today_remaining"}
     assert weather.forecast_sensor_ids(None, fs | ex)["remaining"] == "sensor.energy_production_today_remaining"
     assert weather.forecast_sensor_ids(None, set()) == {}
+
+
+def test_battery_need_at_and_sell_switch():
+    from datetime import datetime, timedelta, timezone
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("Europe/Copenhagen")
+    prof = profile.Profile(weekday=[0.5] * 24, weekend=[0.5] * 24, days=5)
+    d = datetime(2026, 11, 4, 6, tzinfo=tz)
+    end = d.replace(hour=0) + timedelta(days=1)
+    # Ingen sol: 18 timer × 0,5 kWh oven på bunden (1 kWh)
+    assert abs(profile.battery_need_at(prof, {}, d, end, floor=1, full=20) - 10.0) < 0.01
+    # Sol midt på dagen fylder op – batteriet skal kun klare morgenen
+    sun = {d.replace(hour=h): 3.0 for h in range(9, 15)}
+    assert abs(profile.battery_need_at(prof, sun, d, end, floor=1, full=10) - 2.5) < 0.01
+    # Selv fuldt rækker ikke: svaret er fuldt
+    assert profile.battery_need_at(prof, {}, d, end, floor=1, full=5) == 5
+    # Salg slået fra: batteriet sælger aldrig
+    q = timedelta(minutes=15)
+    t0 = datetime(2026, 11, 2, 0, 0, tzinfo=tz).astimezone(timezone.utc)
+    slots = []
+    for i in range(96):
+        h = i // 4
+        buy = 2.4 if 1 <= h < 5 else 3.9 if 17 <= h < 20 else 2.8
+        slots.append(planner.Slot(t0 + i * q, t0 + (i + 1) * q, buy - 1.0, buy, 3.5 if 17 <= h < 20 else 1.7))
+    st = dict(const.DEFAULT_SETTINGS, battery_charge_hours=3, battery_discharge_hours=2, battery_min_spread=0.5)
+    assert planner.build_plan(slots, t0, tz, st).battery_discharge
+    assert planner.build_plan(slots, t0, tz, dict(st, battery_sell=False)).battery_discharge == []

@@ -556,7 +556,8 @@ def build_plan(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
         if ch and (full or (dear and (avg(dear) or 0) - (avg(ch) or 0) >= settings["battery_min_spread"])):
             plan.battery_charge += ch
             cost = (avg(ch) or 0) / BATTERY_ROUND_TRIP
-            sellable = [s for s in pool if s.sale - cost >= settings["battery_min_spread"]]
+            sellable = [s for s in pool if s.sale - cost >= settings["battery_min_spread"]] \
+                if settings.get("battery_sell", True) else []          # "sælg fra batteriet" slået fra
             plan.battery_discharge += cheapest_blocks(sellable, settings["battery_discharge_hours"], BATTERY_MIN_BLOCK_H,
                                                       min_gap_h=BATTERY_MIN_GAP_H, most_expensive=True,
                                                       key=lambda s: s.sale)

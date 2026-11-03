@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.55.0";
+const SMARTHUS_CARD_VERSION = "1.56.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -67,12 +67,13 @@ const MODULES = [
   {
     id: "battery", name: "Batteri", icon: "mdi:home-battery", sw: "control_battery",
     groups: [
-      { title: "Opladning fra nettet", items: ["battery_charge_hours", ["battery_charge_from", "battery_charge_to"]] },
-      { title: "Brug af batteriet", items: ["battery_discharge_hours", ["battery_discharge_from", "battery_discharge_to"]] },
+      { title: "Opladning fra nettet", items: ["battery_max_charge_kw", "battery_charge_hours", ["battery_charge_from", "battery_charge_to"]] },
+      { title: "Brug af batteriet", items: ["battery_discharge_hours", ["battery_discharge_from", "battery_discharge_to"],
+        { sw: "battery_sell", label: "Sælg fra batteriet til nettet", note: "Slået fra bruges batteriet kun i huset" }] },
       { title: "Grænser", items: ["battery_min_spread", "battery_min_soc", "battery_max_soc", "battery_capacity"] },
       { title: "Solstrøm: sælg eller gem", items: ["battery_solar_sell_margin"] },
       { title: "Batteri fra nettet", items: [{ sw: "battery_full_charge", label: "Lad batteriet helt op i de billigste timer",
-      note: "Fra laveste til højeste niveau – tast maks. ladeeffekt ind" }, "battery_max_charge_kw"] },
+      note: "Fra laveste til højeste niveau" }] },
     ],
   },
   {
@@ -101,21 +102,25 @@ const MODULES = [
   { id: "solar", name: "Solceller", icon: "mdi:solar-power", sw: "control_solar",
     groups: [{ title: null, items: ["solar_export_min_price"] },
       { title: "Batteri fra nettet", items: [{ sw: "battery_full_charge", label: "Lad batteriet helt op i de billigste timer",
-      note: "Fra laveste til højeste niveau – tast maks. ladeeffekt ind" }, "battery_max_charge_kw"] }] },
+      note: "Fra laveste til højeste niveau" }] }] },
 ];
 
 // Forklaringer under "Sådan virker indstillingerne" (foldet sammen). k = indstillingen(e), der skal
 // findes, for at forklaringen vises – så kunden kun ser det, der passer til hans anlæg.
 const HELP = {
   battery: [
+    { k: ["battery_max_charge_kw"], t: "Maks. ladeeffekt fra nettet",
+      d: "Hvor hurtigt inverteren kan lade batteriet fra nettet, fx 3 kW. SmartHus regner time for time ud, hvad huset bruger, og hvad solen ventes at give i morgen, og lader kun det, der mangler – ladetiden er det, der mangler, delt med ladeeffekten. 0 = ikke sat, så bruges 'Timer at lade'." },
     { k: ["battery_charge_hours"], t: "Timer at lade",
-      d: "Hvor mange af døgnets billigste timer batteriet må lade fra nettet. SmartHus vælger selv timerne ud fra elprisen, når morgendagens priser kommer ved 13-tiden. Ventes der meget sol i morgen, lades kun det, der mangler." },
+      d: "Højst så mange af døgnets billigste timer må batteriet lade fra nettet. SmartHus vælger selv timerne ud fra elprisen, når morgendagens priser kommer ved 13-tiden. Er ladeeffekten sat, bruges kun de timer, der skal til." },
     { k: ["battery_charge_from"], t: "Tidsrum for opladning",
       d: "De billige timer søges kun inden for dette tidsrum. 00–24 betyder hele døgnet. Brug fx 00–06, hvis batteriet kun må lade om natten." },
     { k: ["battery_discharge_hours"], t: "Timer at sælge",
       d: "Højst så mange timer sælger batteriet til nettet med fuld kraft ('Batteri sælger' i grafen) – og kun når salgsprisen er mindst 'min. prisforskel' højere end ladeprisen inkl. ca. 10 % tab. Ellers er strømmen mere værd i huset, og der sælges ikke. Der holdes altid så meget tilbage, at huset klarer sig, til strømmen bliver billig igen. Resten af tiden dækker batteriet husets forbrug." },
     { k: ["battery_capacity"], t: "Gem batteriet til de dyre timer",
       d: "Rækker batteriet ikke til hele døgnet – også når solens forventede overskud er regnet med – gemmes det i de billige timer ('Batteri gemmes' i grafen): huset kører på nettet (og solen), batteriet hverken aflader eller lades fra nettet, og strømmen bruges i stedet i de dyreste timer før næste opladning ('Batteri bruges'). Under reserven ses, hvad det sparer i dag – målt indtil nu plus et skøn for resten af dagen. Kræver at anlægget kan stå stille – fx Growatt SPH, SigEnergy eller et script." },
+    { k: ["battery_sell"], t: "Sælg fra batteriet",
+      d: "Slået fra sælger batteriet aldrig til nettet – det bruges kun til husets eget forbrug." },
     { k: ["battery_discharge_from"], t: "Tidsrum for afladning",
       d: "De dyre timer søges kun inden for dette tidsrum, fx 16–21 for kun at bruge batteriet i aftenspidsen." },
     { k: ["battery_min_spread"], t: "Min. prisforskel",
@@ -190,8 +195,7 @@ function carModule(cid, name, first) {
     { title: "Lademål i bilen", items: [{ sw: `${cid}_car_target`, label: "Bilen stopper selv ved lademålet",
       note: "Laderen holdes tændt lidt længere end beregnet, og bilen stopper selv" }, `${cid}_extra_hours`] },
     { title: "Bil og lader", items: [`${cid}_battery_capacity`, `${cid}_charge_power`] },
-    { title: "Solcelleladning", items: [{ sw: `${cid}_solar`, label: "Lad med solcelleoverskud",
-      note: "Ladestrømmen følger overskuddet, 1 A ad gangen" }, `${cid}_solar_start_kw`, `${cid}_solar_min_a`, `${cid}_solar_max_a`] },
+    { title: "Solcelleladning", items: [`${cid}_solar_start_kw`, `${cid}_solar_min_a`, `${cid}_solar_max_a`] },
   ];
   if (first) groups.push({ title: "Alle elbiler", items: ["ev_max_total_power"] });
   return { id: cid, car: true, name, icon: "mdi:car-electric", sw: `control_${cid}`, groups };
@@ -226,7 +230,7 @@ const NUMBER_LABELS = {
   battery_max_soc: "Højeste niveau",
   battery_capacity: "Batteriets størrelse",
   battery_solar_sell_margin: "Sælg når gevinsten er mindst",
-  battery_max_charge_kw: "Maks. ladeeffekt",
+  battery_max_charge_kw: "Maks. ladeeffekt fra nettet",
   hotwater_hours: "Timer at opvarme",
   hotwater_boost_temp: "Opvarm til",
   hotwater_normal_temp: "Normal temperatur",
@@ -1127,6 +1131,7 @@ class SmartHusCard extends HTMLElement {
       actions = `<button class="action ${fon ? "active" : ""}" data-action="toggle" data-entity="${force.entity_id}">
         <ha-icon icon="mdi:lightning-bolt"></ha-icon>${fon ? "Stop opladning nu" : `Lad ${esc(m.name)} nu`}</button>`;
     }
+    if (m.car) actions += this._solarButton(m.id);
     return `<div class="mod-body">${extra}${groups}${help}${actions}</div>`;
   }
 
@@ -1144,11 +1149,21 @@ class SmartHusCard extends HTMLElement {
       <span><ha-icon class="help-ic" icon="mdi:information-outline"></ha-icon>Sådan virker indstillingerne</span><ha-icon class="chev${open ? " up" : ""}" icon="mdi:chevron-down"></ha-icon></button>${body}</div>`;
   }
 
+  /** "Lad med sol" – knap i samme stil som "Lad nu", der slår solcelleladning til og fra. */
+  _solarButton(cid, cls = "") {
+    const sw = this._st("switch", `${cid}_solar`);
+    if (!sw) return "";
+    const on = sw.state === "on";
+    return `<button class="action ${cls} ${on ? "active" : ""}" data-action="toggle" data-entity="${sw.entity_id}">
+        <ha-icon icon="mdi:solar-power-variant"></ha-icon>${on ? "Stop solcelleladning" : "Lad med sol"}</button>`;
+  }
+
   /** "Lad batteriet helt op": hvor lang tid en fuld opladning tager ved den indtastede effekt. */
   _fullChargeNote() {
     const n = (k) => parseFloat(this._st("number", k)?.state);
     const kw = n("battery_max_charge_kw"), cap = n("battery_capacity"), lo = n("battery_min_soc"), hi = n("battery_max_soc");
     if (!(kw > 0)) return "Tast inverterens maks. ladeeffekt ind – 0 = ikke sat";
+    if (this._st("switch", "battery_full_charge")?.state !== "on") return "Ladetiden beregnes ud fra behov og solprognose · Timer at lade er loftet";
     if (!(cap > 0) || !(hi > lo)) return "Sæt batteriets størrelse og grænser";
     const h = Math.min(Math.max(Math.ceil((cap * (hi - lo) / 100 / kw / 0.95) * 4) / 4, 0.25), 24);
     return `Fuld opladning (${nf(lo, 0)}–${nf(hi, 0)} %) ≈ ${nf(h, h % 1 ? 2 : 0)} t i de billigste timer`;
@@ -1169,10 +1184,7 @@ class SmartHusCard extends HTMLElement {
       if ([`${c}_solar_start_kw`, `${c}_solar_min_a`, `${c}_solar_max_a`].includes(k) && !on(`${c}_solar`)) return true;
       return false;
     }
-    if (["battery_full_charge", "battery_max_charge_kw"].includes(k)) {
-      if (m.id === "battery" && this._st("switch", "control_solar")) return true;    // vises under Solceller
-      if (k === "battery_max_charge_kw" && !on("battery_full_charge")) return true;
-    }
+    if (k === "battery_full_charge" && m.id === "battery" && this._st("switch", "control_solar")) return true;    // vises under Solceller
     if (m.id === "battery" && k === "battery_charge_hours" && on("battery_full_charge") && val("battery_max_charge_kw") > 0) return true;
     if (m.id === "heating") {
       const auto = on("heating_auto");
@@ -2370,14 +2382,14 @@ class SmartHusEvCard extends SmartHusCard {
 
     const force = this._st("switch", this._forceKey(cid));
     const fon = force?.state === "on";
-    const action = force ? `<button class="action ev-go ${fon ? "active" : ""}" data-action="toggle" data-entity="${force.entity_id}">
-        <ha-icon icon="mdi:lightning-bolt"></ha-icon>${fon ? "Stop opladning nu" : "Lad nu"}</button>` : "";
+    const action = (force ? `<button class="action ev-go ${fon ? "active" : ""}" data-action="toggle" data-entity="${force.entity_id}">
+        <ha-icon icon="mdi:lightning-bolt"></ha-icon>${fon ? "Stop opladning nu" : "Lad nu"}</button>` : "") + this._solarButton(cid, "ev-go");
     const step = (k) => (this._st("number", k) ? this._stepper(k) : "");
     const warn = a.short_of_time ? this._evCompare(cid) : "";
     const more = this._config.details ? `
       <button class="ev-morebtn" data-action="ev-more" aria-expanded="${this._evMore}">${this._evMore ? "Skjul" : "Mere"}<ha-icon class="chev${this._evMore ? " up" : ""}" icon="mdi:chevron-down"></ha-icon></button>
       ${this._evMore ? `<div class="ev-more">${a.short_of_time ? "" : this._evCompare(cid)}
-        ${step(`${cid}_battery_capacity`)}${step(`${cid}_charge_power`)}${this._st("switch", `${cid}_solar`) ? this._switchRow({ sw: `${cid}_solar`, label: "Lad med solcelleoverskud" }) : ""}</div>` : ""}` : "";
+        ${step(`${cid}_battery_capacity`)}${step(`${cid}_charge_power`)}${this._st("switch", `${cid}_solar`)?.state === "on" ? `${step(`${cid}_solar_start_kw`)}${step(`${cid}_solar_min_a`)}${step(`${cid}_solar_max_a`)}` : ""}</div>` : ""}` : "";
 
     const html = `
       <div class="evc">

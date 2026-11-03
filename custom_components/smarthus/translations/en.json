@@ -643,6 +643,9 @@
       },
       "battery_full_charge": {
         "name": "Fully charge the battery in the cheapest hours"
+      },
+      "battery_sell": {
+        "name": "Sell from the battery to the grid"
       }
     },
     "number": {

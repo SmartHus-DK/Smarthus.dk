@@ -11,6 +11,7 @@ from homeassistant.helpers.restore_state import RestoreEntity
 from . import SmartHusConfigEntry
 from .const import (
     F_BATTERY_FULL_CHARGE,
+    F_BATTERY_SELL,
     CONF_BATTERY_MODE_ENTITY,
     CONF_HEATING_CLIMATE,
     CONF_HOTWATER_ENTITY,
@@ -58,6 +59,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
                                        translation_key="ev_solar", car_name=name, default=False))
     if controller.has(CONF_BATTERY_MODE_ENTITY):
         entities.append(FlagSwitch(entry, controller, F_BATTERY_FULL_CHARGE, "mdi:battery-charging-100", default=False))
+        entities.append(FlagSwitch(entry, controller, F_BATTERY_SELL, "mdi:transmission-tower-export", default=True))
     if controller.has(CONF_HOTWATER_ENTITY) and controller.has(CONF_GRID_POWER):
         entities.append(FlagSwitch(entry, controller, F_HOTWATER_SURPLUS_SMART, "mdi:cash-sync", default=True))
     if controller.has(CONF_HEATING_CLIMATE):

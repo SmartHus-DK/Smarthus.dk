@@ -655,6 +655,9 @@
       },
       "battery_full_charge": {
         "name": "Lad batteriet helt op i de billigste timer"
+      },
+      "battery_sell": {
+        "name": "Sælg fra batteriet til nettet"
       }
     },
     "number": {

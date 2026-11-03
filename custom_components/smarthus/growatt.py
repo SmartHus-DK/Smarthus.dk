@@ -75,7 +75,8 @@ def commands(kind: str, device: str, action: str, window: tuple[str, str] | None
         return [("update_time_segment", {"device_id": device, "segment_id": 1, "batt_mode": "load_first",
                                          "start_time": "00:00", "end_time": "23:59", "enabled": False})]
 
-    charge_off = ("write_ac_charge_times", {"device_id": device, "mains_enabled": False, **_OFF3})
+    # Ladeeffekten sættes tilbage til 100 %, så 1 % fra en hold-periode ikke hænger ved og bremser solopladningen
+    charge_off = ("write_ac_charge_times", {"device_id": device, "charge_power": 100, "mains_enabled": False, **_OFF3})
     discharge_off = ("write_ac_discharge_times", {"device_id": device, **_OFF3})
     if action == "charge":
         return [discharge_off, ("write_ac_charge_times", {

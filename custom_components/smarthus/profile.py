@@ -382,3 +382,44 @@ def forecast_battery(slots: list, profile: Profile, now: datetime, *, battery_kw
             d[k] = round(d[k], 2)
     held = [s for s in fut if s.start in hd]
     return {"days": days, "use": use, "hold": held, "solar": sunny, "sun_cover": sun_cover}
+
+
+def _hour_steps(start: datetime, end: datetime):
+    """(timens start, andel af timen) fra start til end."""
+    t = start
+    while t < end:
+        h = t.replace(minute=0, second=0, microsecond=0)
+        nxt = min(h + timedelta(hours=1), end)
+        yield h, (nxt - t).total_seconds() / 3600
+        t = nxt
+
+
+def simulate_battery(e0: float, profile: Profile, solar: dict, start: datetime, end: datetime, *,
+                     floor: float, full: float) -> tuple[float, float]:
+    """Batteriet time for time: huset trækker sit forbrug, solen lægger til (højst op til fuldt).
+    Returnerer (laveste niveau undervejs, niveau ved end)."""
+    e, low = e0, e0
+    for h, frac in _hour_steps(start, end):
+        load = profile.hours_for(h)[h.hour] * frac
+        sun = (solar.get(h) or 0.0) * frac
+        e = min(full, e + sun - load)
+        low = min(low, e)
+    return low, e
+
+
+def battery_need_at(profile: Profile, solar: dict, start: datetime, end: datetime, *,
+                    floor: float, full: float) -> float:
+    """Mindste energi (kWh) i batteriet ved `start`, så det med solens hjælp dækker huset frem til `end`
+    uden at komme under `floor`. Højst `full` – kan selv et fuldt batteri ikke klare det, er svaret `full`."""
+    def ok(e0: float) -> bool:
+        low, _ = simulate_battery(e0, profile, solar, start, end, floor=floor, full=full)
+        return low >= floor - 1e-6
+    if ok(floor):
+        return floor
+    if not ok(full):
+        return full
+    lo, hi = floor, full
+    for _ in range(30):
+        mid = (lo + hi) / 2
+        lo, hi = (lo, mid) if ok(mid) else (mid, hi)
+    return hi

@@ -59,6 +59,7 @@ def make(config, states):
     c.hw_demand_now, c.hw_demand, c.hw_deadline, c.hw_rate, c._hw_samples = False, [], None, None, []
     c.heating_too_cold, c._heating_off_by_us = False, False
     c.flags = {"hotwater_surplus_smart": True}
+    c._forecast_wh, c._forecast_key_is_end = {}, False
     c.ev_solar, c._ev_current_sent = {}, {}
     c._ev_hold, c._restore_pending, c._ev_stray, c._soc_est = {}, {}, {}, {}
     c.connected = {}
@@ -787,3 +788,42 @@ def test_solar_only_when_control_off():
     c2.flags["ev_solar"] = False
     asyncio.run(c2._apply_ev_manual(car, ep, True))
     assert h2.services.calls[-1] == ("switch", "turn_off", {"entity_id": "switch.lader"})
+
+
+def test_grid_charge_hours_follow_need_and_solar_forecast():
+    """Netopladning time for time: kun det, der mangler til i morgen, ved den indtastede ladeeffekt.
+    Tal fra et rigtigt anlæg: 5,6 kWh, 10–100 %, 3 kW, 8,7 kWh sol i morgen – lad ca. 1 time til ca. 60–67 %, ikke 3 timer."""
+    from datetime import datetime, timedelta
+    tz = ZoneInfo("Europe/Copenhagen")
+    prof = sys.modules["smarthus.profile"]
+    wd = [0.33] * 9 + [5.0 / 12] * 12 + [0.4] * 3
+    tom = datetime(2026, 11, 4, tzinfo=tz)
+    shape = {8: .3, 9: .7, 10: 1.1, 11: 1.4, 12: 1.4, 13: 1.2, 14: .9, 15: .5, 16: .2}
+    k = 8.72 / sum(shape.values())
+    solar = {tom.replace(hour=h): v * k * 0.7 for h, v in shape.items()}
+    c, h = make({"battery_soc_sensor": "sensor.soc"}, {})
+    c.tz, c.profile = tz, prof.Profile(weekday=wd, weekend=wd, days=14)
+    c._solar_hours = lambda: solar
+    c.settings.update(battery_capacity=5.6, battery_min_soc=10, battery_max_soc=100,
+                      battery_max_charge_kw=3, battery_charge_hours=3)
+    evening = tom - timedelta(hours=2)                         # 22:00 aftenen før, 20 %
+    assert c._grid_charge_hours(evening, 20) == 1.25
+    night = tom.replace(hour=1)
+    assert c._grid_charge_hours(night, 10) == 1.0
+    n = c._night_need(night)
+    target = n["need_at_sun"] + prof.expected_load(c.profile, night, n["sun"]) / prof.EFFICIENCY
+    assert 55 <= target / 5.6 * 100 <= 67
+    # Ingen sol i morgen: batteriet skal fyldes (begrænset af 'Timer at lade' i planen)
+    c._solar_hours = lambda: {}
+    assert c._grid_charge_hours(night, 10) >= 1.75
+    # Ingen ladeeffekt sat: uændret adfærd
+    c.settings["battery_max_charge_kw"] = 0
+    assert c._grid_charge_hours(night, 10) is None
+
+
+def test_growatt_normal_resets_charge_power():
+    """Efter en gem-periode (1 %) sættes ladeeffekten tilbage til 100 %, så solen kan lade batteriet."""
+    gw = sys.modules["smarthus.growatt"]
+    cmds = gw.commands("sph", "gw1", "normal", None, 100, 10, 100)
+    charge = [d for s, d in cmds if s == "write_ac_charge_times"][0]
+    assert charge["charge_power"] == 100 and charge["mains_enabled"] is False
