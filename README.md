@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.56.0** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
+**Version 1.60.0** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
 
 SmartHus bruger strømmen, når den er billigst, og sparer, når den er dyrest. Den lader elbilen og batteriet i de billige timer, varmer vandet med billig strøm eller solcelleoverskud, skruer lidt op og ned for varmen og stopper salg af solstrøm, når prisen er for lav. Du ser det hele – og hvad du har sparet – på ét kort.
 
@@ -212,7 +212,7 @@ Navnene skal stå **præcis** som i rullemenuen. Husk at slå "Remote EMS" til p
 - **B) Huawei (indbygget)** – vælg batteriet. SmartHus kalder selv `forcible_charge_soc`, `forcible_discharge_soc` og `stop_forcible_charge`.
 - **D) Growatt via skyen** – til Growatt med den almindelige Shine-dongle (ingen lokal Modbus). Kræver Growatt Server sat op med **API-token**. Vælg inverteren; SmartHus skriver selv tidsrummet for den aktuelle lade- eller afladeblok (`write_ac_charge_times`/`write_ac_discharge_times` på SPH, `update_time_segment` på MIN TL-XH) og slår tidsrummene fra i normal drift. Fordi sluttidspunktet ligger i inverteren, stopper den også til tiden, hvis Home Assistant går ned. "Sælg sol" findes ikke via skyen.
 - **Solprognosen** bruges forsigtigt: batteriet planlægges ud fra 70 % af prognosen (natopladning, reserve og "gem"), fordi prognoser ofte rammer for højt. I løbet af dagen sammenlignes prognosen med solcellernes faktiske effekt: giver solen f.eks. kun 15 % af prognosen, regnes der også kun med 15 % resten af dagen. Så lades der hellere lidt for meget om natten end købes dyr strøm om aftenen.
-- **Gem batteriet til de dyre timer** – rækker batteriet ikke til hele døgnet, står det stille i de billige timer (aflader ikke, men solen må lade), så strømmen bruges i de dyreste timer før næste opladning. Automatisk for Growatt SPH (sky) og SigEnergy (slå "ESS Max Discharging Limit" til og vælg anlægget igen). Andre: rullemenuens tilstand eller et script "gem batteriet" (fx maks. afladning 0), og normal-scriptet sætter det tilbage. Kræver husets forbrug (kWh), så SmartHus kender forbrugsmønsteret.
+- **Gem batteriet til de dyre timer** – rækker batteriet ikke til hele døgnet, står det stille i de billige timer (aflader ikke, men solen må lade), så strømmen bruges i de dyreste timer før næste opladning. Automatisk for Growatt SPH (sky – her stopper "gem" også solens opladning, så giver solen overskud i 2 minutter, kører SmartHus normal drift, indtil batteriet begynder at dække huset i 3 minutter) og SigEnergy (slå "ESS Max Discharging Limit" til og vælg anlægget igen). Andre: rullemenuens tilstand eller et script "gem batteriet" (fx maks. afladning 0), og normal-scriptet sætter det tilbage. Kræver husets forbrug (kWh), så SmartHus kender forbrugsmønsteret.
 - **C) Scripts** – virker med alle invertere. Lav tre scripts (lad, aflad, normal). Et script bruges i stedet for rullemenuen for den tilstand.
 
 Scripts køres kun, når tilstanden skifter, og "normal" køres også, når styringen slås fra. Variabler: `smarthus_state` (`charge`/`discharge`/`normal`), `price`, `sale_price`, `min_soc`, `max_soc`.

@@ -120,7 +120,8 @@ def _status(c: SmartHusController) -> str:
     if c.active(MODULE_BATTERY) and c.grid_charge and c.grid_charge.get("skipping"):
         parts.append("Lader ikke fra nettet – solen fylder batteriet")
     if c.active(MODULE_BATTERY) and p.battery_action == "hold":
-        parts.append("Gemmer batteriet til de dyre timer")
+        parts.append("Gemmer batteriet til de dyre timer – solen må lade det" if getattr(c, "hold_sun", False)
+                     else "Gemmer batteriet til de dyre timer")
     if c.active(MODULE_BATTERY) and p.battery_action == "sell_solar":
         parts.append("Sælger solstrøm – batteriet lades billigt senere")
     if c.active(MODULE_SOLAR) and p.solar_curtail:

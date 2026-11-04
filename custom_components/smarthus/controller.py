@@ -157,6 +157,10 @@ SAVINGS_SAVE_SEC = 300     # regnskabet skrives til disken mindst hvert 5. minut
 HEAL_TODAY_DELAY_SEC = 120 # efter opstart: byg dagens tal op fra statistikken (når recorderen er klar)
 RESTORE_DELAY_SEC = 10     # slås styringen til igen inden for 10 s, sendes der intet til enhederne
 EV_FULL_IDLE_SEC = 900    # bilen stopper selv: tændt lader uden strømforbrug i 15 min = bilen er fuld
+HOLD_SUN_ON_KW = 0.15      # overskud fra solen, der får "gem batteriet" til at lade fra solen
+HOLD_SUN_OFF_KW = 0.05
+HOLD_SUN_ON_SEC = 120
+HOLD_SUN_OFF_SEC = 180
 EV_STRAY_KW = 0.5          # laderen trækker strøm, selv om den er slukket i Home Assistant
 EV_STRAY_TICKS = 4         # … i 4 × 30 s → send sluk igen
 
@@ -231,6 +235,8 @@ class SmartHusController:
         self._last_cmd: dict[str, float] = {}
         # Sidste tilstand der er sendt via script (scripts køres kun ved skift)
         self._script_state: dict[str, str] = {}
+        self.hold_sun = False                 # "gem batteriet", men solens overskud lader det (Growatt SPH)
+        self._hold_sun_since: float | None = None
         # Varmt vand med temperaturføler: True når øvre grænse er nået
         self.hotwater_full = False
         self.heating_outdoor_ok = True     # varmestyringen er aktiv ift. udetemperaturen
@@ -287,6 +293,7 @@ class SmartHusController:
         # Batteriets fremskrivning (bruges, gemmes, sol) regnes kun fra nu – de kvarterer, der er gået i gang,
         # huskes her, så grafen stadig viser dem bagefter. {navn: {start: Slot}}
         self._plan_past: dict[str, dict] = {}
+        self._plan_done: dict[str, dict] = {}
         # "Lad nu" startet, mens SmartHus' styring af bilen er slået fra
         self._ev_manual: dict[str, bool] = {}
         self._unsub = None
@@ -892,7 +899,11 @@ class SmartHusController:
             start = midnight
         else:
             start = local
-        need_kwh = max(n["need_at_sun"] + expected_load(self.profile, start, n["sun"]) - e, 0.0)
+        # Samme mål som planen og styringen (_charge_target / _decide_grid_charge): inkl. ladetab, højst fuldt
+        target = min(n["need_at_sun"] + expected_load(self.profile, start, n["sun"]) / EFFICIENCY, n["full"])
+        need_kwh = target - e
+        if need_kwh <= 0.05:
+            return 0.0
         return math.ceil(need_kwh / (kw * 0.95) * 4) / 4
 
     def _decide_grid_charge(self, now: datetime) -> None:
@@ -1542,6 +1553,26 @@ class SmartHusController:
                 if sl.start <= now:
                     past[sl.start] = sl
             self._plan_past[kind] = {t: sl for t, sl in past.items() if now - t < timedelta(hours=36)}
+        # Lade/aflade: husk kun de kvarterer, hvor batteriet faktisk blev sat til det (planen har hele døgnets
+        # billigste timer – også dem, der blev sprunget over, fordi målet allerede var nået)
+        p = self.plan
+        for kind, action in self.DONE_KINDS.items():
+            done = self.__dict__.setdefault("_plan_done", {}).setdefault(kind, {})
+            if p.current is not None and p.battery_action == action and p.current.start <= now:
+                done[p.current.start] = p.current
+            self._plan_done[kind] = {t: sl for t, sl in done.items() if now - t < timedelta(hours=36)}
+
+    DONE_KINDS = {"battery_charge": "charge", "battery_discharge": "discharge"}
+    hold_sun = False
+    _hold_sun_since: float | None = None
+
+    def done_shown(self, kind: str, slots: list) -> list:
+        """Til grafen: de kommende planlagte kvarterer + dem, batteriet faktisk har ladet/afladet i."""
+        now = dt_util.utcnow()
+        done = getattr(self, "_plan_done", {}).get(kind, {})
+        ahead = [sl for sl in slots if sl.start > now]
+        starts = {sl.start for sl in ahead}
+        return ahead + [sl for t, sl in done.items() if t not in starts]
 
     def slots_shown(self, kind: str, slots: list) -> list:
         """Planens kvarterer + dem, der allerede er gået i gang (til grafen og periodelisten)."""
@@ -1844,6 +1875,34 @@ class SmartHusController:
             await self._service_once("battery", action, force, "huawei_solar", "stop_forcible_charge",
                                      {"device_id": device})
 
+    def _track_hold_sun(self) -> bool:
+        """Skal "gem batteriet" vige for solen lige nu?
+
+        "Gem" på Growatt SPH er Battery First med 1 % ladeeffekt – det stopper også solens opladning, så
+        overskuddet sælges, selv om batteriet har plads. Giver solen overskud (eksport, eller batteriet lader i
+        normal drift) i 2 minutter, køres normal drift, så overskuddet lader batteriet. Begynder batteriet at
+        dække huset (solen er for svag) i 3 minutter, gemmes det igen. Ventetiderne holder skyen fri for skift.
+        """
+        exp, bat = self.export_kw, self.battery_kw
+        if exp is None and bat is None:
+            return self.hold_sun
+        surplus = (exp or 0.0) - (bat or 0.0)       # det solen giver ud over huset (bat positiv = afladning)
+        soc = self._float_state(self.config.get(CONF_BATTERY_SOC))
+        full = soc is not None and soc >= float(self.settings.get(S_BATTERY_MAX_SOC, 100)) - 0.5
+        now = time.monotonic()
+        if self.hold_sun:
+            change, wait = surplus < -HOLD_SUN_OFF_KW, HOLD_SUN_OFF_SEC
+        else:
+            change, wait = surplus >= HOLD_SUN_ON_KW and not full, HOLD_SUN_ON_SEC
+        if not change:
+            self._hold_sun_since = None
+        elif self._hold_sun_since is None:
+            self._hold_sun_since = now
+        elif now - self._hold_sun_since >= wait:
+            self.hold_sun, self._hold_sun_since = not self.hold_sun, None
+            _LOGGER.info("SmartHus: gem batteriet – %s", "solen lader batteriet" if self.hold_sun else "batteriet gemmes igen")
+        return self.hold_sun
+
     async def _apply_growatt(self, action: str, force: bool) -> None:
         """Growatt via skyen: skriv lade-/afladetidsrummet for den aktuelle blok – kun når blokken skifter.
 
@@ -1851,6 +1910,10 @@ class SmartHusController:
         næste gang (højst hvert 90. sekund), så en kortvarig fejl i skyen ikke efterlader en halv opsætning.
         """
         kind = self.config.get(CONF_GROWATT_TYPE) or gw.TYPE_SPH
+        if action == ACTION_HOLD and kind == gw.TYPE_SPH and self._track_hold_sun():
+            action = ACTION_NORMAL        # solen giver overskud: normal drift, så overskuddet lader batteriet
+        elif action != ACTION_HOLD:
+            self.hold_sun, self._hold_sun_since = False, None
         if action not in (ACTION_CHARGE, ACTION_DISCHARGE, ACTION_HOLD) or (action == ACTION_HOLD and kind != gw.TYPE_SPH):
             action = ACTION_NORMAL        # "sælg sol" findes ikke via skyen, og MIN kan ikke stå stille
         window = None

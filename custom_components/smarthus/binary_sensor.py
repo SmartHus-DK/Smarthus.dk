@@ -85,6 +85,8 @@ class SmartHusBinary(SmartHusEntity, BinarySensorEntity):
         kind = self.entity_description.key.removesuffix("_now")
         if kind in self.controller.PAST_KINDS:
             slots = self.controller.slots_shown(kind, slots)   # vis også det, der allerede er sket i dag
+        elif kind in self.controller.DONE_KINDS:
+            slots = self.controller.done_shown(kind, slots)    # overståede: kun det, der faktisk blev ladet
         attrs = {
             "periods": merge_periods(slots, self.controller.tz),
             "slots": [s.start.isoformat() for s in sorted(slots, key=lambda s: s.start)],

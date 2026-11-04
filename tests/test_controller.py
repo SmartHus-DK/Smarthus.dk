@@ -682,6 +682,62 @@ def test_growatt_hold_blocks_discharge_without_grid_charge():
     assert h2.services.calls[-1][2]["enabled"] is False
 
 
+def test_growatt_hold_lets_sun_charge():
+    """"Gem batteriet" på SPH (1 %) stopper også solen – ved overskud i 2 min køres normal drift, så solen
+    lader batteriet; dækker batteriet huset i 3 min, gemmes det igen (afprøvet på et rigtigt anlæg: 0,33 kW eksport, 18 %)."""
+    from datetime import datetime, timedelta
+    tz = ZoneInfo("Europe/Copenhagen")
+    q = timedelta(minutes=15)
+    t0 = datetime(2026, 11, 4, 9, 0, tzinfo=tz).astimezone(timezone.utc)
+    hold = [planner.Slot(t0 + i * q, t0 + (i + 1) * q, 2.7, 2.7, 1.8) for i in range(32)]
+    st = {"sensor.grid": State("330", unit_of_measurement="W"), "sensor.bat": State("0", unit_of_measurement="W"),
+          "sensor.soc": State("18")}
+    c, h = make({"battery_growatt_device": "gw1", "battery_growatt_type": "sph", "grid_power_sensor": "sensor.grid",
+                 "battery_power_sensor": "sensor.bat", "battery_soc_sensor": "sensor.soc"}, st)
+    c.plan = planner.Plan(current=hold[1], battery_hold=hold)
+    clock = [1000.0]
+    real = ctl_mod.time.monotonic
+    ctl_mod.time.monotonic = lambda: clock[0]
+    try:
+        def tick(sec):
+            clock[0] += sec
+            c._last_cmd.clear()
+            asyncio.run(c._apply_battery("hold", False))
+            return c._script_state.get("battery", "")
+        assert tick(0).startswith("hold@")                 # overskud lige startet: gem stadig
+        assert tick(60).startswith("hold@")
+        assert tick(61) == "normal" and c.hold_sun          # 2 min overskud: solen lader batteriet
+        st["sensor.grid"] = State("0", unit_of_measurement="W")
+        st["sensor.bat"] = State("-300", unit_of_measurement="W")   # lader fra solen: stadig overskud
+        assert tick(300) == "normal"
+        st["sensor.bat"] = State("250", unit_of_measurement="W")    # solen for svag: batteriet dækker huset
+        assert tick(60) == "normal"
+        assert tick(130) == "normal"
+        assert tick(60).startswith("hold@") and not c.hold_sun          # 3 min: gem igen
+        asyncio.run(c._apply_battery("charge", False))
+        assert not c.hold_sun and c._hold_sun_since is None
+    finally:
+        ctl_mod.time.monotonic = real
+
+
+def test_history_shows_only_done_charging():
+    """Grafen: overståede ladekvarterer kun, hvis batteriet faktisk blev ladet – kommende vises som planlagt."""
+    from datetime import timedelta
+    q = timedelta(minutes=15)
+    now = ctl_mod.dt_util.utcnow()
+    t0 = now.replace(second=0, microsecond=0) - 4 * q
+    ch = [planner.Slot(t0 + i * q, t0 + (i + 1) * q, 1.0, 1.0, 0.5) for i in range(8)]
+    c, h = make({}, {})
+    c._plan_past = {}
+    c.plan = planner.Plan(current=ch[1], battery_charge=ch, battery_action="hold")   # målet nået: ladede ikke
+    c._remember_past(ch[1].start)
+    c.plan = planner.Plan(current=ch[2], battery_charge=ch, battery_action="charge")
+    c._remember_past(ch[2].start)
+    shown = {s.start for s in c.done_shown("battery_charge", ch)}
+    assert ch[0].start not in shown and ch[1].start not in shown and ch[2].start in shown
+    assert all(s.start in shown for s in ch if s.start > now)
+
+
 def test_hold_capability_and_fallbacks():
     c, h = make({"battery_mode_entity": "select.mode", "battery_option_hold": "Hold"}, {})
     assert c.has_hold and c._battery_option("hold") == "Hold"
