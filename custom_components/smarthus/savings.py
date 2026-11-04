@@ -163,7 +163,10 @@ class SavingsCalculator:
         gained["ev"] = ev_kwh * (ref - price)
         gained["heatpump"] = deltas.get("heatpump", 0.0) * (ref - price)
         gained["hotwater"] = deltas.get("hotwater", 0.0) * (ref - price)
-        gained["battery"] = (deltas.get("battery_discharge", 0.0) - deltas.get("battery_charge", 0.0)) * price
+        # Batteriet: strøm ud sparer købsprisen. Opladning fra nettet koster købsprisen; opladning fra solen
+        # koster kun den salgspris, man gav afkald på (ellers falder besparelsen midt på dagen, når solen lader)
+        charge_cost = price if battery_action == "charge" else max(sale, 0.0)
+        gained["battery"] = deltas.get("battery_discharge", 0.0) * price - deltas.get("battery_charge", 0.0) * charge_cost
         for c, v in gained.items():
             for bucket in ("today", "month_values", "total"):
                 self.data[bucket][c] = round(self.data[bucket].get(c, 0.0) + v, 4)

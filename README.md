@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.60.0** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
+**Version 1.60.1** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
 
 SmartHus bruger strømmen, når den er billigst, og sparer, når den er dyrest. Den lader elbilen og batteriet i de billige timer, varmer vandet med billig strøm eller solcelleoverskud, skruer lidt op og ned for varmen og stopper salg af solstrøm, når prisen er for lav. Du ser det hele – og hvad du har sparet – på ét kort.
 
@@ -487,7 +487,7 @@ Alle entiteter har faste id'er, uanset sprog:
   - **Bilen stopper selv ved lademålet:** Har du sat lademålet i bilen, holdes laderen tændt i den beregnede tid plus "Ekstra ladetid" (standard 2 timer) – i de billigste kvarterer – og bilen stopper selv. Med en effektmåler på laderen opdager SmartHus, når bilen er holdt op med at trække strøm i et kvarter, og slukker så laderen. Prisen og besparelsen beregnes kun for den energi, der skal til for at nå målet.
 - **Besparelse (elbil, varmepumpe, varmt vand)** = kWh × (dagens gennemsnitspris − prisen da strømmen blev brugt).
 - **Elbil – lad nu vs. billigste timer:** sensoren `sensor.smarthus_ev_smart_saving` viser forskellen i kr. Attributterne `cost_now` og `cost_planned` er prisen for den samme mængde strøm (kWh) ladet med det samme eller i de planlagte timer.
-- **Besparelse (batteri)** = afladet kWh × pris − opladet kWh × pris.
+- **Besparelse (batteri)** = afladet kWh × købspris − opladet kWh × pris, hvor opladning fra nettet koster købsprisen og opladning fra solen kun den salgspris, man gav afkald på. Tallet kan falde lidt, mens solen lader, og stiger, når strømmen bruges i de dyre timer.
 - **Solceller – sparet** = egetforbrug × købspris. **Solceller – tjent ved salg** = eksport × salgspris. Solcellerne tæller ikke med i SmartHus-besparelsen, fordi de også producerer uden styring.
 
 Besparelser kræver, at du vælger energimålere (kWh, stigende) i opsætningen. Laver én varmepumpe både varme og varmt vand, kan samme måler vælges begge steder – forbruget fordeles efter, om SmartHus varmer vand lige nu, og tælles kun én gang.

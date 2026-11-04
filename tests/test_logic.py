@@ -172,6 +172,19 @@ def test_savings():
     assert calc.value("total") != 0
 
 
+def test_battery_savings_solar_charge_costs_sale_price():
+    """Solen lader batteriet: det koster kun den mistede salgspris – ikke købsprisen."""
+    slots = model().build_slots(records("2026-10-18", CURVE))
+    calc = savings.SavingsCalculator()
+    sl = slots[40]
+    t = sl.start.astimezone(TZ)
+    calc.update(t, sl, None, {"battery_charge": 10.0, "battery_discharge": 5.0}, battery_action="normal")
+    calc.update(t, sl, None, {"battery_charge": 11.0, "battery_discharge": 5.0}, battery_action="normal")
+    assert abs(calc.data["today"]["battery"] + sl.sale) < 1e-3
+    calc.update(t, sl, None, {"battery_charge": 12.0, "battery_discharge": 5.0}, battery_action="charge")
+    assert abs(calc.data["today"]["battery"] + sl.sale + sl.price) < 1e-3
+
+
 def test_solar_overview():
     slots = model().build_slots(records("2026-10-18", CURVE))
     calc = savings.SavingsCalculator()
