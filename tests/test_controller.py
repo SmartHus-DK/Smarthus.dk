@@ -1025,3 +1025,34 @@ def test_manual_soc_when_sensor_unavailable():
     assert c.soc_sensor_ok(car) and c.car_soc(car) == 62.0
     c._track_soc()
     assert "ev" not in c.manual_soc
+
+
+def test_ev_from_grid_keeps_house_battery():
+    """Lader elbilen fra nettet, gemmes husbatteriet i stedet for at blive tømt ned i bilen."""
+    from datetime import datetime, timedelta
+    tz = ZoneInfo("Europe/Copenhagen")
+    q = timedelta(minutes=15)
+    t0 = datetime(2026, 11, 5, 2, 0, tzinfo=tz).astimezone(timezone.utc)
+    sl = [planner.Slot(t0 + i * q, t0 + (i + 1) * q, 1.0, 1.0, 0.5) for i in range(4)]
+    st = {"sensor.lader": State("7400", unit_of_measurement="W")}
+    c, h = make({"battery_growatt_device": "gw1", "battery_growatt_type": "sph",
+                 "cars": [{"id": "ev1", "name": "Bil", "power": "sensor.lader"}]}, st)
+    c.cars = [{"id": "ev1", "name": "Bil", "power": "sensor.lader"}]
+    c.enabled = {"master": True, "battery": True, "ev1": True}
+    c.ev_solar = {}
+    c.plan = planner.Plan(current=sl[1], battery_action="normal")
+    asyncio.run(c._apply_battery_step(c.plan, False))
+    assert c.plan.battery_action == "hold" and c.ev_protect
+    assert c._script_state.get("battery", "").startswith("hold@")
+    # Bilen er fuld (trækker intet): normal drift igen
+    st["sensor.lader"] = State("0", unit_of_measurement="W")
+    c.plan = planner.Plan(current=sl[2], battery_action="normal")
+    c._last_cmd.clear()
+    asyncio.run(c._apply_battery_step(c.plan, False))
+    assert c.plan.battery_action == "normal" and not c.ev_protect
+    # Solcelleladning: batteriet må gerne bruges som normalt
+    st["sensor.lader"] = State("4000", unit_of_measurement="W")
+    c.ev_solar = {"ev1": types.SimpleNamespace(active=True)}
+    c.plan = planner.Plan(current=sl[3], battery_action="normal")
+    asyncio.run(c._apply_battery_step(c.plan, False))
+    assert c.plan.battery_action == "normal"

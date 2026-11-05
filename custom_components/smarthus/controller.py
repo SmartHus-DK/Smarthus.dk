@@ -157,6 +157,7 @@ SAVINGS_SAVE_SEC = 300     # regnskabet skrives til disken mindst hvert 5. minut
 HEAL_TODAY_DELAY_SEC = 120 # efter opstart: byg dagens tal op fra statistikken (når recorderen er klar)
 RESTORE_DELAY_SEC = 10     # slås styringen til igen inden for 10 s, sendes der intet til enhederne
 EV_FULL_IDLE_SEC = 900    # bilen stopper selv: tændt lader uden strømforbrug i 15 min = bilen er fuld
+EV_PROTECT_KW = 1.0           # elbilen lader fra nettet: husbatteriet gemmes (ikke tømt ned i bilen)
 HOLD_SUN_ON_KW = 0.15      # overskud fra solen, der får "gem batteriet" til at lade fra solen
 HOLD_SUN_OFF_KW = 0.05
 HOLD_SUN_ON_SEC = 120
@@ -1564,6 +1565,7 @@ class SmartHusController:
 
     DONE_KINDS = {"battery_charge": "charge", "battery_discharge": "discharge"}
     hold_sun = False
+    ev_protect = False
     _hold_sun_since: float | None = None
 
     def done_shown(self, kind: str, slots: list) -> list:
@@ -1967,8 +1969,30 @@ class SmartHusController:
             except Exception:  # noqa: BLE001 – ét modul må ikke stoppe resten af styringen
                 _LOGGER.exception("SmartHus: fejl i styringen af %s", name)
 
+    def ev_from_grid(self) -> list[str]:
+        """Biler, der lader fra nettet lige nu (ikke solcelleladning): laderen trækker mindst 1 kW – eller,
+        uden effektmåler, planen har tændt den."""
+        out = []
+        for car in self.cars:
+            cid = car["id"]
+            st = self.ev_solar.get(cid)
+            if st is not None and st.active:
+                continue
+            ep = self.plan.evs.get(cid)
+            planned_on = ep is not None and ep.on and ep.connected and self.active(cid)
+            kw = self._power_kw(car.get("power"))
+            # Med effektmåler tæller det, bilen faktisk trækker (fuld bil = intet at gemme); ellers planen
+            if (kw >= EV_PROTECT_KW) if kw is not None else planned_on:
+                out.append(cid)
+        return out
+
     async def _apply_battery_step(self, p, force: bool) -> None:
         if self.active(MODULE_BATTERY) and self.has_battery_control:
+            # Lader elbilen fra nettet, må husbatteriet ikke tømmes ned i bilen: gem det i stedet
+            self.ev_protect = False
+            if p.battery_action == ACTION_NORMAL and self.has_hold and self.ev_from_grid():
+                p.battery_action = ACTION_HOLD
+                self.ev_protect = True
             await self._apply_battery(p.battery_action, force)
 
     async def _apply_export_step(self, p, force: bool) -> None:
