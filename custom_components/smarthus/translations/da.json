@@ -641,6 +641,9 @@
       "ev_car_target": {
         "name": "{car}: bilen stopper selv ved lademålet"
       },
+      "ev_keep_battery": {
+        "name": "{car}: gem husbatteriet under opladning"
+      },
       "ev_solar": {
         "name": "{car}: lad med solcelleoverskud"
       },

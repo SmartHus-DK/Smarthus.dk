@@ -629,6 +629,9 @@
       "ev_car_target": {
         "name": "{car}: car stops at its own charge limit"
       },
+      "ev_keep_battery": {
+        "name": "{car}: keep house battery while charging"
+      },
       "ev_solar": {
         "name": "{car}: charge with solar surplus"
       },

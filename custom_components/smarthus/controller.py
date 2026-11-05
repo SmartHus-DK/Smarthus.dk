@@ -2012,6 +2012,8 @@ class SmartHusController:
         out = []
         for car in self.cars:
             cid = car["id"]
+            if not self.flags.get(f"{cid}_keep_battery", True):
+                continue                      # kunden har slået "gem husbatteriet under opladning" fra
             st = self.ev_solar.get(cid)
             if st is not None and st.active:
                 continue

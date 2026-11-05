@@ -54,6 +54,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
         if not controller.has_soc_sensor(car):
             entities.append(FlagSwitch(entry, controller, f"{cid}_car_target", "mdi:car-cog",
                                        translation_key="ev_car_target", car_name=name, default=False))
+        if controller.has_hold:
+            entities.append(FlagSwitch(entry, controller, f"{cid}_keep_battery", "mdi:home-battery",
+                                       translation_key="ev_keep_battery", car_name=name, default=True))
         if controller.has_current_control(car) and controller.has(CONF_GRID_POWER):
             entities.append(FlagSwitch(entry, controller, f"{cid}_solar", "mdi:solar-power-variant",
                                        translation_key="ev_solar", car_name=name, default=False))

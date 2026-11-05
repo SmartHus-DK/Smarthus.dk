@@ -193,6 +193,8 @@ const HELP = {
       d: "Har bilen selv et lademål, holdes laderen tændt lidt længere end beregnet, og bilen stopper selv." },
     { k: ["_battery_capacity", "_charge_power"], t: "Bil og lader",
       d: "Bilens batteristørrelse og laderens effekt bruges til at regne ladetiden ud. Brug det, laderen faktisk giver – fx 11 kW på 3-faset 16 A." },
+    { k: ["_keep_battery"], t: "Gem husbatteriet under opladning",
+      d: "Lader bilen fra nettet, aflader husbatteriet ikke – så strømmen i batteriet ikke ender i bilen. Solcelleladning påvirker ikke batteriet." },
     { k: ["_solar"], t: "Solcelleladning",
       d: "Ladestrømmen følger solcelleoverskuddet, 1 A ad gangen. Laderen starter, når overskuddet er over startgrænsen, og holder sig mellem mindste og største ladestrøm." },
     { k: ["ev_max_total_power"], t: "Maks. samlet ladeeffekt",
@@ -210,6 +212,8 @@ function carModule(cid, name, first) {
     { title: null, items: [`${cid}_manual_soc`, `${cid}_target_soc`, `${cid}_ready_hour`, { day: cid }, `${cid}_hours`] },
     { title: "Lademål i bilen", items: [{ sw: `${cid}_car_target`, label: "Bilen stopper selv ved lademålet",
       note: "Laderen holdes tændt lidt længere end beregnet, og bilen stopper selv" }, `${cid}_extra_hours`] },
+    { title: "Husbatteri", items: [{ sw: `${cid}_keep_battery`, label: "Gem husbatteriet under opladning",
+      note: "Husbatteriet aflader ikke, mens bilen lader fra nettet" }] },
     { title: "Bil og lader", items: [`${cid}_battery_capacity`, `${cid}_charge_power`] },
     { title: "Solcelleladning", items: [`${cid}_solar_start_kw`, `${cid}_solar_min_a`, `${cid}_solar_max_a`] },
   ];
@@ -2451,7 +2455,7 @@ class SmartHusEvCard extends SmartHusCard {
         ${prices}
         ${this._config.car ? "" : this._carViewPicker() + this._connectedPicker()}
         ${warn}
-        <div class="ev-rows">${a.soc_sensor && a.soc_sensor_ok !== false ? "" : step(`${cid}_manual_soc`)}${step(`${cid}_target_soc`)}${this._st("select", `${cid}_ready_day`)?.attributes?.uses_ready_hour === false ? "" : step(`${cid}_ready_hour`)}${this._readyDayRow(cid)}${!a.soc_sensor && this._st("switch", `${cid}_car_target`) ? this._switchRow({ sw: `${cid}_car_target`, label: "Bilen stopper selv ved lademålet", note: "Laderen holdes tændt lidt længere end beregnet" }) + (this._st("switch", `${cid}_car_target`).state === "on" ? step(`${cid}_extra_hours`) : "") : ""}</div>
+        <div class="ev-rows">${a.soc_sensor && a.soc_sensor_ok !== false ? "" : step(`${cid}_manual_soc`)}${step(`${cid}_target_soc`)}${this._st("select", `${cid}_ready_day`)?.attributes?.uses_ready_hour === false ? "" : step(`${cid}_ready_hour`)}${this._readyDayRow(cid)}${!a.soc_sensor && this._st("switch", `${cid}_car_target`) ? this._switchRow({ sw: `${cid}_car_target`, label: "Bilen stopper selv ved lademålet", note: "Laderen holdes tændt lidt længere end beregnet" }) + (this._st("switch", `${cid}_car_target`).state === "on" ? step(`${cid}_extra_hours`) : "") : ""}${this._st("switch", `${cid}_keep_battery`) ? this._switchRow({ sw: `${cid}_keep_battery`, label: "Gem husbatteriet under opladning", note: "Husbatteriet aflader ikke, mens bilen lader fra nettet" }) : ""}</div>
         ${action}
         ${more}
       </div>`;

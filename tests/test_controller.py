@@ -1050,6 +1050,13 @@ def test_ev_from_grid_keeps_house_battery():
     c._last_cmd.clear()
     asyncio.run(c._apply_battery_step(c.plan, False))
     assert c.plan.battery_action == "normal" and not c.ev_protect
+    # Slået fra for bilen: batteriet bruges som normalt
+    st["sensor.lader"] = State("7400", unit_of_measurement="W")
+    c.flags["ev1_keep_battery"] = False
+    c.plan = planner.Plan(current=sl[2], battery_action="normal")
+    asyncio.run(c._apply_battery_step(c.plan, False))
+    assert c.plan.battery_action == "normal" and not c.ev_protect
+    c.flags["ev1_keep_battery"] = True
     # Solcelleladning: batteriet må gerne bruges som normalt
     st["sensor.lader"] = State("4000", unit_of_measurement="W")
     c.ev_solar = {"ev1": types.SimpleNamespace(active=True)}
