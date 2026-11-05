@@ -357,7 +357,8 @@ def _preset_summary(m: pz.Match) -> str:
         hold = " og gem batteriet til de dyre timer" if m.actions.get("hold") else ""
         lines += ["", f"**Batteristyring:** lad fra nettet, aflad{hold} og normal drift ({n} trin) – erstatter tidligere rullemenu/scripts."]
     elif m.huawei_device:
-        lines += ["", "**Batteristyring:** Huawei – indbygget styring af batteriet."]
+        lines += ["", "**Batteristyring:** Huawei – indbygget styring af batteriet. Batteriet gemmes til de dyre timer "
+                      "ved at sætte \"maks. afladeeffekt\" til 0 W (entiteten skal være slået til)."]
     elif m.growatt_device:
         kind = {"sph": "SPH", "min": "MIN TL-XH"}.get(m.growatt_type or "", "ukendt model – behandles som SPH")
         hold = " – og gemmer batteriet til de dyre timer" if (m.growatt_type or "sph") == "sph" else ""

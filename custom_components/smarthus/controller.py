@@ -157,6 +157,7 @@ SAVINGS_SAVE_SEC = 300     # regnskabet skrives til disken mindst hvert 5. minut
 HEAL_TODAY_DELAY_SEC = 120 # efter opstart: byg dagens tal op fra statistikken (når recorderen er klar)
 RESTORE_DELAY_SEC = 10     # slås styringen til igen inden for 10 s, sendes der intet til enhederne
 EV_FULL_IDLE_SEC = 900    # bilen stopper selv: tændt lader uden strømforbrug i 15 min = bilen er fuld
+HUAWEI_DISCHARGE_KEY = "storage_maximum_discharging_power"
 EV_PROTECT_KW = 1.0           # elbilen lader fra nettet: husbatteriet gemmes (ikke tømt ned i bilen)
 HOLD_SUN_ON_KW = 0.15      # overskud fra solen, der får "gem batteriet" til at lade fra solen
 HOLD_SUN_OFF_KW = 0.05
@@ -1182,6 +1183,8 @@ class SmartHusController:
             return bool(self.config[CONF_BATTERY_ACTIONS].get(ACTION_HOLD))
         if self.config.get(CONF_GROWATT_DEVICE):
             return (self.config.get(CONF_GROWATT_TYPE) or gw.TYPE_SPH) == gw.TYPE_SPH
+        if self.config.get(CONF_HUAWEI_DEVICE):
+            return self._huawei_discharge_entity() is not None
         return bool(self.config.get(CONF_BATTERY_MODE_ENTITY)) and bool(self.config.get(CONF_BATTERY_OPT_HOLD))
 
     @property
@@ -1861,11 +1864,45 @@ class SmartHusController:
         elif kind == "button":
             await self._call("button", "press", {"entity_id": entity_id})
 
+    def _huawei_discharge_entity(self) -> str | None:
+        """Huawei: tallet "maks. afladeeffekt" (storage_maximum_discharging_power) – 0 W = batteriet gemmes."""
+        cached = self.__dict__.get("_hw_discharge_ent", False)
+        if cached is not False:
+            return cached
+        found = None
+        try:
+            from homeassistant.helpers import entity_registry as er
+            reg = er.async_get(self.hass)
+            device = self.config.get(CONF_HUAWEI_DEVICE)
+            cands = [e for e in reg.entities.values() if e.platform == "huawei_solar" and e.domain == "number"
+                     and (e.unique_id or "").endswith("_" + HUAWEI_DISCHARGE_KEY) and not e.disabled_by]
+            cands.sort(key=lambda e: e.device_id != device)          # helst på batteriets egen enhed
+            found = cands[0].entity_id if cands else None
+        except Exception:  # noqa: BLE001
+            found = None
+        self.__dict__["_hw_discharge_ent"] = found
+        return found
+
     async def _apply_huawei(self, action: str, force: bool) -> None:
-        """Huawei (huawei_solar): tvungen opladning/afladning via integrationens egne handlinger."""
+        """Huawei (huawei_solar): tvungen opladning/afladning via integrationens egne handlinger. "Gem batteriet"
+        sætter maks. afladeeffekt til 0 W (solen må stadig lade); de andre tilstande sætter den tilbage til maks."""
         device = self.config[CONF_HUAWEI_DEVICE]
-        if action == ACTION_HOLD:
+        ent = self._huawei_discharge_entity()
+        if action == ACTION_HOLD and ent is None:
             action = ACTION_NORMAL
+        if ent is not None and (force or self._script_state.get("battery") != action):
+            st = self.hass.states.get(ent)
+            limit = 0 if action == ACTION_HOLD else (st.attributes.get("max") if st is not None else None)
+            if limit is not None and (force or st is None or self._float_state(ent) != float(limit)):
+                try:
+                    await self.hass.services.async_call("number", "set_value",
+                                                        {"entity_id": ent, "value": limit}, blocking=False)
+                except Exception as err:  # noqa: BLE001
+                    _LOGGER.warning("SmartHus kunne ikke sætte %s: %s", ent, err)
+        if action == ACTION_HOLD:
+            await self._service_once("battery", action, force, "huawei_solar", "stop_forcible_charge",
+                                     {"device_id": device})
+            return
         power = int(float(self.config.get(CONF_HUAWEI_POWER) or DEFAULT_HUAWEI_POWER))
         if action == ACTION_CHARGE:
             await self._service_once("battery", action, force, "huawei_solar", "forcible_charge_soc", {

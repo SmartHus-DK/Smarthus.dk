@@ -141,7 +141,16 @@ PRESETS: dict[str, Preset] = {p.key: p for p in (
         },
         battery_sign="discharge_positive", grid_sign="import_positive",
         control=({
-            # Alle seks tidsprogrammer sættes ens, så det virker hele døgnet
+            # Alle seks tidsprogrammer sættes ens, så det virker hele døgnet.
+            # Gem batteriet: maks. afladestrøm 0 A (solen må stadig lade) – de andre tilstande sætter den tilbage
+            "charge": [("number", "battery_max_discharging_current_number", KEEP)] + _deye_programs("Grid", "max_soc"),
+            "discharge": [("number", "battery_max_discharging_current_number", KEEP),
+                          ("select", "work_mode_select", "Export First")] + _deye_programs("Disabled", "min_soc"),
+            "normal": [("number", "battery_max_discharging_current_number", KEEP),
+                       ("select", "work_mode_select", KEEP)] + _deye_programs("Disabled", "min_soc"),
+            "hold": [("select", "work_mode_select", KEEP)] + _deye_programs("Disabled", "min_soc")
+                    + [("number", "battery_max_discharging_current_number", 0)],
+        }, {
             "charge": _deye_programs("Grid", "max_soc"),
             "discharge": [("select", "work_mode_select", "Export First")] + _deye_programs("Disabled", "min_soc"),
             "normal": [("select", "work_mode_select", KEEP)] + _deye_programs("Disabled", "min_soc"),
@@ -164,7 +173,16 @@ PRESETS: dict[str, Preset] = {p.key: p for p in (
             "solar_energy": "sensor:total_solar_energy",
         },
         battery_sign="charge_positive", grid_sign="export_positive",
-        control=({
+        control=({   # Gem batteriet: maks. afladestrøm 0 A i normal drift (solen må stadig lade)
+            "charge": [("number", "battery_discharge_max_current", KEEP),
+                       ("select", "charger_use_mode", "Manual Mode"), ("select", "manual_mode_select", "Force Charge")],
+            "discharge": [("number", "battery_discharge_max_current", KEEP),
+                          ("select", "charger_use_mode", "Manual Mode"), ("select", "manual_mode_select", "Force Discharge")],
+            "normal": [("number", "battery_discharge_max_current", KEEP),
+                       ("select", "manual_mode_select", "Stop Charge and Discharge"), ("select", "charger_use_mode", KEEP)],
+            "hold": [("select", "manual_mode_select", "Stop Charge and Discharge"), ("select", "charger_use_mode", KEEP),
+                     ("number", "battery_discharge_max_current", 0)],
+        }, {
             "charge": [("select", "charger_use_mode", "Manual Mode"), ("select", "manual_mode_select", "Force Charge")],
             "discharge": [("select", "charger_use_mode", "Manual Mode"), ("select", "manual_mode_select", "Force Discharge")],
             "normal": [("select", "manual_mode_select", "Stop Charge and Discharge"),
@@ -188,7 +206,12 @@ PRESETS: dict[str, Preset] = {p.key: p for p in (
             "solar_energy": "sensor:solar_energy_total",
         },
         battery_sign="discharge_positive", grid_sign="export_positive",
-        control=({
+        control=({   # Gem batteriet: maks. afladestrøm 0 A i normal drift (solen må stadig lade)
+            "charge": [("number", "max_discharge_current", KEEP), ("select", "work_mode", "Force Charge")],
+            "discharge": [("number", "max_discharge_current", KEEP), ("select", "work_mode", "Force Discharge")],
+            "normal": [("number", "max_discharge_current", KEEP), ("select", "work_mode", KEEP)],
+            "hold": [("select", "work_mode", KEEP), ("number", "max_discharge_current", 0)],
+        }, {
             "charge": [("select", "work_mode", "Force Charge")],
             "discharge": [("select", "work_mode", "Force Discharge")],
             "normal": [("select", "work_mode", KEEP)],
@@ -247,6 +270,10 @@ PRESETS: dict[str, Preset] = {p.key: p for p in (
                        ("switch", "battery_discharge_power_limit_enabled", False),
                        ("number", "battery_charge_power_limit", 100), ("number", "battery_discharge_power_limit", 100),
                        ("switch", "battery_grid_charging", False)],
+            # Gem batteriet: afladegrænse 0 % (solen må stadig lade, ingen netopladning)
+            "hold": [("switch", "battery_charge_power_limit_enabled", False), ("switch", "battery_grid_charging", False),
+                     ("number", "battery_charge_power_limit", 100),
+                     ("number", "battery_discharge_power_limit", 0), ("switch", "battery_discharge_power_limit_enabled", True)],
         },),
         note="Batteristyring kræver Modbus TCP og \"Inverter control via Modbus\" slået til (Gen24/Tauro/Verto). "
              "Effektsensorerne \"Power battery\" og \"Power grid\" er deaktiveret som standard – slå dem til.",
@@ -425,7 +452,8 @@ KEEP_FALLBACK = {"work_mode_select": "Zero Export To CT", "charger_use_mode": "S
 
 
 # Tal, hvis normale værdi kan læses af en sensor, hvis entiteten selv står forkert (fx efter "gem")
-KEEP_FALLBACK_SENSOR = {"plant_ess_max_discharging_limit": "plant_ess_rated_discharging_power"}
+KEEP_FALLBACK_SENSOR = {"plant_ess_max_discharging_limit": "plant_ess_rated_discharging_power",
+                        "max_discharge_current": "max_discharge_current"}
 
 
 def keep_sensor_fallbacks(actions: dict[str, list[dict]], entries: list[Entry]) -> dict[str, str]:

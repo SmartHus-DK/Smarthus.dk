@@ -1290,6 +1290,42 @@ def test_preset_sigenergy_hold_needs_discharge_limit_and_restores_it():
     assert "hold" not in a and a["normal"]
 
 
+def test_preset_hold_for_deye_solax_foxess_fronius():
+    """"Gem batteriet" = maks. afladning 0, og de andre tilstande sætter den tilbage. Mangler tallet: som før."""
+    cases = [
+        ("deye", [("sensor.d_soc", "battery_sensor"), ("select.d_mode", "work_mode_select"),
+                  ("select.d_p1", "program_1_charging_select"), ("number.d_p1soc", "program_1_soc_number")],
+         ("number.d_dis", "battery_max_discharging_current_number")),
+        ("solax", [("sensor.s_soc", "battery_capacity"), ("select.s_use", "charger_use_mode"),
+                   ("select.s_man", "manual_mode_select")],
+         ("number.s_dis", "battery_discharge_max_current")),
+        ("foxess", [("sensor.f_soc", "battery_soc"), ("select.f_mode", "work_mode")],
+         ("number.f_dis", "max_discharge_current")),
+    ]
+    for key, base, num in cases:
+        m = presets.match(presets.PRESETS[key], _reg("01J" + key, base))
+        assert m.actions and "hold" not in m.actions, key
+        m = presets.match(presets.PRESETS[key], _reg("01J" + key, base + [num]))
+        assert {"type": "number", "entity_id": num[0], "value": 0} in m.actions["hold"], key
+        a = presets.fill_keep(m.actions, {num[0]: "25", base[1][0]: "Self Use"}, presets.keep_fallbacks(m.actions, []))
+        for st in ("charge", "discharge", "normal"):
+            assert {"type": "number", "entity_id": num[0], "value": "25"} in a[st], (key, st)
+        assert a["hold"][-1] == {"type": "number", "entity_id": num[0], "value": 0}, key
+        a = presets.fill_keep(m.actions, {num[0]: "0"}, {})
+        assert "hold" not in a, key                       # kan ikke sættes tilbage: "gem" bruges ikke
+    # Fronius: afladegrænse 0 % slået til, ingen netopladning
+    m = presets.match(presets.PRESETS["fronius"], _reg("01JFRO", [
+        ("sensor.fr_soc", "state_of_charge"),
+        ("number.fr_chg", "battery_charge_power_limit"), ("switch.fr_chg_on", "battery_charge_power_limit_enabled"),
+        ("number.fr_dis", "battery_discharge_power_limit"), ("switch.fr_dis_on", "battery_discharge_power_limit_enabled"),
+        ("switch.fr_grid", "battery_grid_charging")]))
+    h = m.actions["hold"]
+    assert {"type": "number", "entity_id": "number.fr_dis", "value": 0} in h
+    assert {"type": "switch", "entity_id": "switch.fr_dis_on", "value": True} in h
+    assert {"type": "switch", "entity_id": "switch.fr_grid", "value": False} in h
+    assert "hold" in presets.fill_keep(m.actions, {}, {})
+
+
 def test_plan_hold_saves_battery_for_expensive_hours():
     from datetime import datetime, timedelta
     from zoneinfo import ZoneInfo

@@ -1056,3 +1056,27 @@ def test_ev_from_grid_keeps_house_battery():
     c.plan = planner.Plan(current=sl[3], battery_action="normal")
     asyncio.run(c._apply_battery_step(c.plan, False))
     assert c.plan.battery_action == "normal"
+
+
+def test_huawei_hold_sets_max_discharge_power_to_zero():
+    reg_entries = {"number.bat_dis": types.SimpleNamespace(entity_id="number.bat_dis", platform="huawei_solar",
+                                                           domain="number", unique_id="HV123_storage_maximum_discharging_power",
+                                                           disabled_by=None, device_id="bat")}
+    er_mod = types.ModuleType("homeassistant.helpers.entity_registry")
+    er_mod.async_get = lambda hass: types.SimpleNamespace(entities=reg_entries)
+    sys.modules["homeassistant.helpers.entity_registry"] = er_mod
+    sys.modules["homeassistant.helpers"].entity_registry = er_mod
+    st = {"number.bat_dis": State("5000", max=5000)}
+    c, h = make({"battery_huawei_device": "bat"}, st)
+    assert c.has_hold
+    asyncio.run(c._apply_battery("hold", False))
+    calls = [(x[0], x[1], x[2].get("value")) for x in h.services.calls]
+    assert ("number", "set_value", 0) in calls and ("huawei_solar", "stop_forcible_charge", None) in calls
+    st["number.bat_dis"] = State("0", max=5000)
+    c._last_cmd.clear()
+    asyncio.run(c._apply_battery("normal", False))
+    assert ("number", "set_value", 5000) in [(x[0], x[1], x[2].get("value")) for x in h.services.calls]
+    # Uden tallet: ingen "gem" (som før)
+    c2, h2 = make({"battery_huawei_device": "bat"}, {})
+    reg_entries.clear()
+    assert not c2.has_hold
