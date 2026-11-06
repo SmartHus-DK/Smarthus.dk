@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.62.1** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
+**Version 1.62.2** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
 
 SmartHus bruger strømmen, når den er billigst, og sparer, når den er dyrest. Den lader elbilen og batteriet i de billige timer, varmer vandet med billig strøm eller solcelleoverskud, skruer lidt op og ned for varmen og stopper salg af solstrøm, når prisen er for lav. Du ser det hele – og hvad du har sparet – på ét kort.
 
@@ -19,9 +19,9 @@ SmartHus bruger strømmen, når den er billigst, og sparer, når den er dyrest. 
 
 ## Kom i gang
 
-> Kræver Home Assistant 2025.1 eller nyere og [HACS](https://hacs.xyz).
+> Kræver Home Assistant 2025.1 eller nyere. Fra Home Assistant 2026.11 er HACS bygget ind som **Marketplace** under **Indstillinger** – på ældre versioner bruges [HACS](https://hacs.xyz).
 
-1. **Installér SmartHus:** Åbn **HACS → ⋮ → Brugerdefinerede repositories**, indsæt `https://github.com/SmartHus-DK/Smarthus.dk`, vælg **Integration** og klik **Tilføj**. Søg efter **SmartHus**, klik **Download**, og genstart Home Assistant. Nye versioner dukker selv op under **Indstillinger → Opdateringer** – SmartHus tjekker GitHub hver 3. time og beder HACS om at hente oplysningerne.
+1. **Installér SmartHus:** Åbn **Indstillinger → Marketplace**, og tilføj et repository via link: indsæt `https://github.com/SmartHus-DK/Smarthus.dk` og vælg **Integration** (første gang beder Home Assistant dig forbinde til GitHub). Søg efter **SmartHus**, installér den, og genstart Home Assistant, hvis den beder om det. *Ældre Home Assistant (før 2026.11):* **HACS → ⋮ → Brugerdefinerede repositories** → indsæt adressen → **Integration** → **Tilføj** → søg efter **SmartHus** → **Download** → genstart. Nye versioner dukker selv op under **Indstillinger → Opdateringer** – SmartHus tjekker GitHub hver 3. time.
 2. **Installér de anbefalede integrationer** – se [listen herunder](#anbefalede-integrationer). Mindst én til elpris og én til dit udstyr (inverter, ladeboks eller varmepumpe).
 3. **Tilføj SmartHus:** **Indstillinger → Enheder og tjenester → Tilføj integration → SmartHus**. Vælg prisområde (DK1 = Jylland/Fyn, DK2 = Sjælland). Opsætningen – og senere **Konfigurer** – kræver installatørens adgangskode, som fås hos SmartHus.dk.
 4. **Vælg dit udstyr:** Klik **Konfigurer** på SmartHus og gå menuerne igennem. Du vælger bare de entiteter, du allerede har – alle felter er valgfrie, så spring over det, du ikke har. Se [Opsætning](#opsætning-menu-for-menu).
@@ -32,16 +32,16 @@ SmartHus bruger strømmen, når den er billigst, og sparer, når den er dyrest. 
 
 ## Anbefalede integrationer
 
-Installér dem, der passer til dit hus. *Indbygget* findes under **Indstillinger → Enheder og tjenester → Tilføj integration**. *HACS* installeres via HACS ligesom SmartHus.
+Installér dem, der passer til dit hus. *Indbygget* findes under **Indstillinger → Enheder og tjenester → Tilføj integration**. *Marketplace* installeres via **Indstillinger → Marketplace** ligesom SmartHus (før 2026.11: via HACS).
 
 ### Til alle
 
 | Integration | Hvor | Hvad SmartHus bruger den til |
 |---|---|---|
-| [Strømligning](https://github.com/MTrab/stromligning) | HACS | **Anbefalet.** Din rigtige elpris fra dit elselskab – inkl. tillæg, nettarif, afgifter og moms. Så skal du ikke taste tariffer ind. |
+| [Strømligning](https://github.com/MTrab/stromligning) | Marketplace | **Anbefalet.** Din rigtige elpris fra dit elselskab – inkl. tillæg, nettarif, afgifter og moms. Så skal du ikke taste tariffer ind. |
 | [Forecast.Solar](https://www.home-assistant.io/integrations/forecast_solar/) | Indbygget | Solprognose på kortet (i dag, resten af dagen, i morgen) – og batteriets reserve bliver mere præcis. Gratis. |
-| [Solcast](https://github.com/BJReplay/ha-solcast-solar) | HACS | Alternativ til Forecast.Solar – ofte mere præcis. Kræver gratis konto hos Solcast. |
-| [Open-Meteo Solar Forecast](https://github.com/rany2/ha-open-meteo-solar-forecast) | HACS | Gratis alternativ uden konto – bygger på Open-Meteos vejrdata. Vælg den under **Solceller → Solprognose fra** (eller lad "Automatisk" finde den). |
+| [Solcast](https://github.com/BJReplay/ha-solcast-solar) | Marketplace | Alternativ til Forecast.Solar – ofte mere præcis. Kræver gratis konto hos Solcast. |
+| [Open-Meteo Solar Forecast](https://github.com/rany2/ha-open-meteo-solar-forecast) | Marketplace | Gratis alternativ uden konto – bygger på Open-Meteos vejrdata. Vælg den under **Solceller → Solprognose fra** (eller lad "Automatisk" finde den). |
 | [Met.no](https://www.home-assistant.io/integrations/met/) | Indbygget (følger med) | Vejret og udetemperaturen på kortet og varmestyringens grænse. Er normalt installeret i forvejen. |
 | [HomeWizard](https://www.home-assistant.io/integrations/homewizard/) eller [DSMR / P1](https://www.home-assistant.io/integrations/dsmr/) | Indbygget | Måler strøm til og fra nettet (P1-porten på elmåleren). Giver energiflowet, solcelleoverskud og overblik over købt strøm og pris – hvis inverteren ikke selv måler det. |
 
@@ -53,15 +53,15 @@ Installér integrationen til dit anlæg, og vælg derefter **SmartHus → Konfig
 
 | Mærke | Integration (installeres først) | Hvor | "Vælg dit anlæg" finder |
 |---|---|---|---|
-| SigEnergy | [Sigenergy Local Modbus](https://github.com/TypQxQ/Sigenergy-Local-Modbus) | HACS | Målere, batteristyring (Remote EMS) og eksportgrænse |
-| Huawei | [Huawei Solar](https://github.com/wlcrs/huawei_solar) | HACS | Målere og indbygget batteristyring |
-| Deye / Sunsynk | [Solarman](https://github.com/davidrapan/ha-solarman) | HACS | Målere, batteristyring (tidsprogram 1–6) og eksportgrænse. *Time of Use* skal være slået til |
-| SolaX | [SolaX Modbus](https://github.com/wills106/homeassistant-solax-modbus) | HACS | Målere, batteristyring (Manual Mode, Gen4+) og eksportgrænse |
-| FoxESS | [FoxESS Modbus](https://github.com/nathanmarlor/foxess_modbus) | HACS | Målere og batteristyring (Force Charge/Discharge – slå *Remote control* til i integrationen) |
-| Growatt | [SolaX Modbus](https://github.com/wills106/homeassistant-solax-modbus) (Growatt-plugin) | HACS | Batteriniveau, sol og batteristyring (MOD/TL-XH: tidsrum 1 · SPH: prioritet) |
+| SigEnergy | [Sigenergy Local Modbus](https://github.com/TypQxQ/Sigenergy-Local-Modbus) | Marketplace | Målere, batteristyring (Remote EMS) og eksportgrænse |
+| Huawei | [Huawei Solar](https://github.com/wlcrs/huawei_solar) | Marketplace | Målere og indbygget batteristyring |
+| Deye / Sunsynk | [Solarman](https://github.com/davidrapan/ha-solarman) | Marketplace | Målere, batteristyring (tidsprogram 1–6) og eksportgrænse. *Time of Use* skal være slået til |
+| SolaX | [SolaX Modbus](https://github.com/wills106/homeassistant-solax-modbus) | Marketplace | Målere, batteristyring (Manual Mode, Gen4+) og eksportgrænse |
+| FoxESS | [FoxESS Modbus](https://github.com/nathanmarlor/foxess_modbus) | Marketplace | Målere og batteristyring (Force Charge/Discharge – slå *Remote control* til i integrationen) |
+| Growatt | [SolaX Modbus](https://github.com/wills106/homeassistant-solax-modbus) (Growatt-plugin) | Marketplace | Batteriniveau, sol og batteristyring (MOD/TL-XH: tidsrum 1 · SPH: prioritet) |
 | Growatt (kun Shine-dongle) | [Growatt Server](https://www.home-assistant.io/integrations/growatt_server/) med API-token | Indbygget | Målere, energiflow (køb/salg og lad/aflad som hver sin sensor) og batteristyring via skyen (SPH: lade-/afladetidsrum · MIN TL-XH: tidsrum 1). Ændringer tager 1–2 minutter |
 | Fronius | [Fronius](https://www.home-assistant.io/integrations/fronius/) | Indbygget | Målere og batteristyring (Gen24/Tauro/Verto – kræver Modbus TCP og *Inverter control via Modbus*). Slå sensorerne *Power battery* og *Power grid* til
-| Solplanet | [Solplanet](https://github.com/calvinbui/home-assistant-solplanet) | HACS | Batteriniveau – batteriet styres med scripts (skabelon nedenfor) |
+| Solplanet | [Solplanet](https://github.com/calvinbui/home-assistant-solplanet) | Marketplace | Batteriniveau – batteriet styres med scripts (skabelon nedenfor) |
 
 Batteristyringen fra "Vælg dit anlæg" er bygget ud fra integrationernes kildekode og **ikke afprøvet på alle modeller** – afprøv lad/aflad/normal på anlægget, før styringen slås til. Andre mærker styres med en rullemenu eller scripts (se [For installatøren](#for-installatøren-avanceret)).
 
@@ -71,16 +71,16 @@ Vælg **SmartHus → Konfigurer → Elbiler → bilen → Ladestander**, så fin
 
 | Mærke | Integration | Hvor | Det finder SmartHus |
 |---|---|---|---|
-| Easee | [Easee](https://github.com/nordicopen/easee_hass) | HACS | Alt – ladestrømmen styres direkte via Easee |
-| Zaptec | [Zaptec](https://github.com/custom-components/zaptec) | HACS | Alt – ladestrøm via installationens "Available current" (gælder alle ladere i installationen) |
+| Easee | [Easee](https://github.com/nordicopen/easee_hass) | Marketplace | Alt – ladestrømmen styres direkte via Easee |
+| Zaptec | [Zaptec](https://github.com/custom-components/zaptec) | Marketplace | Alt – ladestrøm via installationens "Available current" (gælder alle ladere i installationen) |
 | Wallbox | [Wallbox](https://www.home-assistant.io/integrations/wallbox/) | Indbygget | Alt – energimåleren tæller pr. opladning |
-| Fronius Wattpilot | [Wattpilot](https://github.com/mk-maddin/wattpilot-HA) | HACS | Alt – slå entiteten *Force State* til først |
-| go-e Charger | [go-e Charger API v2](https://github.com/marq24/ha-goecharger-api2) | HACS | Alt |
-| Garo | [Garo Wallbox](https://github.com/sockless-coding/garo_wallbox) | HACS | Alt |
-| Charge Amps | [Charge Amps](https://github.com/kirei/hass-chargeamps) | HACS | Alt |
-| Alfen | [Alfen Wallbox](https://github.com/leeyuentuen/alfen_wallbox) | HACS | Tænd/sluk, effekt, energi og kabel – ikke solcelleladning |
-| Monta | [Monta](https://github.com/nickknissen/hass-monta) | HACS | Tænd/sluk, energi og kabel – ingen effektmåler |
-| ABB, Etrel, CTEK, Kempower m.fl. | [OCPP](https://github.com/lbbrhzn/ocpp) | HACS | Alt via OCPP |
+| Fronius Wattpilot | [Wattpilot](https://github.com/mk-maddin/wattpilot-HA) | Marketplace | Alt – slå entiteten *Force State* til først |
+| go-e Charger | [go-e Charger API v2](https://github.com/marq24/ha-goecharger-api2) | Marketplace | Alt |
+| Garo | [Garo Wallbox](https://github.com/sockless-coding/garo_wallbox) | Marketplace | Alt |
+| Charge Amps | [Charge Amps](https://github.com/kirei/hass-chargeamps) | Marketplace | Alt |
+| Alfen | [Alfen Wallbox](https://github.com/leeyuentuen/alfen_wallbox) | Marketplace | Tænd/sluk, effekt, energi og kabel – ikke solcelleladning |
+| Monta | [Monta](https://github.com/nickknissen/hass-monta) | Marketplace | Tænd/sluk, energi og kabel – ingen effektmåler |
+| ABB, Etrel, CTEK, Kempower m.fl. | [OCPP](https://github.com/lbbrhzn/ocpp) | Marketplace | Alt via OCPP |
 | Andre | Ladeboksens egen integration | – | Vælg selv en kontakt (eller rullemenu) til at starte/stoppe – evt. et script til ladestrøm |
 
 Ladestanderne er sat op ud fra integrationernes kildekode og **ikke afprøvet på alle modeller** – tjek, at laderen starter og stopper, før styringen slås til.
@@ -92,10 +92,10 @@ Med bilens egen integration kan SmartHus lade præcis til fx 80 % og selv se, hv
 | Mærke | Integration | Hvor |
 |---|---|---|
 | Tesla | [Tesla Fleet](https://www.home-assistant.io/integrations/tesla_fleet/) eller [Teslemetry](https://www.home-assistant.io/integrations/teslemetry/) | Indbygget |
-| Kia / Hyundai | [Kia Uvo / Hyundai Bluelink](https://github.com/Hyundai-Kia-Connect/kia_uvo) | HACS |
-| Volkswagen ID | [Volkswagen We Connect ID](https://github.com/mitch-dc/volkswagen_we_connect_id) | HACS |
+| Kia / Hyundai | [Kia Uvo / Hyundai Bluelink](https://github.com/Hyundai-Kia-Connect/kia_uvo) | Marketplace |
+| Volkswagen ID | [Volkswagen We Connect ID](https://github.com/mitch-dc/volkswagen_we_connect_id) | Marketplace |
 | Renault | [Renault](https://www.home-assistant.io/integrations/renault/) | Indbygget |
-| Andre | Søg efter bilmærket i HACS eller under Tilføj integration | – |
+| Andre | Søg efter bilmærket i Marketplace eller under Tilføj integration | – |
 
 ### Varmepumpe og varmt vand
 
@@ -103,7 +103,7 @@ Med bilens egen integration kan SmartHus lade præcis til fx 80 % og selv se, hv
 |---|---|---|
 | Nibe | [myUplink](https://www.home-assistant.io/integrations/myuplink/) | Indbygget |
 | Mitsubishi | [MELCloud](https://www.home-assistant.io/integrations/melcloud/) | Indbygget |
-| Daikin | [Daikin Onecta](https://github.com/jwillemsen/daikin_onecta) | HACS |
+| Daikin | [Daikin Onecta](https://github.com/jwillemsen/daikin_onecta) | Marketplace |
 | Varmt vand fra varmepumpen | Varmepumpens egen integration – brug dens kontakt eller knap til varmt vand (fx "Charge" eller "Hot water boost") | – |
 | Varmtvandsbeholder med elpatron | Kun hvis varmepumpen ikke kan: en kontakt/relæ, fx [Shelly](https://www.home-assistant.io/integrations/shelly/) – gerne med temperaturføler | Indbygget |
 | Andre | Alt med en termostat (climate) i Home Assistant virker | – |
@@ -180,7 +180,7 @@ Det kræver en ekstra tilstand eller et script under Konfigurer → Batteri / in
 
 **Hvornår er solcellerne tjent hjem?** Skriv anlæggets pris under Konfigurér → Solceller → *Anlæggets pris*. Kortet viser så, hvor mange procent der er tilbagebetalt, og et skøn over, hvornår anlægget er tjent hjem (skønnet tager højde for, at solen giver mest om sommeren).
 
-**Logoet er hvidt i HACS.** HACS henter logoer fra Home Assistants fælles logo-side, hvor SmartHus ikke er med endnu. Det påvirker ikke integrationen.
+**Logoet er hvidt i Marketplace/HACS.** Marketplace henter logoer fra Home Assistants fælles logo-side, hvor SmartHus ikke er med endnu. Det påvirker ikke integrationen.
 
 ---
 

@@ -55,7 +55,7 @@
       "already_configured": "SmartHus is already set up with this name and price area."
     },
     "error": {
-      "stromligning_missing": "The sensor does not exist. Install the Strømligning integration (HACS) and choose your supplier and product there first.",
+      "stromligning_missing": "The sensor does not exist. Install the Strømligning integration (Marketplace or HACS) and choose your supplier and product there first.",
       "stromligning_no_prices": "The sensor has no prices (the 'prices' attribute is missing). Choose the Strømligning current price incl. VAT sensor.",
       "wrong_password": "Wrong password"
     }
@@ -312,7 +312,7 @@
       },
       "preset": {
         "title": "Choose your system",
-        "description": "Choose your inverter/battery. SmartHus finds the battery level, power, energy meters and – where possible – the battery control in the integration.\n\nThe integration must be installed and set up first (most via HACS). Everything can still be adjusted under **Battery / inverter** and **Solar**.",
+        "description": "Choose your inverter/battery. SmartHus finds the battery level, power, energy meters and – where possible – the battery control in the integration.\n\nThe integration must be installed and set up first (most via Marketplace or HACS). Everything can still be adjusted under **Battery / inverter** and **Solar**.",
         "data": {
           "preset": "System"
         }
@@ -330,7 +330,7 @@
       },
       "ev_charger": {
         "title": "Charger",
-        "description": "Pick your charger and SmartHus finds its on/off, power, energy meter, cable connected and charging current. The integration must be installed and set up first (most via HACS). You can adjust the fields afterwards.",
+        "description": "Pick your charger and SmartHus finds its on/off, power, energy meter, cable connected and charging current. The integration must be installed and set up first (most via Marketplace or HACS). You can adjust the fields afterwards.",
         "data": {
           "charger_type": "Charger"
         }
@@ -364,7 +364,7 @@
       }
     },
     "error": {
-      "stromligning_missing": "The sensor does not exist. Install the Strømligning integration (HACS) and choose your supplier and product there first.",
+      "stromligning_missing": "The sensor does not exist. Install the Strømligning integration (Marketplace or HACS) and choose your supplier and product there first.",
       "stromligning_no_prices": "The sensor has no prices (the 'prices' attribute is missing). Choose the Strømligning current price incl. VAT sensor.",
       "export_select_options": "You chose a drop-down – fill in both option names.",
       "export_number_values": "You chose a number – fill in both values.",

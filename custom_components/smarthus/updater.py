@@ -58,7 +58,7 @@ async def _latest_release(hass: HomeAssistant) -> str | None:
 
 
 async def _refresh_hacs(hass: HomeAssistant, latest: str) -> bool:
-    hacs = hass.data.get("hacs")
+    hacs = hass.data.get("hacs") or hass.data.get("marketplace")   # Marketplace (HA 2026.11+) er HACS indbygget
     repos = getattr(hacs, "repositories", None)
     if repos is None:
         return False

@@ -60,7 +60,7 @@
       "already_configured": "SmartHus er allerede sat op med dette navn og prisområde."
     },
     "error": {
-      "stromligning_missing": "Sensoren findes ikke. Installér Strømligning-integrationen (HACS) og vælg dit elselskab og produkt der først.",
+      "stromligning_missing": "Sensoren findes ikke. Installér Strømligning-integrationen (Marketplace eller HACS) og vælg dit elselskab og produkt der først.",
       "stromligning_no_prices": "Sensoren har ingen priser (attributten 'prices' mangler). Vælg Strømligning-sensoren for den aktuelle pris inkl. moms.",
       "wrong_password": "Forkert adgangskode"
     }
@@ -324,7 +324,7 @@
       },
       "preset": {
         "title": "Vælg dit anlæg",
-        "description": "Vælg inverter/batteri. SmartHus finder selv batteriniveau, effekt, energimålere og – hvor det er muligt – batteristyringen i integrationen.\n\nIntegrationen skal være installeret og sat op først (de fleste via HACS). Resten kan stadig rettes under **Batteri / inverter** og **Solceller**.",
+        "description": "Vælg inverter/batteri. SmartHus finder selv batteriniveau, effekt, energimålere og – hvor det er muligt – batteristyringen i integrationen.\n\nIntegrationen skal være installeret og sat op først (de fleste via Marketplace eller HACS). Resten kan stadig rettes under **Batteri / inverter** og **Solceller**.",
         "data": {
           "preset": "Anlæg"
         }
@@ -342,7 +342,7 @@
       },
       "ev_charger": {
         "title": "Ladestander",
-        "description": "Vælg din ladestander, så finder SmartHus selv laderens tænd/sluk, effekt, energimåler, kabel tilsluttet og ladestrøm. Integrationen skal være installeret og sat op først (de fleste via HACS). Felterne kan rettes bagefter.",
+        "description": "Vælg din ladestander, så finder SmartHus selv laderens tænd/sluk, effekt, energimåler, kabel tilsluttet og ladestrøm. Integrationen skal være installeret og sat op først (de fleste via Marketplace eller HACS). Felterne kan rettes bagefter.",
         "data": {
           "charger_type": "Ladestander"
         }
@@ -376,7 +376,7 @@
       }
     },
     "error": {
-      "stromligning_missing": "Sensoren findes ikke. Installér Strømligning-integrationen (HACS) og vælg dit elselskab og produkt der først.",
+      "stromligning_missing": "Sensoren findes ikke. Installér Strømligning-integrationen (Marketplace eller HACS) og vælg dit elselskab og produkt der først.",
       "stromligning_no_prices": "Sensoren har ingen priser (attributten 'prices' mangler). Vælg Strømligning-sensoren for den aktuelle pris inkl. moms.",
       "export_select_options": "Du har valgt en rullemenu – udfyld begge navne ('stop eksport' og 'normal eksport').",
       "export_number_values": "Du har valgt et tal – udfyld begge værdier (ved stop og ved normal eksport).",
