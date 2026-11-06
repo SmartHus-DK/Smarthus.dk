@@ -252,6 +252,21 @@ async def main():
     await c._apply_current(car, 9, False); await c._apply_current(car, 9, False)
     assert h.services.calls == [("easee", "set_charger_dynamic_limit",
                                  {"device_id": "easee1", "current": 9, "time_to_live": 0})]
+    # 14b) Easee: efter sluk (og Easee's pause, der sætter strømmen til 0 A) sendes strømmen igen ved start
+    c, h = make({}, {"switch.lader": State("on")})
+    c.cars = [car]
+    c.enabled = {"master": True, "ev": True}
+    c.active = lambda m: True
+    c._ev_target = lambda car_, ep, sc, step=True: (ep.on, 16 if ep.on else None)
+    c.ev_on_hold = lambda cid: False
+    async def _noop(*a, **k): return None
+    c._set_charger = _noop; c._ev_verify_off = _noop
+    on = types.SimpleNamespace(on=True, connected=True); off = types.SimpleNamespace(on=False, connected=True)
+    await c._apply_ev_step(types.SimpleNamespace(evs={"ev": on}), False)
+    await c._apply_ev_step(types.SimpleNamespace(evs={"ev": off}), False)
+    await c._apply_ev_step(types.SimpleNamespace(evs={"ev": on}), False)
+    lim = [x for x in h.services.calls if x[1] == "set_charger_dynamic_limit"]
+    assert len(lim) == 2, lim
     # 15) To biler på én lader: kun den tilsluttede styrer laderen
     plugs = {"binary_sensor.kia_plug": "off", "binary_sensor.tesla_plug": "on"}
     c, h = make({}, {})

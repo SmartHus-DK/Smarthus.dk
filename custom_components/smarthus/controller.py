@@ -1625,6 +1625,8 @@ class SmartHusController:
                         "device_id": car["easee_device"], "action_command": "pause"}, blocking=False)
                 except Exception as err:  # noqa: BLE001
                     _LOGGER.warning("SmartHus kunne ikke sætte Easee på pause: %s", err)
+                # Easee's pause sætter laderens dynamiske strøm til 0 A – den skal sendes igen ved næste start
+                self._ev_current_sent.pop(cid, None)
 
     def _track_soc(self) -> None:
         """Tæl den energi, der er ladet, siden bilen sidst meldte et nyt batteriniveau."""
@@ -2052,6 +2054,10 @@ class SmartHusController:
                 if on and self.ev_on_hold(car["id"]) and not self._charger_on(car):
                     continue        # brugeren er ved at ændre klar-tidspunktet – start ikke endnu
                 await self._set_charger(car, on, force)
+                if not on and car.get("easee_device"):
+                    # Slukket: send ladestrømmen igen ved næste start (en pause – fra SmartHus, appen eller
+                    # Easee selv – kan have sat den dynamiske strøm til 0 A, så laderen ikke lader)
+                    self._ev_current_sent.pop(car["id"], None)
                 if on and current is not None:
                     await self._apply_current(car, current, force)
                 await self._ev_verify_off(car, on)
