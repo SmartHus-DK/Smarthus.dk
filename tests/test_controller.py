@@ -1102,3 +1102,13 @@ def test_huawei_hold_sets_max_discharge_power_to_zero():
     c2, h2 = make({"battery_huawei_device": "bat"}, {})
     reg_entries.clear()
     assert not c2.has_hold
+
+
+def test_full_current_when_charging_from_grid():
+    """Lader bilen fra nettet, bruges laderens fulde strøm – ikke solcelleladningens maks."""
+    st = {"number.amp": State("10", max=32)}
+    c, h = make({}, st)
+    assert c.full_current({"id": "ev", "easee_device": "e1"}) == 32
+    assert c.full_current({"id": "ev", "current_entity": "number.amp"}) == 32
+    c.settings["ev_solar_max_a"] = 13
+    assert c.full_current({"id": "ev", "current_script": "script.x"}) in (13, 16)

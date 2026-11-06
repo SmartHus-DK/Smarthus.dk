@@ -158,6 +158,7 @@ HEAL_TODAY_DELAY_SEC = 120 # efter opstart: byg dagens tal op fra statistikken (
 RESTORE_DELAY_SEC = 10     # slås styringen til igen inden for 10 s, sendes der intet til enhederne
 EV_FULL_IDLE_SEC = 900    # bilen stopper selv: tændt lader uden strømforbrug i 15 min = bilen er fuld
 HUAWEI_DISCHARGE_KEY = "storage_maximum_discharging_power"
+EASEE_FULL_A = 32             # Easee: fuld ladestrøm (laderen begrænser selv til sin maks.)
 EV_PROTECT_KW = 1.0           # elbilen lader fra nettet: husbatteriet gemmes (ikke tømt ned i bilen)
 HOLD_SUN_ON_KW = 0.15      # overskud fra solen, der får "gem batteriet" til at lade fra solen
 HOLD_SUN_OFF_KW = 0.05
@@ -1527,7 +1528,7 @@ class SmartHusController:
             solar_manual.pop(cid, None)
             await self._set_charger(car, True, force)
             if self.has_current_control(car):
-                await self._apply_current(car, int(car_settings(self.settings, cid)["solar_max_a"]), force)
+                await self._apply_current(car, self.full_current(car), force)
             return
         was_on = self._ev_manual.pop(cid, False) | solar_manual.pop(cid, False)
         solar_on = (self.flags.get(f"{cid}_solar", False) and self.has_current_control(car)
@@ -2187,22 +2188,38 @@ class SmartHusController:
             return False, None
         cs = car_settings(self.settings, cid)
         min_a, max_a = int(cs["solar_min_a"]), int(cs["solar_max_a"])
+        full = self.full_current(car)
         st = self.ev_solar.setdefault(cid, EvSolarState())
         control = self.has_current_control(car)
         solar_on = control and self.flags.get(f"{cid}_solar", False) and self.export_kw is not None
         if not solar_on or ep.target_reached:
             st.reset()
-            return ep.on, (max_a if control and ep.on and not ep.target_reached else None)
+            return ep.on, (full if control and ep.on and not ep.target_reached else None)
         if ep.on or self.plan.solar_curtail:
-            # Billig time, "Lad nu" eller eksporten er stoppet: lad med fuld strøm
+            # Billig time, "Lad nu" eller eksporten er stoppet: lad med fuld strøm (laderens maks.)
             st.reset()
-            return True, max_a
+            return True, full
         if solar_car not in (None, cid):
             st.reset()                   # en anden bil lader allerede med sol
             return False, None
         if step:  # kun én reguleringsrunde pr. 30 sekunder
             regulate_ev(st, self.export_kw, self.solar_kw, min_a, max_a, cs["solar_start_kw"])
         return (True, st.current) if st.active else (False, None)
+
+    def full_current(self, car: dict) -> int:
+        """Fuld ladestrøm, når bilen lader fra nettet: laderens egen maks. – ikke solcelleladningens grænse.
+        Easee begrænser selv til laderens maks. (32 A er det højeste, den tager imod)."""
+        if car.get("easee_device"):
+            return EASEE_FULL_A
+        ent = car.get("current_entity")
+        st = self.hass.states.get(ent) if ent else None
+        mx = st.attributes.get("max") if st is not None else None
+        try:
+            if mx is not None and float(mx) >= 6:
+                return int(float(mx))
+        except (TypeError, ValueError):
+            pass
+        return int(car_settings(self.settings, car["id"])["solar_max_a"])   # script/ukendt: højeste valgte strøm
 
     async def _apply_current(self, car: dict, current: int, force: bool) -> None:
         cid = car["id"]
