@@ -6,6 +6,7 @@ Kør:  python -m pytest tests
 import importlib.util
 import sys
 import types
+import math
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -283,7 +284,8 @@ def test_ev_target_soc():
     p = planner.build_plan(slots, now, TZ, s, ev_soc=50)
     need = 0.30 * 60 / 11 / 0.9
     assert abs(p.ev_hours_needed - round(need, 2)) < 0.01
-    assert len(p.ev_slots) == round(need / 0.25)
+    assert len(p.ev_slots) == math.ceil(round(need, 2) / 0.25 - 1e-6)   # hele behovet, rundet op til et kvarter
+    assert all(b.start == a.end for a, b in zip(p.ev_slots, p.ev_slots[1:]))   # ét sammenhængende tidsrum
     assert all(sl.end > now for sl in p.ev_slots)
     # Mål nået: ingen opladning, heller ikke med "Lad nu"
     p = planner.build_plan(slots, now, TZ, s, ev_soc=81, ev_force=True)
@@ -293,25 +295,25 @@ def test_ev_target_soc():
     assert p.ev_on
 
 
-def test_ev_keeps_current_slot_once_started():
-    """Er laderen startet i et kvarter, beholdes det til det er slut – også hvis planen ellers ville bytte det
-    ud (fx fordi batteriniveauet rykker en smule), så laderen ikke slukker og tænder igen midt i kvarteret."""
+def test_ev_session_continues_until_target():
+    """Én sammenhængende ladning i de billigste timer – og er den gået i gang, kører den til målet, også hvis
+    skønnet over batteriniveauet rykker, eller timerne bagefter er dyrere."""
     recs = records("2026-10-18", CURVE) + records("2026-10-19", CURVE)
     slots = model().build_slots(recs)
     s = dict(const.DEFAULT_SETTINGS)
-    # Et dyrt kvarter i aften: ikke valgt, når der kun mangler lidt
     now = datetime(2026, 10, 18, 19, 5, tzinfo=TZ).astimezone(timezone.utc)
     cur = next(sl for sl in slots if sl.start <= now < sl.end)
-    base = planner.plan_cars(slots, now, TZ, s, [planner.CarInput("ev", soc=79)])["ev"]
-    assert not base.on and all(sl.start != cur.start for sl in base.slots)
-    kept = planner.plan_cars(slots, now, TZ, s, [planner.CarInput("ev", soc=79, was_on_slot=cur.start)])["ev"]
-    assert kept.on and any(sl.start == cur.start for sl in kept.slots)
-    # Mål nået: stop alligevel
+    base = planner.plan_cars(slots, now, TZ, s, [planner.CarInput("ev", soc=50)])["ev"]
+    assert not base.on                                         # dyr aften: venter på de billige timer
+    assert all(b.start == a.end for a, b in zip(base.slots, base.slots[1:]))
+    assert base.slots[0].start.astimezone(TZ).minute == 0       # starter på en hel time
+    run = planner.plan_cars(slots, now, TZ, s, [planner.CarInput("ev", soc=50, was_on_slot=cur.start)])["ev"]
+    assert run.on and run.slots[0].start == cur.start
+    assert all(b.start == a.end for a, b in zip(run.slots, run.slots[1:]))
+    assert abs(sum(x.hours for x in run.slots) - math.ceil(run.hours_needed / 0.25 - 1e-6) * 0.25) < 0.01
+    # Mål nået: stop
     done = planner.plan_cars(slots, now, TZ, s, [planner.CarInput("ev", soc=80, was_on_slot=cur.start)])["ev"]
     assert not done.on
-    # Et andet kvarter end det, den lader i: intet særligt
-    other = planner.plan_cars(slots, now, TZ, s, [planner.CarInput("ev", soc=79, was_on_slot=cur.start - timedelta(minutes=15))])["ev"]
-    assert not other.on
 
 
 def test_ev_cost_compare():
@@ -366,7 +368,7 @@ def test_two_cars_and_power_limit():
     p = planner.build_plan(slots, now, TZ, s, cars=cars)
     a, b = p.evs["ev"], p.evs["ev_tesla"]
     assert not ({x.start for x in a.slots} & {x.start for x in b.slots})
-    assert abs(sum(x.hours for x in b.slots) - round(b.hours_needed / 0.25) * 0.25) < 0.01
+    assert abs(sum(x.hours for x in b.slots) - math.ceil(b.hours_needed / 0.25 - 1e-6) * 0.25) < 0.01
     assert a.cost_planned >= 0 and b.cost_planned >= 0
     # Bagudkompatible genveje peger på første bil
     assert p.ev_slots == a.slots

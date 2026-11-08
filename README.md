@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.62.3** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
+**Version 1.63.0** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
 
 SmartHus bruger strømmen, når den er billigst, og sparer, når den er dyrest. Den lader elbilen og batteriet i de billige timer, varmer vandet med billig strøm eller solcelleoverskud, skruer lidt op og ned for varmen og stopper salg af solstrøm, når prisen er for lav. Du ser det hele – og hvad du har sparet – på ét kort.
 
@@ -399,7 +399,7 @@ Har ladeboksens integration en **number**-entitet for ladestrøm (fx Zaptec "Ava
 - **Sælg fra batteriet til nettet:** slået fra sælger batteriet aldrig til nettet og bruges kun i huset.
 - **Elbil – Lad med sol:** knap ved siden af "Lad nu", der slår solcelleladning til og fra.
 - **Lad batteriet helt op i de billigste timer** (valgfri): batteriet lades fra nettet fra laveste til højeste niveau i døgnets billigste timer – også når solen ventes at fylde det, og uanset prisforskellen. Tast inverterens **maks. ladeeffekt** (kW) ind; antallet af timer regnes ud fra batteriets størrelse og grænser (inkl. ca. 5 % tab). Uden ladeeffekt (0 kW) sker der intet.
-- **Elbil i sammenhængende blokke:** opladningen planlægges i blokke på mindst 1 time, så laderen ikke starter og stopper for hvert kvarter, når et enkelt kvarter er lidt dyrere.
+- **Elbil i én sammenhængende ladning:** opladningen planlægges i de billigste timer i træk, der dækker hele behovet (startende på en hel time). Er ladningen gået i gang, kører den, til bilen har nået sit mål – den slukker ikke midt i, selv om et kvarter er dyrere, eller skønnet over batteriniveauet rykker. ("Lad med sol" regulerer stadig efter overskuddet.)
 - **Varme i hele timer:** ekstra varme og sparetimer vælges som hele klokketimer i højst to sammenhængende perioder pr. døgn, hver mindst 2 timer – så varmepumpens setpunkt ikke skifter hvert kvarter.
 - **Forvarmning:** ekstra varme lægges i de billigste timer inden for 5 timer før de dyre spareperioder, så huset er varmt, når prisen topper. Har dagen to dyre toppe (fx morgen og aften), spares der i begge, og der forvarmes før dem begge. Med én top lægges halvdelen af timerne (mindst 2) før den og resten i døgnets billigste timer. Forvarmning sker kun, når timerne før er mindst 0,30 kr/kWh billigere end sparetimerne.
 - **Automatisk plan:** slå *Automatisk plan* til under Varme på kortet, så vælger SmartHus selv antallet af timer: dagens dyre toppe (mindst 0,25 kr/kWh eller 15 % over gennemsnittet, højst to toppe á højst 4 timer) bliver sparetimer, og der forvarmes i lige så mange af de billigste timer før hver top. En dag uden tydelige toppe giver ingen ekstra varme eller sparetimer. Grader og tidsrum bruges stadig.
