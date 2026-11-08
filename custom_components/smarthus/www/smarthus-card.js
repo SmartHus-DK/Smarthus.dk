@@ -2437,7 +2437,12 @@ class SmartHusEvCard extends SmartHusCard {
     const action = (force && (fon || connected) ? `<button class="action ev-go ${fon ? "active" : ""}" data-action="toggle" data-entity="${force.entity_id}">
         <ha-icon icon="mdi:lightning-bolt"></ha-icon>${fon ? "Stop opladning nu" : "Lad nu"}</button>` : "") + this._solarButton(cid, "ev-go");
     const step = (k) => (this._st("number", k) ? this._stepper(k) : "");
-    const warn = a.short_of_time ? this._evCompare(cid) : "";
+    const fault = a.charge_fault ? `<div class="cmp warn-box">
+        <div class="cmp-title">Ladefejl – begrænset ladestrøm</div>
+        <div class="cmp-result">Bilen lader kun med <b>${nf(a.charge_fault_kw, 1)} kW</b> i stedet for ca. ${nf(a.charge_fault_expected_kw, 1)} kW – fx en fase, der er faldet ud. Tjek laderen og bilen.</div>
+        <div class="cmp-sub" style="margin-left:0">Beskeden forsvinder, når bilen tages ud af laderen.</div>
+      </div>` : "";
+    const warn = fault + (a.short_of_time ? this._evCompare(cid) : "");
     const more = this._config.details ? `
       <button class="ev-morebtn" data-action="ev-more" aria-expanded="${this._evMore}">${this._evMore ? "Skjul" : "Mere"}<ha-icon class="chev${this._evMore ? " up" : ""}" icon="mdi:chevron-down"></ha-icon></button>
       ${this._evMore ? `<div class="ev-more">${a.short_of_time ? "" : this._evCompare(cid)}

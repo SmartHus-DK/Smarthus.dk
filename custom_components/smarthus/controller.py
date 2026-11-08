@@ -158,6 +158,9 @@ HEAL_TODAY_DELAY_SEC = 120 # efter opstart: byg dagens tal op fra statistikken (
 RESTORE_DELAY_SEC = 10     # slås styringen til igen inden for 10 s, sendes der intet til enhederne
 EV_FULL_IDLE_SEC = 900    # bilen stopper selv: tændt lader uden strømforbrug i 15 min = bilen er fuld
 HUAWEI_DISCHARGE_KEY = "storage_maximum_discharging_power"
+EV_FAULT_RATIO = 0.8          # ladefejl: under 80 % af ladeeffekten …
+EV_FAULT_SEC = 300            # … i 5 minutter
+EV_FAULT_MAX_SOC = 90         # over 90 % sætter bilen selv strømmen ned
 EASEE_FULL_A = 32             # Easee: fuld ladestrøm (laderen begrænser selv til sin maks.)
 EV_PROTECT_KW = 1.0           # elbilen lader fra nettet: husbatteriet gemmes (ikke tømt ned i bilen)
 HOLD_SUN_ON_KW = 0.15      # overskud fra solen, der får "gem batteriet" til at lade fra solen
@@ -1271,6 +1274,7 @@ class SmartHusController:
             self._update_surplus()
         self._log_ev_charging()
         self._track_soc()
+        self._track_fault()
         self._track_sun()
         if getattr(self.plan, "solar_curtail", False):
             self.solar_cal.mark_curtailed(dt_util.now().astimezone(self.tz))
@@ -1571,6 +1575,7 @@ class SmartHusController:
     DONE_KINDS = {"battery_charge": "charge", "battery_discharge": "discharge"}
     hold_sun = False
     ev_protect = False
+    ev_fault: dict = {}
     _hold_sun_since: float | None = None
 
     def done_shown(self, kind: str, slots: list) -> list:
@@ -1629,6 +1634,37 @@ class SmartHusController:
                     _LOGGER.warning("SmartHus kunne ikke sætte Easee på pause: %s", err)
                 # Easee's pause sætter laderens dynamiske strøm til 0 A – den skal sendes igen ved næste start
                 self._ev_current_sent.pop(cid, None)
+
+    def _track_fault(self) -> None:
+        """Ladefejl: bilen lader med fuld strøm fra nettet, men trækker over 5 minutter mindst 20 % mindre end
+        ladeeffekten (fx en fase, der er faldet ud). Advarslen bliver stående, til bilen tages ud af laderen."""
+        faults = self.__dict__.setdefault("ev_fault", {})
+        since = self.__dict__.setdefault("_ev_fault_since", {})
+        now = time.monotonic()
+        for car in self.cars:
+            cid = car["id"]
+            if not self.connected.get(cid, True):
+                faults.pop(cid, None); since.pop(cid, None)
+                continue
+            if not car.get("power"):
+                continue
+            kw = self._power_kw(car.get("power"))
+            ep = self.plan.evs.get(cid) if getattr(self, "plan", None) is not None else None
+            st = self.ev_solar.get(cid)
+            expected = float(car_settings(self.settings, cid)["charge_power"])
+            soc = self.car_soc(car)
+            low = (ep is not None and ep.on and not (st is not None and st.active) and kw is not None
+                   and kw > 1.0 and expected > 1.5 and kw < EV_FAULT_RATIO * expected
+                   and (soc is None or soc < EV_FAULT_MAX_SOC))
+            if not low:
+                since.pop(cid, None)
+                continue
+            t0 = since.setdefault(cid, now)
+            if now - t0 >= EV_FAULT_SEC and cid not in faults:
+                faults[cid] = {"kw": round(kw, 1), "expected_kw": round(expected, 1),
+                               "since": dt_util.now().isoformat(timespec="minutes")}
+                _LOGGER.warning("SmartHus: %s lader kun med %.1f kW (forventet ca. %.1f kW) – begrænset ladestrøm",
+                                car.get("name") or cid, kw, expected)
 
     def _ev_on_slot(self, cid: str):
         """Kvarteret, hvor bilen allerede lader efter planen (fra sidste beregning) – eller None."""

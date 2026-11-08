@@ -306,7 +306,7 @@ class CarInput:
     deadline: datetime | None = None  # fast slutning på perioden (i dag/i morgen/begge dage) – erstatter klar kl.
     horizon: bool = False  # "billigste i sigte": ingen deadline – alle kendte priser
     extra_h: float = 0.0   # ekstra ladetid, når bilen selv stopper ved sit lademål (sikkerhedsmargin)
-    was_on_slot: datetime | None = None  # kvarteret, bilen allerede lader i – beholdes til det er slut
+    was_on_slot: datetime | None = None  # bilen lader allerede (i denne time) – timen gøres færdig
 
 
 @dataclass
@@ -656,14 +656,16 @@ def plan_cars(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
             # (fra nu – timer der allerede er gået, kan ikke bruges)
             wanted = max(cs["hours"] + car.extra_h - car.charged_h, 0.0)
             ep.slots = ev_plan(slots, now, tz, wanted, int(cs["ready_hour"]), from_now=True,
-                               available=available, ready_at=ready, earliest=earliest) if wanted >= 0.125 else []
+                               available=available, ready_at=ready, earliest=earliest,
+                               keep=car.was_on_slot) if wanted >= 0.125 else []
         else:
             ep.hours_needed = ev_hours_needed(car.soc, cs)
             wanted = round(ep.hours_needed + max(car.extra_h, 0.0), 2)
             ep.target_reached = wanted <= 0
             if not ep.target_reached:
                 ep.slots = ev_plan(slots, now, tz, wanted, int(cs["ready_hour"]),
-                                   from_now=True, available=available, ready_at=ready, earliest=earliest)
+                                   from_now=True, available=available, ready_at=ready, earliest=earliest,
+                                   keep=car.was_on_slot)
                 # Er der tid nok til klar-tidspunktet? Ellers lades der hele tiden, og vi
                 # fortæller, hvor langt bilen når
                 hours_left = (ep.ready_at - (earliest or now)).total_seconds() / 3600
@@ -671,13 +673,6 @@ def plan_cars(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
                     ep.short_of_time = True
                     gain = hours_left * kw * CHARGE_EFFICIENCY / max(cs["battery_capacity"], 0.1) * 100
                     ep.soc_at_ready = round(min(car.soc + gain, cs["target_soc"]), 1)
-        if car.was_on_slot is not None and not ep.target_reached and car.connected and wanted > 0:
-            # En ladning er i gang: den slukkes ikke, før bilen har nået sit mål (eller timerne er ladet).
-            # Laderen/bilen bruger et minut på at komme op i strøm, og et skøn over batteriniveauet, der rykker
-            # lidt, må ikke få planen til at stoppe og starte igen.
-            cont = ev_continue(slots, now, wanted)
-            if cont and cont[0].start <= now:
-                ep.slots = cont
         if ep.slots and wanted > 0:
             planned_h = sum(s.hours for s in ep.slots)
             ep.limited = available is not None and planned_h + 0.01 < wanted - 0.25
@@ -778,53 +773,39 @@ def ev_hours_needed(ev_soc: float, cs: dict) -> float:
     return round(missing * cs["battery_capacity"] / kw / CHARGE_EFFICIENCY, 2)
 
 
-def ev_window(pool: list[Slot], hours: float, tz: tzinfo) -> list[Slot]:
-    """Elbilen lader i ét sammenhængende tidsrum: de billigste timer i træk, der dækker hele behovet.
+def ev_hours(pool: list[Slot], hours: float, tz: tzinfo, keep: datetime | None = None) -> list[Slot]:
+    """Elbilen lader i hele timer: de billigste klokketimer (gennemsnit af timens kvarterer), der tilsammen
+    dækker behovet – gerne med pauser imellem, så den kan vente på billigere timer senere.
 
-    En ladning, der er gået i gang, kører til bilen har nået sit mål (se plan_cars), så planen er ét stykke.
-    Tidsrummet starter på en hel time (eller med det samme, hvis det er billigst), og prisen er gennemsnittet
-    over hele tidsrummet – ikke de enkelte kvarterer. Er der ikke plads til ét stykke (fx huller i priserne
-    eller maks. samlet ladeeffekt), bruges de billigste blokke som før.
+    Hele timer, så laderen ikke starter og stopper hvert kvarter. Den igangværende time tæller kun med
+    den tid, der er tilbage af den. `keep` = en time, der allerede er i gang med at lade – den beholdes.
     """
-    ordered = sorted(pool, key=lambda s: s.start)
-    if hours <= 0 or not ordered:
+    if hours <= 0 or not pool:
         return []
-    res = ordered[0].hours or 0.25
-    n = max(1, math.ceil(hours / res - 1e-6))
-    if n >= len(ordered):
-        return ordered
-    best, best_val = None, None
-    for i in range(len(ordered) - n + 1):
-        first, last = ordered[i], ordered[i + n - 1]
-        if last.end - first.start > timedelta(hours=n * res) + timedelta(minutes=1):
-            continue                                      # hul i priserne
-        if i > 0 and first.start.astimezone(tz).minute != 0:
-            continue                                      # start på en hel time (eller nu)
-        val = sum(s.price for s in ordered[i:i + n])
-        if best_val is None or val < best_val - 1e-9:
-            best, best_val = i, val
-    if best is None:
-        return cheapest_blocks(ordered, hours)
-    return ordered[best:best + n]
-
-
-def ev_continue(slots: list[Slot], now: datetime, hours: float) -> list[Slot]:
-    """En ladning er i gang: fortsæt fra nu i træk, til behovet er dækket (mindst resten af dette kvarter)."""
-    ahead = sorted((s for s in slots if s.end > now), key=lambda s: s.start)
-    out, got = [], 0.0
-    for s in ahead:
-        if out and s.start != out[-1].end:
-            break
-        out.append(s)
-        got += s.hours
+    groups: dict[datetime, list[Slot]] = {}
+    for sl in sorted(pool, key=lambda s: s.start):
+        h = sl.start.astimezone(tz).replace(minute=0, second=0, microsecond=0)
+        groups.setdefault(h, []).append(sl)
+    hrs = [(h, g, sum(x.hours for x in g), sum(x.price * x.hours for x in g) / max(sum(x.hours for x in g), 1e-9))
+           for h, g in groups.items()]
+    chosen, got = [], 0.0
+    if keep is not None:
+        kh = keep.astimezone(tz).replace(minute=0, second=0, microsecond=0)
+        for item in hrs:
+            if item[0] == kh:
+                chosen.append(item); got += item[2]
+    # Hele timer først (de billigste); en påbegyndt time (nu) kun, hvis den er blandt de billigste
+    for item in sorted((x for x in hrs if x not in chosen), key=lambda x: (x[3], x[0])):
         if got >= hours - 1e-6:
             break
-    return out
+        chosen.append(item); got += item[2]
+    out = [sl for item in chosen for sl in item[1]]
+    return sorted(out, key=lambda s: s.start)
 
 
 def ev_plan(slots: list[Slot], now: datetime, tz: tzinfo, hours: float, ready_hour: int,
             from_now: bool = False, available=None, ready_at: datetime | None = None,
-            earliest: datetime | None = None) -> list[Slot]:
+            earliest: datetime | None = None, keep: datetime | None = None) -> list[Slot]:
     """Billigste tidsrum i vinduet [klar-tid − 24 t, klar-tid).
 
     Hvis priserne for hele vinduet endnu ikke er kendt (før ca. kl. 13), ventes
@@ -845,7 +826,7 @@ def ev_plan(slots: list[Slot], now: datetime, tz: tzinfo, hours: float, ready_ho
         covered = bool(window) and max(s.end for s in window) >= ready and min(s.start for s in window) <= start
     if covered:
         pool = [s for s in window if available is None or available(s)]
-        return ev_window(pool, hours, tz)
+        return ev_hours(pool, hours, tz, keep)
     # Sikkerhed: data mangler – lad i de sidste timer før klar-tid
     if ready - local_now <= timedelta(hours=hours + 1):
         res = window[0].hours if window else 0.25

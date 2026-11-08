@@ -1112,3 +1112,34 @@ def test_full_current_when_charging_from_grid():
     assert c.full_current({"id": "ev", "current_entity": "number.amp"}) == 32
     c.settings["ev_solar_max_a"] = 13
     assert c.full_current({"id": "ev", "current_script": "script.x"}) in (13, 16)
+
+
+def test_charge_fault_warning_until_unplugged():
+    """Lader bilen fra nettet med under 80 % af ladeeffekten i 5 min (fx en fase faldet ud): ladefejl,
+    som først forsvinder, når bilen tages ud af laderen."""
+    st = {"sensor.lader": State("6800", unit_of_measurement="W")}
+    c, h = make({}, st)
+    c.cars = [{"id": "ev", "name": "Bil", "power": "sensor.lader"}]
+    c.settings["ev_charge_power"] = 10.2
+    c.ev_solar = {}
+    c.connected = {"ev": True}
+    c.car_soc = lambda car: 50
+    c.plan = planner.Plan(evs={"ev": types.SimpleNamespace(on=True)})
+    clock = [0.0]
+    real = ctl_mod.time.monotonic
+    ctl_mod.time.monotonic = lambda: clock[0]
+    try:
+        c._track_fault(); assert "ev" not in c.ev_fault
+        clock[0] = 299; c._track_fault(); assert "ev" not in c.ev_fault
+        clock[0] = 301; c._track_fault(); assert c.ev_fault["ev"]["kw"] == 6.8
+        st["sensor.lader"] = State("10200", unit_of_measurement="W")   # bliver stående, selv om strømmen kommer igen
+        clock[0] = 400; c._track_fault(); assert "ev" in c.ev_fault
+        c.connected = {"ev": False}; c._track_fault(); assert "ev" not in c.ev_fault
+        # Solcelleladning eller over 90 %: ingen fejl
+        c.connected = {"ev": True}; st["sensor.lader"] = State("4000", unit_of_measurement="W")
+        c.ev_solar = {"ev": types.SimpleNamespace(active=True)}
+        clock[0] = 1000; c._track_fault(); clock[0] = 1400; c._track_fault(); assert "ev" not in c.ev_fault
+        c.ev_solar = {}; c.car_soc = lambda car: 95
+        clock[0] = 2000; c._track_fault(); clock[0] = 2400; c._track_fault(); assert "ev" not in c.ev_fault
+    finally:
+        ctl_mod.time.monotonic = real
