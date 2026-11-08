@@ -74,6 +74,7 @@ from .const import (
     CONF_BATTERY_OPT_DISCHARGE,
     CONF_BATTERY_OPT_NORMAL,
     CONF_BATTERY_SOC,
+    CONF_BATTERY_RESERVE,
     CONF_EXPORT_ENERGY,
     CONF_IMPORT_ENERGY,
     CONF_HEATING_CLIMATE,
@@ -1280,7 +1281,20 @@ class SmartHusController:
             self.solar_cal.mark_curtailed(dt_util.now().astimezone(self.tz))
         self.recalculate()
         await self.async_apply()
+        await self._async_sync_reserve()
         self._update_savings()
+
+    async def _async_sync_reserve(self) -> None:
+        """Inverterens egen nedre grænse følger "Laveste niveau" – i normal drift er det kun den, der stopper batteriet."""
+        entity_id = self.config.get(CONF_BATTERY_RESERVE)
+        st = self.hass.states.get(entity_id) if entity_id else None
+        current = self._float_state(entity_id) if st is not None else None
+        if current is None:
+            return
+        wanted = float(self.settings[S_BATTERY_MIN_SOC])
+        wanted = min(max(wanted, st.attributes.get("min", wanted)), st.attributes.get("max", wanted))
+        if abs(current - wanted) >= 0.5:
+            await self._call("number", "set_value", {"entity_id": entity_id, "value": wanted})
 
     # --- Hvornår skal bilen lade -------------------------------------------
     # next: frem til næste "klar kl." · today: resten af i dag · tomorrow: i morgen 00–24 ·

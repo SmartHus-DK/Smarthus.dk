@@ -26,6 +26,7 @@ KEEP = "__keep__"
 # Roller → SmartHus' egne opsætningsnøgler (const.py)
 ROLE_KEYS = {
     "soc": "battery_soc_sensor",
+    "battery_reserve": "battery_reserve_entity",
     "battery_power": "battery_power_sensor",
     "battery_charge_energy": "battery_charge_energy_sensor",
     "battery_discharge_energy": "battery_discharge_energy_sensor",
@@ -43,6 +44,7 @@ ROLE_KEYS = {
 
 ROLE_NAMES = {
     "soc": "Batteriniveau",
+    "battery_reserve": "Inverterens nedre grænse (følger \"Laveste niveau\")",
     "battery_power": "Batteriets effekt",
     "battery_charge_energy": "Energi ladet i batteriet",
     "battery_discharge_energy": "Energi afladet fra batteriet",
@@ -253,6 +255,7 @@ PRESETS: dict[str, Preset] = {p.key: p for p in (
         "https://www.home-assistant.io/integrations/fronius/",
         roles={
             "soc": "sensor:state_of_charge",
+            "battery_reserve": "number:battery_minimum_reserve",
             # De opdelte effektsensorer er slået til som standard – "power_battery" og "power_grid" er ikke
             "battery_charge_power": "sensor:power_battery_charge",
             "battery_discharge_power": "sensor:power_battery_discharge",

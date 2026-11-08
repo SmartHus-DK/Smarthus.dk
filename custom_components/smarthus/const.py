@@ -15,7 +15,7 @@ EDS_DAYAHEAD_FROM: Final = date(2025, 10, 1)
 
 STATIC_URL: Final = "/smarthus_static"
 CARD_URL: Final = f"{STATIC_URL}/smarthus-card.js"
-CARD_VERSION: Final = "1.66.1"
+CARD_VERSION: Final = "1.66.2"
 
 PLATFORMS: Final = ["sensor", "binary_sensor", "switch", "number", "select"]
 
@@ -82,6 +82,7 @@ CONF_BATTERY_OPT_NORMAL: Final = "battery_option_normal"
 # Valgfri: tilstand hvor solstrømmen sælges, og batteriet ikke lades af solcellerne
 CONF_BATTERY_OPT_SELL_SOLAR: Final = "battery_option_sell_solar"
 CONF_BATTERY_SOC: Final = "battery_soc_sensor"
+CONF_BATTERY_RESERVE: Final = "battery_reserve_entity"
 CONF_BATTERY_CHARGE_ENERGY: Final = "battery_charge_energy_sensor"
 CONF_BATTERY_DISCHARGE_ENERGY: Final = "battery_discharge_energy_sensor"
 # Husets forbrug (valgfri) – bruges til at lære forbrugsmønsteret og holde en reserve i batteriet
@@ -183,6 +184,7 @@ S_HEATING_MAX_OUTDOOR: Final = "heating_max_outdoor"
 HEATING_OUTDOOR_HYSTERESIS: Final = 1.0  # °C – aktiv igen når det er så meget koldere end grænsen
 
 BATTERY_KEYS: Final = [
+    CONF_BATTERY_RESERVE,
     CONF_BATTERY_MODE_ENTITY,
     CONF_BATTERY_OPT_CHARGE,
     CONF_BATTERY_OPT_DISCHARGE,

@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.66.1";
+const SMARTHUS_CARD_VERSION = "1.66.2";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -2926,7 +2926,7 @@ class SmartHusEnergyCard extends SmartHusCard {
     const group = (title, items) => (items.join("") ? `<div class="en-group"><div class="en-gtitle">${title}</div>${items.join("")}</div>` : "");
 
     const updated = a.updated ? new Date(a.updated) : null;
-    const foot = `<div class="en-foot">${updated ? `Opdateret kl. ${hh(updated)} · ` : ""}${a.source === "energy" ? "Målere fra Energi-dashboardet" : "Målere fra SmartHus-opsætningen"} · kr efter timens elpris</div>`;
+    const foot = `<div class="en-foot">${updated ? `Opdateret kl. ${hh(updated)} · ` : ""}${a.source === "energy" ? "Målere fra Energi-dashboardet" : "Målere fra SmartHus-opsætningen"} · kr efter timens elpris · Opdateres én gang i timen, så den igangværende time kommer med, når den er slut</div>`;
     const html = `
       <div class="en">
         ${head}

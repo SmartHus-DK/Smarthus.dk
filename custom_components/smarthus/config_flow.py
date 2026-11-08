@@ -66,6 +66,7 @@ from .const import (
     CONF_BATTERY_OPT_NORMAL,
     CONF_BATTERY_OPT_SELL_SOLAR,
     CONF_BATTERY_SOC,
+    CONF_BATTERY_RESERVE,
     CONF_ELAFGIFT,
     CONF_ENERGINET,
     CONF_EV_ENERGY,
@@ -173,6 +174,7 @@ CLIMATE = selector.EntitySelector(selector.EntitySelectorConfig(domain="climate"
 WEATHER = selector.EntitySelector(selector.EntitySelectorConfig(domain="weather"))
 _LOGGER = logging.getLogger(__name__)
 
+RESERVE = selector.EntitySelector(selector.EntitySelectorConfig(domain="number"))
 CAMERAS = selector.EntitySelector(selector.EntitySelectorConfig(domain="camera", multiple=True))
 OUTDOOR = selector.EntitySelector(selector.EntitySelectorConfig(domain=["sensor", "input_number"], device_class="temperature"))
 FORECAST = selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor"))
@@ -610,6 +612,7 @@ class SmartHusOptionsFlow(OptionsFlow):
             (CONF_BATTERY_SCRIPT_SELL_SOLAR, SCRIPT),
             (CONF_BATTERY_SCRIPT_HOLD, SCRIPT),
             (CONF_BATTERY_SOC, SOC),
+            (CONF_BATTERY_RESERVE, RESERVE),
             (CONF_BATTERY_POWER, POWER),
             (CONF_BATTERY_CHARGE_POWER, POWER),
             (CONF_BATTERY_DISCHARGE_POWER, POWER),

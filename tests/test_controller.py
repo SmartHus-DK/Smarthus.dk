@@ -1024,6 +1024,21 @@ def test_planned_charge_can_be_read_in_advance():
     assert c._plan_grid_charge(now) is None
 
 
+def test_inverter_reserve_follows_min_soc():
+    """Inverterens nedre grænse følger "Laveste niveau"; rører den ikke, når de er ens eller ukendt."""
+    states = {"number.reserve": State("5.0", min=0, max=100)}
+    c, h = make({"battery_reserve_entity": "number.reserve"}, states)
+    c.settings["battery_min_soc"] = 7.0
+    asyncio.run(c._async_sync_reserve())
+    assert [(x[1], x[2]["value"]) for x in h.services.calls if x[0] == "number"] == [("set_value", 7.0)]
+    h.services.calls.clear()
+    states["number.reserve"] = State("7.0", min=0, max=100)
+    asyncio.run(c._async_sync_reserve())
+    states["number.reserve"] = State("unavailable")
+    asyncio.run(c._async_sync_reserve())
+    assert not [x for x in h.services.calls if x[0] == "number"]
+
+
 def test_no_soc_car_starts_at_zero_when_plugged():
     """Bil uden SoC med kabelsensor: 0 % når den sættes til, skønnet består over klar-tidspunktet, glemmes når den kører."""
     from datetime import datetime as _dt, timedelta as _td, timezone as _tz
