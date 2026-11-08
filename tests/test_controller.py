@@ -1024,6 +1024,38 @@ def test_planned_charge_can_be_read_in_advance():
     assert c._plan_grid_charge(now) is None
 
 
+def test_no_soc_car_starts_at_zero_when_plugged():
+    """Bil uden SoC med kabelsensor: 0 % når den sættes til, skønnet består over klar-tidspunktet, glemmes når den kører."""
+    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+    car = {"id": "ev", "name": "Bil", "charger": "switch.lader", "power": "sensor.ladeeffekt", "plug": "sensor.kabel"}
+    states = {"switch.lader": State("off"), "sensor.ladeeffekt": State("0", unit_of_measurement="kW")}
+    c, h = make({}, states)
+    c.cars = [car]
+    c.connected, c.connected_source = {"ev": False}, {"ev": "sensor"}
+    c.ready_at = lambda cid: _dt.now(_tz.utc) + _td(hours=8)
+    c.recalculate = lambda: None
+    c.settings.update({"ev_target_soc": 80.0, "ev_battery_capacity": 60.0, "ev_charge_power": 11.0})
+    c._track_soc()
+    assert c.car_soc(car) is None                  # ikke tilsluttet: intet tal
+    c.connected["ev"] = True
+    c._track_soc()
+    assert c.car_soc(car) == 0.0                   # sat til: 0 %
+    c.set_manual_soc("ev", 50)
+    c._track_soc()
+    assert c.car_soc(car) == 50.0                  # det indtastede overskrives ikke
+    c.manual_soc["ev"]["expires"] = (_dt.now(_tz.utc) - _td(hours=1)).isoformat()
+    c._track_soc()
+    assert c.car_soc(car) == 50.0                  # klar-tidspunktet gået, bilen står der stadig
+    assert _dt.fromisoformat(c.manual_soc["ev"]["expires"]) > _dt.now(_tz.utc)
+    c.connected_source["ev"] = "assumed"           # sensoren kortvarigt ukendt: ingen nulstilling
+    c._track_soc()
+    assert c.car_soc(car) == 50.0
+    c.connected_source["ev"] = "sensor"
+    c.connected["ev"] = False
+    c._track_soc()
+    assert c.car_soc(car) is None                  # kørt
+
+
 def test_manual_soc_when_sensor_unavailable():
     """Bilens SoC-sensor svarer ikke: det indtastede batteriniveau bruges – og glemmes, når sensoren virker igen."""
     car = {"id": "ev", "name": "Bil", "charger": "switch.lader", "soc": "sensor.bil_soc"}

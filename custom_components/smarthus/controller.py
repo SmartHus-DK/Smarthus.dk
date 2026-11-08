@@ -1399,14 +1399,30 @@ class SmartHusController:
         charger_on = self._charger_on(car)
         plugged = self.connected.get(cid, True)
         kw = self._power_kw(car.get("power")) if car.get("power") else None
+        plug_known = self.connected_source.get(cid) == "sensor"
+        # Bil uden SoC, men med kabelsensor: følger kablet i stedet for klar-tidspunktet
+        follow_plug = plug_known and not self.has_soc_sensor(car)
         if st is not None:
             try:
                 exp = datetime.fromisoformat(st.get("expires") or "")
             except ValueError:
                 exp = None
-            if (exp is not None and now >= exp) or (not plugged and self.connected_source.get(cid) == "sensor"):
-                self.manual_soc.pop(cid, None)   # forældet: bilen er kørt, eller klar-tidspunktet er gået
+            if not plugged and plug_known:
+                self.manual_soc.pop(cid, None)   # bilen er kørt
                 st = None
+            elif exp is not None and now >= exp:
+                if follow_plug:
+                    st["expires"] = self._manual_expiry(cid).isoformat()   # står stadig i laderen: behold skønnet
+                else:
+                    self.manual_soc.pop(cid, None)   # forældet: klar-tidspunktet er gået
+                    st = None
+        if follow_plug:
+            # Bilen er lige sat til, og ingen kender niveauet: regn med tomt batteri (kan rettes på kortet)
+            seen = self.__dict__.setdefault("_plug_seen", {})
+            if plugged and not seen.get(cid) and st is None:
+                st = self.manual_soc[cid] = {"base": 0.0, "kwh": 0.0, "over_h": 0.0, "done": False,
+                                             "expires": self._manual_expiry(cid).isoformat()}
+            seen[cid] = plugged
         # Ladet energi siden indtastningen (med effektmåler, ellers skønnet ud fra ladeeffekten)
         if st is not None and plugged and charger_on:
             cs = car_settings(self.settings, cid)

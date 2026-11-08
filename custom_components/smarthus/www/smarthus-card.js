@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.63.1";
+const SMARTHUS_CARD_VERSION = "1.64.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -184,11 +184,11 @@ const HELP = {
   ],
   car: [
     { k: ["_target_soc", "_hours"], t: "Lad til / Timer at lade",
-      d: "Kender SmartHus bilens batteriniveau, lades der til den valgte procent. Ellers lades det valgte antal timer. Opladningen lægges i de billigste timer, før bilen skal være klar." },
+      d: "Kender SmartHus bilens batteriniveau, lades der til den valgte procent, og ladetiden beregnes automatisk. Kan SmartHus hverken se niveauet eller om kablet sidder i, lades det valgte antal timer. Opladningen lægges i de billigste timer, før bilen skal være klar." },
     { k: ["_ready_hour"], t: "Klar kl.",
       d: "Hvornår bilen skal være færdig. Jo længere tid til, desto flere billige timer at vælge imellem." },
     { k: ["_manual_soc"], t: "Batteriniveau nu",
-      d: "Til biler uden måler: tast niveauet ind, når bilen sættes til, så beregnes ladetiden. Det skønnes videre, mens bilen lader." },
+      d: "Til biler uden måler: står på 0 %, når bilen sættes til – ret det til det rigtige niveau, så beregnes ladetiden. Det skønnes videre, mens bilen lader." },
     { k: ["_car_target"], t: "Lademål i bilen",
       d: "Har bilen selv et lademål, holdes laderen tændt lidt længere end beregnet, og bilen stopper selv." },
     { k: ["_battery_capacity", "_charge_power"], t: "Bil og lader",
@@ -319,6 +319,8 @@ class SmartHusCard extends HTMLElement {
       this._solarTab = localStorage.getItem("smarthus-card-solar-tab") || "month";
     } catch (e) { /* ingen lagring */ }
     this.shadowRoot.addEventListener("click", (ev) => this._onClick(ev));
+    this.shadowRoot.addEventListener("input", (ev) => this._onSocInput(ev));
+    this.shadowRoot.addEventListener("change", (ev) => this._onSocChange(ev));
   }
 
   static getStubConfig() {
@@ -441,6 +443,7 @@ class SmartHusCard extends HTMLElement {
    * udskiftningen, og rullepositionen i dashboardet sættes tilbage bagefter.
    */
   _update(html, cls) {
+    if (this._sliding) return;       // tegn ikke kortet om, mens der trækkes i en skyder
     let card = this.shadowRoot.querySelector("ha-card");
     if (!card) {
       this.shadowRoot.innerHTML = `${this._css()}<ha-card></ha-card>`;
@@ -1207,8 +1210,10 @@ class SmartHusCard extends HTMLElement {
       if (a.soc_sensor && [`${c}_car_target`, `${c}_extra_hours`].includes(k)) return true;
       if (k === `${c}_manual_soc` && a.soc_sensor && a.soc_sensor_ok !== false) return true;   // sensoren virker
       if (k === `${c}_extra_hours` && !on(`${c}_car_target`)) return true;
-      if (evHasSoc && k === `${c}_hours`) return true;                         // SoC-sensor: lad til %, ikke timer
-      if (!evHasSoc && [`${c}_target_soc`, `${c}_battery_capacity`].includes(k)) return true;
+      // Med kabelsensor regnes ladetiden ud fra batteriniveauet (0 %, når bilen sættes til), så timer bruges ikke
+      const plugSensor = this._st("binary_sensor", `${c}_charge_now`)?.attributes?.connected_source === "sensor";
+      if ((evHasSoc || plugSensor) && k === `${c}_hours`) return true;
+      if (!evHasSoc && !plugSensor && [`${c}_target_soc`, `${c}_battery_capacity`].includes(k)) return true;
       if (k === `${c}_ready_hour` && this._st("select", `${c}_ready_day`)?.attributes?.uses_ready_hour === false) return true;
       if ([`${c}_solar_start_kw`, `${c}_solar_min_a`, `${c}_solar_max_a`].includes(k) && !on(`${c}_solar`)) return true;
       return false;
@@ -1843,21 +1848,75 @@ class SmartHusCard extends HTMLElement {
     const step = s.attributes.step || 1;
     const dec = step >= 1 ? 0 : Math.min(2, (String(step).split(".")[1] || "").length);   // 0,1 → 1 decimal
     const trim = (x) => Number(x.toFixed(2)).toLocaleString("da-DK", { maximumFractionDigits: 2 });
-    const shown = blank ? "Ukendt" :
+    // Batteriniveau for en bil, der ikke sidder i laderen, kan ikke tastes ind
+    const carOff = blank && key.endsWith("_manual_soc") && !this._carPlugged(key.replace("_manual_soc", ""));
+    const shown = carOff ? "Ikke tilsluttet" : blank ? "Ukendt" :
       unit === "kl." ? `kl. ${String(v).padStart(2, "0")}` :
       unit === "h" ? `${trim(v)} t` :
       `${nf(v, dec)} ${esc(unit)}`;
+    if (key.endsWith("_manual_soc") || key.endsWith("_target_soc")) return this._socSlider(key, s, v, carOff);
     const autoHeat = (key === "heating_boost_hours" || key === "heating_reduce_hours") && this._st("switch", "heating_auto")?.state === "on";
     const unused = autoHeat || (key.endsWith("_ready_hour") && this._st("select", key.replace("_ready_hour", "_ready_day"))?.attributes?.uses_ready_hour === false);
     return `
       <div class="step${unused ? " unused" : ""}">
         <span class="step-lbl">${esc(this._label(key))}${autoHeat ? `<span class="win-note">Vælges automatisk ud fra dagens priser</span>` : unused ? `<span class="win-note">Bruges ikke – perioden er valgt nedenfor</span>` : ""}${key === "ev_max_total_power" ? `<span class="win-note">0 = ingen grænse</span>` : key === "hotwater_surplus_kw" ? `<span class="win-note">0 = fra · eksport lige nu ${nf(this._st("binary_sensor", "hotwater_now")?.attributes?.export_kw, 1)} kW</span>` : key === "heating_min_indoor" ? `<span class="win-note">Frostsikring – koldere end dette inde, springes sparetimerne over</span>` : key === "hotwater_watch_temp" ? `<span class="win-note">0 = fra · varm op i en billig time, før vandet når den laveste temperatur</span>` : key === "hotwater_min_temp" ? `<span class="win-note">Varm op, før vandet når hertil – fx varmepumpens egen grænse</span>` : key === "heating_boost_degrees" || key === "heating_reduce_degrees" ? `<span class="win-note">0 = fra</span>` : key.endsWith("_manual_soc") ? `<span class="win-note">${this._st("sensor", `${key.slice(0, -"_manual_soc".length)}_smart_saving`)?.attributes?.soc_sensor ? "Bilens batteriniveau kan ikke hentes lige nu – tast det ind" : blank ? "Uden måler: tast bilens niveau ind, så beregnes ladetiden" : "Skønnes videre, mens bilen lader · glemmes, når bilen kobles fra"}</span>` : key.endsWith("_extra_hours") ? `<span class="win-note">Ud over den beregnede ladetid</span>` : key === "battery_max_charge_kw" ? `<span class="win-note">${this._fullChargeNote()}</span>` : ""}</span>
         <span class="step-ctl">
-          <button data-action="step" data-entity="${s.entity_id}" data-dir="-1" aria-label="Mindre ${esc(this._label(key))}">−</button>
+          ${carOff ? "" : `<button data-action="step" data-entity="${s.entity_id}" data-dir="-1" aria-label="Mindre ${esc(this._label(key))}">−</button>`}
           <span class="step-val">${shown}</span>
-          <button data-action="step" data-entity="${s.entity_id}" data-dir="1" aria-label="Mere ${esc(this._label(key))}">+</button>
+          ${carOff ? "" : `<button data-action="step" data-entity="${s.entity_id}" data-dir="1" aria-label="Mere ${esc(this._label(key))}">+</button>`}
         </span>
       </div>`;
+  }
+
+  /** Batteriniveau og lademål: skyder med hurtigvalg i stedet for +/−. */
+  _socSlider(key, s, v, carOff) {
+    const label = esc(this._label(key));
+    if (carOff) return `<div class="soc"><div class="soc-head"><span>${label}</span><b class="soc-off">Ikke tilsluttet</b></div></div>`;
+    const min = s.attributes.min ?? 0, max = s.attributes.max ?? 100, step = s.attributes.step || 5;
+    const blank = isNaN(v);
+    const val = blank ? min : Math.min(max, Math.max(min, v));
+    const presets = (key.endsWith("_target_soc") ? [60, 70, 80, 90, 100] : [0, 25, 50, 75, 100]).filter((p) => p >= min && p <= max);
+    const chips = presets.map((p) => `<button class="soc-chip${!blank && Math.round(v) === p ? " on" : ""}" data-action="set-number" data-entity="${s.entity_id}" data-value="${p}" aria-label="${label} ${p} procent">${p} %</button>`).join("");
+    return `
+      <div class="soc">
+        <div class="soc-head"><span>${label}</span><b class="soc-val">${blank ? "Ukendt" : `${nf(v, 0)} %`}</b></div>
+        <input class="soc-range" type="range" min="${min}" max="${max}" step="${step}" value="${val}" aria-label="${label}"
+          data-entity="${s.entity_id}" style="--p:${((val - min) / (max - min || 1)) * 100}%">
+        <div class="soc-chips">${chips}</div>
+      </div>`;
+  }
+
+  /** Skyderen følger fingeren med det samme; værdien gemmes, når den slippes. */
+  _onSocInput(ev) {
+    const el = ev.composedPath()[0];
+    if (!el?.classList?.contains("soc-range")) return;
+    const min = parseFloat(el.min), max = parseFloat(el.max);
+    el.style.setProperty("--p", `${((parseFloat(el.value) - min) / (max - min || 1)) * 100}%`);
+    const box = el.closest(".soc");
+    box.querySelector(".soc-val").textContent = `${nf(parseFloat(el.value), 0)} %`;
+    box.querySelectorAll(".soc-chip").forEach((c) => c.classList.toggle("on", c.dataset.value === el.value));
+    if (!this._sliding) {
+      this._sliding = true;
+      // Slippes skyderen på startværdien, kommer der ingen change-hændelse
+      const end = () => setTimeout(() => { if (!this._slideSaved) this._endSlide(); }, 400);
+      window.addEventListener("pointerup", end, { once: true });
+      window.addEventListener("pointercancel", end, { once: true });
+    }
+  }
+
+  _onSocChange(ev) {
+    const el = ev.composedPath()[0];
+    if (!el?.classList?.contains("soc-range")) return;
+    this._hass.callService("number", "set_value", { entity_id: el.dataset.entity, value: parseFloat(el.value) });
+    this._slideSaved = true;
+    clearTimeout(this._slideTimer);
+    this._slideTimer = setTimeout(() => this._endSlide(), 800);   // giv Home Assistant tid til at melde den nye værdi
+  }
+
+  _endSlide() {
+    if (!this._sliding) return;
+    this._sliding = this._slideSaved = false;
+    this._render();
   }
 
   /** Tydelig til/fra-knap for den intelligente styring: grøn "Aktiv" eller gul "Fra". */
@@ -1929,6 +1988,8 @@ class SmartHusCard extends HTMLElement {
       const i = parseInt(el.dataset.i, 10);
       this._sel = this._sel === i ? null : i;
       this._render();
+    } else if (action === "set-number") {
+      this._hass.callService("number", "set_value", { entity_id: entity, value: parseFloat(el.dataset.value) });
     } else if (action === "step") {
       const s = this._hass.states[entity];
       const step = s.attributes.step || 1;
@@ -2317,6 +2378,21 @@ class SmartHusCard extends HTMLElement {
       .step-ctl button { width: 32px; height: 32px; border-radius: 50%; font-size: 18px; line-height: 1;
                          box-shadow: inset 0 0 0 1px var(--sh-line); }
       .step-ctl button:active { background: var(--sh-track); }
+      .soc { padding: 8px 0 10px; }
+      .soc + .soc { border-top: 1px solid var(--sh-line); }
+      .soc-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; }
+      .soc-val { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+      .soc-off { font-weight: 600; color: var(--secondary-text-color); }
+      .soc-range { -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 36px; margin: 2px 0; background: transparent; cursor: pointer; touch-action: pan-y; }
+      .soc-range::-webkit-slider-runnable-track { height: 8px; border-radius: 4px; background: linear-gradient(to right, var(--primary-color, #1E9E5C) var(--p), var(--sh-track) var(--p)); }
+      .soc-range::-moz-range-track { height: 8px; border-radius: 4px; background: var(--sh-track); }
+      .soc-range::-moz-range-progress { height: 8px; border-radius: 4px; background: var(--primary-color, #1E9E5C); }
+      .soc-range::-webkit-slider-thumb { -webkit-appearance: none; width: 26px; height: 26px; margin-top: -9px; border-radius: 50%; border: 3px solid var(--primary-color, #1E9E5C); background: var(--card-background-color, #fff); }
+      .soc-range::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; border: 3px solid var(--primary-color, #1E9E5C); background: var(--card-background-color, #fff); }
+      .soc-range:focus-visible { outline: 2px solid var(--primary-color, #1E9E5C); outline-offset: 2px; border-radius: 6px; }
+      .soc-chips { display: flex; gap: 6px; }
+      .soc-chip { flex: 1; min-height: 36px; padding: 0; border-radius: 18px; border: 1px solid var(--sh-line); background: transparent; color: var(--primary-text-color); font: inherit; font-size: 13px; cursor: pointer; }
+      .soc-chip.on { background: var(--primary-color, #1E9E5C); border-color: var(--primary-color, #1E9E5C); color: #fff; font-weight: 600; }
       .step-val { min-width: 76px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; }
       .action { margin-top: 10px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;
                 padding: 10px; border-radius: 10px; font-weight: 600; box-shadow: inset 0 0 0 1px var(--primary-color); color: var(--primary-color); }
