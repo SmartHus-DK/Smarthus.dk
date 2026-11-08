@@ -293,6 +293,27 @@ def test_ev_target_soc():
     assert p.ev_on
 
 
+def test_ev_keeps_current_slot_once_started():
+    """Er laderen startet i et kvarter, beholdes det til det er slut – også hvis planen ellers ville bytte det
+    ud (fx fordi batteriniveauet rykker en smule), så laderen ikke slukker og tænder igen midt i kvarteret."""
+    recs = records("2026-10-18", CURVE) + records("2026-10-19", CURVE)
+    slots = model().build_slots(recs)
+    s = dict(const.DEFAULT_SETTINGS)
+    # Et dyrt kvarter i aften: ikke valgt, når der kun mangler lidt
+    now = datetime(2026, 10, 18, 19, 5, tzinfo=TZ).astimezone(timezone.utc)
+    cur = next(sl for sl in slots if sl.start <= now < sl.end)
+    base = planner.plan_cars(slots, now, TZ, s, [planner.CarInput("ev", soc=79)])["ev"]
+    assert not base.on and all(sl.start != cur.start for sl in base.slots)
+    kept = planner.plan_cars(slots, now, TZ, s, [planner.CarInput("ev", soc=79, was_on_slot=cur.start)])["ev"]
+    assert kept.on and any(sl.start == cur.start for sl in kept.slots)
+    # Mål nået: stop alligevel
+    done = planner.plan_cars(slots, now, TZ, s, [planner.CarInput("ev", soc=80, was_on_slot=cur.start)])["ev"]
+    assert not done.on
+    # Et andet kvarter end det, den lader i: intet særligt
+    other = planner.plan_cars(slots, now, TZ, s, [planner.CarInput("ev", soc=79, was_on_slot=cur.start - timedelta(minutes=15))])["ev"]
+    assert not other.on
+
+
 def test_ev_cost_compare():
     recs = records("2026-10-18", CURVE) + records("2026-10-19", CURVE)
     slots = model().build_slots(recs)

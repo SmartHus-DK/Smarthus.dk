@@ -306,6 +306,7 @@ class CarInput:
     deadline: datetime | None = None  # fast slutning på perioden (i dag/i morgen/begge dage) – erstatter klar kl.
     horizon: bool = False  # "billigste i sigte": ingen deadline – alle kendte priser
     extra_h: float = 0.0   # ekstra ladetid, når bilen selv stopper ved sit lademål (sikkerhedsmargin)
+    was_on_slot: datetime | None = None  # kvarteret, bilen allerede lader i – beholdes til det er slut
 
 
 @dataclass
@@ -670,6 +671,13 @@ def plan_cars(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
                     ep.short_of_time = True
                     gain = hours_left * kw * CHARGE_EFFICIENCY / max(cs["battery_capacity"], 0.1) * 100
                     ep.soc_at_ready = round(min(car.soc + gain, cs["target_soc"]), 1)
+        if car.was_on_slot is not None and not ep.target_reached and car.connected:
+            # Laderen er allerede startet i dette kvarter: lad det gøre færdigt. Ellers kan et skøn over
+            # batteriniveauet, der rykker lidt, få planen til at bytte kvarteret ud midt i det – så laderen
+            # slukker og tænder igen (Easee/bilen bruger et minut på at komme op i strøm hver gang)
+            cur = next((s for s in slots if s.start <= now < s.end), None)
+            if cur is not None and cur.start == car.was_on_slot and all(s.start != cur.start for s in ep.slots):
+                ep.slots = sorted([*ep.slots, cur], key=lambda s: s.start)
         if ep.slots and wanted > 0:
             planned_h = sum(s.hours for s in ep.slots)
             ep.limited = available is not None and planned_h + 0.01 < wanted - 0.25

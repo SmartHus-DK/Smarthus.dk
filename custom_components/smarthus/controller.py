@@ -1231,6 +1231,7 @@ class SmartHusController:
                      connected=self.connected.get(car["id"], True),
                      charged_h=self._charged_hours(car["id"]),
                      extra_h=self._extra_hours(car),
+                     was_on_slot=self._ev_on_slot(car["id"]),
                      **self._ready_input(car["id"]))
             for car in self.cars
         ]
@@ -1628,6 +1629,14 @@ class SmartHusController:
                     _LOGGER.warning("SmartHus kunne ikke sætte Easee på pause: %s", err)
                 # Easee's pause sætter laderens dynamiske strøm til 0 A – den skal sendes igen ved næste start
                 self._ev_current_sent.pop(cid, None)
+
+    def _ev_on_slot(self, cid: str):
+        """Kvarteret, hvor bilen allerede lader efter planen (fra sidste beregning) – eller None."""
+        prev = self.plan.evs.get(cid) if getattr(self, "plan", None) is not None else None
+        cur = getattr(self.plan, "current", None) if prev is not None else None
+        if prev is None or cur is None or not prev.on or self.ev_force.get(cid, False):
+            return None
+        return cur.start
 
     def _track_soc(self) -> None:
         """Tæl den energi, der er ladet, siden bilen sidst meldte et nyt batteriniveau."""
