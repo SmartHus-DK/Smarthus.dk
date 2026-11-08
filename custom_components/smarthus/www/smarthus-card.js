@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.63.0";
+const SMARTHUS_CARD_VERSION = "1.63.1";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -2767,10 +2767,15 @@ class SmartHusEnergyCard extends SmartHusCard {
       }
     }
     if (has.battery_in || has.battery_out) {
+      // Netto i begge kolonner (afladet minus opladet), så rækken går op med "Total energi til huset"
       const net = (p.bat_out_kr || 0) - (p.bat_in_kr || 0);
+      const netKwh = (p.bat_out || 0) - (p.bat_in || 0);
+      const netKwhSign = netKwh <= -0.05 ? "−" : netKwh >= 0.05 ? "+" : "";
       src.push(row("battery", COLORS.battery_discharge, "mdi:home-battery-outline", "Batteri",
-        `Opladet ${kwh(p.bat_in)} for ${kr(p.bat_in_kr)} · afladet ${kwh(p.bat_out)}`, kwh(p.bat_out),
-        `${net >= 0 ? "+" : "−"}${nf(Math.abs(net), 0)} kr<small>gevinst</small>`, net >= 0 ? "plus" : ""));
+        `Opladet ${kwh(p.bat_in)} for ${kr(p.bat_in_kr)} · afladet ${kwh(p.bat_out)} for ${kr(p.bat_out_kr)}`,
+        `${netKwhSign}${kwh(Math.abs(netKwh))}`,
+        // Negativt beløb er ikke et tab: strømmen ligger stadig på batteriet
+        `${net >= 0 ? "+" : "−"}${nf(Math.abs(net), 0)} kr<small>${net >= 0 ? "gevinst" : "netto"}</small>`, net >= 0 ? "plus" : ""));
     }
     if (has.import || has.export) {
       src.push(row("grid", "#6F7F91", "mdi:transmission-tower", "Nettet",
