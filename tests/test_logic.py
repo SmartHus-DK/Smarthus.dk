@@ -1177,9 +1177,28 @@ def test_preset_fronius_dash_ids_and_storage_control():
         reg.append(presets.Entry(f"switch.gen24_{key}", f"INV1-modbus-{key}"))
     m = presets.match(presets.PRESETS["fronius"], reg)
     assert m.roles["soc"] == "sensor.byd_soc" and m.roles["import_energy"] == "sensor.meter_energy_consumed"
-    assert "sensor.solarnet_power_grid" in m.disabled        # "power_grid" ≠ "power_grid_import"
+    assert m.roles["grid_import_power"] == "sensor.solarnet_power_grid_import"   # "power_grid" (slået fra) bruges ikke
+    assert "sensor.solarnet_power_grid" not in m.disabled and "grid_power" not in m.missing
     ch = m.actions["charge"]
     assert ch[3] == {"type": "number", "entity_id": "number.gen24_battery_discharge_power_limit", "value": -100}
+
+
+def test_preset_fronius_as_seen_on_a_gen24():
+    """Rigtige unique_id'er: strengenes energi frem for inverterens, batteriets målere og husets effekt."""
+    S = "solar_net_33121087-power_flow-"
+    reg = [presets.Entry("sensor.total", "33121087-energy_total"), presets.Entry("sensor.net_total", S + "energy_total"),
+           presets.Entry("sensor.pv", "33121087-modbus-energy_total_pv"),
+           presets.Entry("sensor.bat_in", "33121087-modbus-storage_energy_charged_total"),
+           presets.Entry("sensor.bat_out", "33121087-modbus-storage_energy_discharged_total"),
+           presets.Entry("sensor.chg", S + "power_battery_charge"), presets.Entry("sensor.dis", S + "power_battery_discharge"),
+           presets.Entry("sensor.load", S + "power_load_consumed"), presets.Entry("sensor.loadg", S + "power_load_generated"),
+           presets.Entry("sensor.cap", "P030T020Z2205160572     -maximum_capacity")]
+    m = presets.match(presets.PRESETS["fronius"], reg)
+    assert m.roles["solar_energy"] == "sensor.pv" and m.roles["battery_charge_energy"] == "sensor.bat_in"
+    assert m.roles["battery_charge_power"] == "sensor.chg" and m.house_power == "sensor.load" and m.capacity == "sensor.cap"
+    # Uden Modbus findes strengenes måler ikke: så bruges inverterens
+    m = presets.match(presets.PRESETS["fronius"], [e for e in reg if e.entity_id != "sensor.pv"])
+    assert m.roles["solar_energy"] == "sensor.total"
 
 
 tariffs = _load("tariffs")

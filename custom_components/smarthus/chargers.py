@@ -47,6 +47,8 @@ class ChargerPreset:
     entry_wide: tuple[str, ...] = ()     # roller, der må findes uden for selve laderen (fx Zaptec-installationen)
     easee: bool = False                  # Easee: ladestrøm og pause via laderens enhed
     note: str = ""
+    enable: tuple[str, ...] = ()     # entiteter, integrationen selv har slået fra, og som SmartHus skal bruge
+    energy_from_power: bool = False  # laderens egen måler kan ikke bruges: SmartHus laver en kWh-måler ud fra effekten
 
 
 CHARGERS: dict[str, ChargerPreset] = {c.key: c for c in (
@@ -75,10 +77,11 @@ CHARGERS: dict[str, ChargerPreset] = {c.key: c for c in (
     ChargerPreset(
         "wattpilot", "Fronius Wattpilot", "wattpilot", "Fronius Wattpilot",
         "https://github.com/mk-maddin/wattpilot-HA",
-        roles={"charger": "select:frc", "plug": "sensor:car", "power": "sensor:nrg", "energy": "sensor:eto",
-               "current": "number:amp"},
+        roles={"charger": "select:frc", "plug": "sensor:car", "power": "sensor:nrg", "current": "number:amp"},
         charger_on="Forced on", charger_off="Stopped",
-        note="'Force State' er slået fra som standard i Wattpilot-integrationen – slå den til først.",
+        # Laderens totalmåler melder -1 ved genstart og hopper så til hele livstidstallet
+        enable=("select:frc",), energy_from_power=True,
+        note="Energimåleren laves ud fra laderens effekt, fordi laderens egen totalmåler kan hoppe ved genstart.",
     ),
     ChargerPreset(
         "goe", "go-e Charger", "goecharger_api2", "go-e Charger (API v2)",

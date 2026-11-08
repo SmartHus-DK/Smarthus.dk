@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 from typing import Any
 
 import voluptuous as vol
@@ -170,6 +171,8 @@ SETPOINT = selector.EntitySelector(selector.EntitySelectorConfig(domain=["sensor
 WATER_TEMP = selector.EntitySelector(selector.EntitySelectorConfig(domain=["sensor", "input_number", "water_heater", "climate"]))
 CLIMATE = selector.EntitySelector(selector.EntitySelectorConfig(domain="climate"))
 WEATHER = selector.EntitySelector(selector.EntitySelectorConfig(domain="weather"))
+_LOGGER = logging.getLogger(__name__)
+
 CAMERAS = selector.EntitySelector(selector.EntitySelectorConfig(domain="camera", multiple=True))
 OUTDOOR = selector.EntitySelector(selector.EntitySelectorConfig(domain=["sensor", "input_number"], device_class="temperature"))
 FORECAST = selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor"))
@@ -478,9 +481,41 @@ class SmartHusOptionsFlow(OptionsFlow):
     async def async_step_preset_confirm(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         m, entries = self._preset_match()
         if user_input is not None:
-            return self.async_create_entry(data=self._preset_options(m, entries))
+            options = self._preset_options(m, entries)
+            if m.house_power and not options.get(CONF_HOUSE_ENERGY):
+                if meter := await self._energy_meter("Husets forbrug energi", m.house_power):
+                    options[CONF_HOUSE_ENERGY] = meter
+            await self._set_battery_capacity(m.capacity)
+            return self.async_create_entry(data=options)
         return self.async_show_form(step_id="preset_confirm", data_schema=vol.Schema({}),
                                     description_placeholders={"summary": _preset_summary(m)})
+
+    async def _energy_meter(self, name: str, source: str) -> str | None:
+        """kWh-måler ud fra en effektsensor (Home Assistants Integral-hjælper) – genbruges, hvis den findes."""
+        reg = er.async_get(self.hass)
+        for entry in self.hass.config_entries.async_entries("integration"):
+            if entry.options.get("source") == source and (found := er.async_entries_for_config_entry(reg, entry.entry_id)):
+                return found[0].entity_id
+        try:
+            flow = await self.hass.config_entries.flow.async_init("integration", context={"source": "user"})
+            res = await self.hass.config_entries.flow.async_configure(flow["flow_id"], {
+                "name": name, "source": source, "round": 3, "method": "left", "unit_prefix": "k", "unit_time": "h",
+                "max_sub_interval": {"hours": 0, "minutes": 5, "seconds": 0}})
+            found = er.async_entries_for_config_entry(reg, res["result"].entry_id)
+            return found[0].entity_id if found else None
+        except Exception:  # noqa: BLE001 - måleren er en hjælp; opsætningen skal kunne gennemføres uden
+            _LOGGER.warning("SmartHus: kunne ikke oprette energimåleren for %s", source, exc_info=True)
+            return None
+
+    async def _set_battery_capacity(self, entity_id: str | None) -> None:
+        """Sæt batteriets størrelse ud fra det, batteriet selv melder (Wh)."""
+        st = self.hass.states.get(entity_id) if entity_id else None
+        try:
+            kwh = round(float(st.state) / 1000, 1) if st else 0.0
+        except ValueError:
+            return
+        if kwh > 0 and self.hass.states.get("number.smarthus_battery_capacity"):
+            await self.hass.services.async_call("number", "set_value", {"entity_id": "number.smarthus_battery_capacity", "value": kwh}, blocking=True)
 
     def _preset_options(self, m: pz.Match, entries: list[pz.Entry]) -> dict:
         new = dict(self.config_entry.options)
@@ -719,12 +754,30 @@ class SmartHusOptionsFlow(OptionsFlow):
     async def _charger_matched(self, device_id: str) -> ConfigFlowResult:
         p = cz.CHARGERS[self._charger_preset]
         dev = dr.async_get(self.hass).async_get(device_id)
+        await self._enable_charger_entities(p, device_id)
         entry_entries: list[pz.Entry] = []
         for entry_id in (dev.config_entries if dev else ()):
             entry_entries += self._registry_entries(entry_id=entry_id)
         m = cz.match(p, self._registry_entries(device_id=device_id), entry_entries)
+        if p.energy_from_power and m.fields.get("power"):
+            if meter := await self._energy_meter(f"{dev.name_by_user or dev.name or p.name} energi", m.fields["power"]):
+                m.fields["energy"] = meter
         self._charger_found = (m, device_id)
         return await self.async_step_ev_car()
+
+    async def _enable_charger_entities(self, p: cz.ChargerPreset, device_id: str) -> None:
+        """Slå de entiteter til, integrationen selv har slået fra – de findes først efter en genindlæsning."""
+        reg = er.async_get(self.hass)
+        reload_ids: set[str] = set()
+        for spec in p.enable:
+            e = cz.find(self._registry_entries(device_id=device_id), spec)
+            current = reg.async_get(e.entity_id) if e is not None else None
+            if current is not None and current.disabled_by == er.RegistryEntryDisabler.INTEGRATION:
+                reg.async_update_entity(current.entity_id, disabled_by=None)
+                if current.config_entry_id:
+                    reload_ids.add(current.config_entry_id)
+        for entry_id in reload_ids:
+            await self.hass.config_entries.async_reload(entry_id)
 
     def _charger_summary(self) -> str:
         if not self._charger_found:

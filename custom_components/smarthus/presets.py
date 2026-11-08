@@ -74,6 +74,8 @@ class Preset:
     growatt_cloud: bool = False    # Growatt Server (sky): styring via tidsrum på inverterens enhed
     export: tuple[str, float] | None = None                     # ("number:nøgle", værdi ved stop)
     note: str = ""
+    house_power: str | None = None  # effektsensor for huset: SmartHus laver en kWh-måler, hvis anlægget ikke har en
+    capacity_wh: str | None = None  # sensor med batteriets størrelse i Wh
 
 
 def _deye_programs(charging: str, soc: str) -> list[tuple]:
@@ -251,14 +253,20 @@ PRESETS: dict[str, Preset] = {p.key: p for p in (
         "https://www.home-assistant.io/integrations/fronius/",
         roles={
             "soc": "sensor:state_of_charge",
-            "battery_power": "sensor:power_battery",
-            "grid_power": "sensor:power_grid",
+            # De opdelte effektsensorer er slået til som standard – "power_battery" og "power_grid" er ikke
+            "battery_charge_power": "sensor:power_battery_charge",
+            "battery_discharge_power": "sensor:power_battery_discharge",
+            "grid_import_power": "sensor:power_grid_import",
+            "grid_export_power": "sensor:power_grid_export",
             "solar_power": "sensor:power_photovoltaics",
             "import_energy": "sensor:energy_real_consumed",
             "export_energy": "sensor:energy_real_produced",
-            "solar_energy": "sensor:energy_total",
+            # Målt på strengene: inverterens "energy_total" står stille, når solen går direkte i batteriet
+            "solar_energy": "sensor:energy_total_pv|energy_total",
+            "battery_charge_energy": "sensor:storage_energy_charged_total",
+            "battery_discharge_energy": "sensor:storage_energy_discharged_total",
         },
-        battery_sign="discharge_positive", grid_sign="import_positive",
+        house_power="sensor:power_load_consumed", capacity_wh="sensor:maximum_capacity",
         control=({
             # Fronius' lagerstyring: en negativ grænse vender retningen (afladegrænse −100 % = lad med fuld effekt)
             "charge": [("number", "battery_charge_power_limit", 100), ("switch", "battery_charge_power_limit_enabled", True),
@@ -275,8 +283,8 @@ PRESETS: dict[str, Preset] = {p.key: p for p in (
                      ("number", "battery_charge_power_limit", 100),
                      ("number", "battery_discharge_power_limit", 0), ("switch", "battery_discharge_power_limit_enabled", True)],
         },),
-        note="Batteristyring kræver Modbus TCP og \"Inverter control via Modbus\" slået til (Gen24/Tauro/Verto). "
-             "Effektsensorerne \"Power battery\" og \"Power grid\" er deaktiveret som standard – slå dem til.",
+        note="Batteristyring kræver Modbus TCP og \"Allow Control\" slået til på inverterens webside "
+             "(Communication → Modbus). Dukker styringen ikke op bagefter, så genindlæs Fronius-integrationen og vælg anlægget igen.",
     ),
     Preset(
         "solplanet", "Solplanet", "solplanet", "Solplanet",
@@ -361,6 +369,8 @@ class Match:
     export: tuple[str, float] | None = None     # (entity_id, værdi ved stop)
     growatt_device: str | None = None
     growatt_type: str | None = None             # "sph" eller "min"
+    house_power: str | None = None              # entity_id på husets effektsensor
+    capacity: str | None = None                 # entity_id på batteriets størrelse (Wh)
 
 
 def match(preset: Preset, entries: list[Entry]) -> Match:
@@ -408,8 +418,11 @@ def match(preset: Preset, entries: list[Entry]) -> Match:
     growatt_device = growatt_type = None
     if preset.growatt_cloud and found_soc:
         growatt_device, growatt_type = found_soc.device_id, gw.device_type(found_soc.unique_id)
+    def enabled(spec: str | None) -> str | None:
+        e = _find(entries, spec) if spec else None
+        return e.entity_id if e is not None and not e.disabled else None
     return Match(preset, roles, disabled, missing, actions, control_missing, huawei_device, export,
-                 growatt_device, growatt_type)
+                 growatt_device, growatt_type, enabled(preset.house_power), enabled(preset.capacity_wh))
 
 
 def fill_keep(actions: dict[str, list[dict]], current: dict[str, str | None], fallback: dict[str, str]) -> dict:
