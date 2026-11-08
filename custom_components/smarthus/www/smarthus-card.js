@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.64.0";
+const SMARTHUS_CARD_VERSION = "1.65.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -342,6 +342,7 @@ class SmartHusCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    Object.values(this._camEls || {}).forEach((el) => { el.hass = hass; });
     const sig = this._signature();
     if (sig !== this._sig) {
       this._sig = sig;
@@ -453,7 +454,14 @@ class SmartHusCard extends HTMLElement {
     const h = card.offsetHeight;
     if (h) card.style.minHeight = `${h}px`;
     card.className = cls;
-    card.innerHTML = html;
+    // Kameraerne bor uden for det, der tegnes om, så videoen ikke starter forfra ved hver opdatering
+    let body = card.querySelector(":scope > .sh-body");
+    if (!body) {
+      card.innerHTML = `<div class="sh-body"></div><div class="sh-cams"></div>`;
+      body = card.firstElementChild;
+    }
+    body.innerHTML = html;
+    this._syncCameras(card);
     const restore = () => scrollers.forEach(([el, top]) => { if (Math.abs(el.scrollTop - top) > 1) el.scrollTop = top; });
     restore();
     requestAnimationFrame(() => {
@@ -910,21 +918,23 @@ class SmartHusCard extends HTMLElement {
       const m = mods.find((x) => x.id === id);
       if (m) groups.push({ id, name: m.name, icon, mods: [m] });
     }
+    const cams = this._cameras();
+    if (cams.length) groups.push({ id: "cameras", name: "Overvågning", icon: "cam", mods: [], line: `${cams.length} ${cams.length === 1 ? "kamera" : "kameraer"}` });
     if (!groups.length) return "";
     if (this._panel && !groups.some((g) => g.id === this._panel)) this._panel = null;
     const tiles = groups.map((g) => {
-      const on = g.mods.some((m) => this._st("switch", m.sw)?.state === "on");
-      const line = g.mods.length === 1 ? this._moduleLine(g.mods[0], this._st("switch", g.mods[0].sw)?.state === "on") : `${g.mods.length} biler`;
+      const on = g.id === "cameras" || g.mods.some((m) => this._st("switch", m.sw)?.state === "on");
+      const line = g.line || (g.mods.length === 1 ? this._moduleLine(g.mods[0], this._st("switch", g.mods[0].sw)?.state === "on") : `${g.mods.length} biler`);
       const sel = this._panel === g.id;
       return `<button class="tile${sel ? " sel" : ""}${on ? " on" : ""}" data-action="panel" data-panel="${g.id}" aria-expanded="${sel}"
           aria-label="${esc(g.name)}: ${esc(line)}">
-        <span class="tile-ic">${this._dockIcon(g.icon)}<i class="tile-dot" title="${on ? "Styres af SmartHus" : "Styring slået fra"}"></i></span>
+        <span class="tile-ic">${this._dockIcon(g.icon)}${g.id === "cameras" ? "" : `<i class="tile-dot" title="${on ? "Styres af SmartHus" : "Styring slået fra"}"></i>`}</span>
         <span class="tile-name">${esc(g.sub || g.name)}</span>
         <span class="tile-line">${esc(line)}</span>
       </button>`;
     }).join("");
     const g = groups.find((x) => x.id === this._panel);
-    const panel = g ? `
+    const panel = g && g.id !== "cameras" ? `
       <section class="panel${this._panelAnim ? " anim" : ""}" aria-label="Indstillinger for ${esc(g.name)}">
         <div class="panel-head">
           <span class="panel-ic">${this._dockIcon(g.icon)}</span>
@@ -939,11 +949,62 @@ class SmartHusCard extends HTMLElement {
     return `<div class="dock" role="group" aria-label="Indstillinger">${tiles}</div>${panel}`;
   }
 
+  /** De kameraer, der er valgt i opsætningen, og som findes i Home Assistant. */
+  _cameras() {
+    return (this._st("sensor", "cameras")?.attributes?.cameras || []).filter((id) => this._hass.states[id]);
+  }
+
+  /** Live video i panelet "Overvågning" – Home Assistants eget kamerakort klarer WebRTC, HLS og MJPEG. */
+  _syncCameras(card) {
+    const box = card.querySelector(":scope > .sh-cams");
+    const ids = this._panel === "cameras" ? this._cameras() : [];
+    const key = ids.join("|");
+    const anim = this._panelAnim;
+    if (ids.length) this._panelAnim = false;
+    if (key !== this._camKey) {
+      this._camKey = key;
+      this._camEls = {};
+      box.innerHTML = !ids.length ? "" : `
+      <section class="panel${anim ? " anim" : ""}" aria-label="Overvågning">
+        <div class="panel-head">
+          <span class="panel-ic">${this._dockIcon("cam")}</span>
+          <span class="panel-title">Overvågning<span>Live · tryk på et billede for at se det stort</span></span>
+          <button class="panel-close" data-action="close-panel" aria-label="Luk og vis overblikket">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 6 18 18M18 6 6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>Luk</button>
+        </div>
+        <div class="cam-grid">${ids.map((id) => `<div class="cam-slot" data-cam="${esc(id)}"></div>`).join("")}</div>
+      </section>`;
+      if (ids.length) this._mountCameras(box, ids, key);
+    }
+    // Versionslinjen skal stadig stå nederst
+    card.querySelector(":scope > .ver")?.remove();
+    if (ids.length) {
+      const ver = card.querySelector(":scope > .sh-body > .ver");
+      if (ver) card.appendChild(ver);
+    }
+  }
+
+  async _mountCameras(box, ids, key) {
+    let helpers;
+    try { helpers = await window.loadCardHelpers(); } catch (e) { helpers = null; }
+    if (key !== this._camKey) return;     // panelet er lukket imens
+    for (const id of ids) {
+      const slot = box.querySelector(`.cam-slot[data-cam="${CSS.escape(id)}"]`);
+      if (!slot) continue;
+      if (!helpers) { slot.innerHTML = `<div class="cam-err">Kunne ikke vise kameraet</div>`; continue; }
+      const el = helpers.createCardElement({ type: "picture-entity", entity: id, camera_view: "live", show_state: false, tap_action: { action: "more-info" } });
+      el.hass = this._hass;
+      this._camEls[id] = el;
+      slot.replaceChildren(el);
+    }
+  }
+
   /** Ikoner i SmartHus-stil: grønne streger med gul og blå detalje. */
   _dockIcon(kind) {
     const G = "var(--sh-ic, #1E9E5C)", A = "#F7B21B", B = "#0A6FB8";
     const st = `fill="none" stroke="${G}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"`;
     const icons = {
+      cam: `<rect x="3.5" y="9" width="18" height="14" rx="3" ${st}/><path d="m21.5 14 7-4v12l-7-4" ${st}/><circle cx="12.5" cy="16" r="3.2" fill="${A}"/>`,
       car: `<path d="M5 20v-4.5l2.4-5.2A2 2 0 0 1 9.2 9h11.6a2 2 0 0 1 1.8 1.3L25 15.5V20" ${st}/>
             <path d="M3.5 20h25v3.5a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1Z" ${st}/>
             <circle cx="9.5" cy="24.5" r="2.4" fill="var(--card-background-color,#fff)" ${st}/><circle cx="22.5" cy="24.5" r="2.4" fill="var(--card-background-color,#fff)" ${st}/>
@@ -2378,6 +2439,10 @@ class SmartHusCard extends HTMLElement {
       .step-ctl button { width: 32px; height: 32px; border-radius: 50%; font-size: 18px; line-height: 1;
                          box-shadow: inset 0 0 0 1px var(--sh-line); }
       .step-ctl button:active { background: var(--sh-track); }
+      .sh-body { display: contents; }
+      .cam-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; padding: 12px; }
+      .cam-slot { min-height: 150px; border-radius: 12px; overflow: hidden; background: var(--sh-track); }
+      .cam-err { padding: 16px; font-size: 13px; color: var(--secondary-text-color); }
       .soc { padding: 8px 0 10px; }
       .soc + .soc { border-top: 1px solid var(--sh-line); }
       .soc-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; }

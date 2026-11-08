@@ -76,6 +76,7 @@
           "ev": "Elbiler",
           "hotwater": "Varmt vand",
           "heating": "Varme / varmepumpe",
+          "cameras": "Overvågning",
           "prices": "Elpris og tariffer",
           "weather": "Vejr og udetemperatur"
         }
@@ -234,6 +235,16 @@
           }
         }
       },
+      "cameras": {
+        "title": "Overvågning",
+        "description": "Vælg de kameraer, der skal vises på SmartHus-kortet og i appen. Kameraerne skal være sat op i Home Assistant først, og kunden skal have adgang til dem.",
+        "data": {
+          "cameras": "Kameraer – valgfri"
+        },
+        "data_description": {
+          "cameras": "Du kan vælge flere. Vises som flisen 'Overvågning' med live video. Fjern alle for at skjule flisen."
+        }
+      },
       "weather": {
         "title": "Vejr og udetemperatur",
         "description": "Bruges til vejret og udetemperaturen i energiflowet på kortet og til varmestyringens grænse ('Aktiv under udetemperatur'). Begge felter er valgfrie – står de tomme, bruger SmartHus Home Assistants eget vejr fra skyen (Met.no 'Hjem').",
@@ -363,6 +374,7 @@
           "ev": "Elbiler",
           "hotwater": "Varmt vand",
           "heating": "Varme / varmepumpe",
+          "cameras": "Overvågning",
           "prices": "Elpris og tariffer",
           "weather": "Vejr og udetemperatur"
         }
@@ -582,6 +594,9 @@
       },
       "solar_roi": {
         "name": "Solceller: tilbagebetalt"
+      },
+      "cameras": {
+        "name": "Kameraer"
       },
       "energy_overview": {
         "name": "Energioverblik"

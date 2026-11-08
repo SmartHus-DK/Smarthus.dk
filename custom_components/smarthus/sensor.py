@@ -28,6 +28,7 @@ from .const import (
     CONF_SOLAR_ENERGY,
     CONF_SOLAR_FORECAST,
     CONF_SOLAR_INVESTMENT,
+    CONF_CAMERAS,
     CONF_SOLAR_POWER,
     MODULE_BATTERY,
     MODULE_HEATING,
@@ -412,6 +413,13 @@ ENERGY_SENSOR = SmartHusSensorDescription(
     attrs_fn=_energy_attrs)
 
 
+# Kameraerne, der er valgt i opsætningen – kort og apps viser dem ud fra denne sensor
+CAMERA_SENSOR = SmartHusSensorDescription(
+    key="cameras", icon="mdi:cctv",
+    value_fn=lambda c: len(c.config.get(CONF_CAMERAS) or []),
+    attrs_fn=lambda c: {"cameras": list(c.config.get(CONF_CAMERAS) or [])})
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
                             async_add_entities: AddEntitiesCallback) -> None:
     controller = entry.runtime_data.controller
@@ -429,6 +437,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartHusConfigEntry,
         entities += [SmartHusSensor(entry, controller, d) for d in GRID_SENSORS]
     if controller.has(CONF_SOLAR_ENERGY) or controller.has(CONF_SOLAR_POWER) or controller.has(CONF_SOLAR_FORECAST):
         entities.append(SmartHusSensor(entry, controller, FORECAST_SENSOR))
+    if controller.config.get(CONF_CAMERAS):
+        entities.append(SmartHusSensor(entry, controller, CAMERA_SENSOR))
     for car in controller.cars:
         for d in EV_SENSORS:
             entities.append(EvSensor(entry, controller, d, car["id"], car.get("name") or "Elbil"))

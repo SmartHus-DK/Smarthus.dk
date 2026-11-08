@@ -71,6 +71,7 @@
           "ev": "EVs",
           "hotwater": "Hot water",
           "heating": "Heating / heat pump",
+          "cameras": "Surveillance",
           "prices": "Electricity price and tariffs",
           "weather": "Weather and outdoor temperature"
         }
@@ -227,6 +228,16 @@
           }
         }
       },
+      "cameras": {
+        "title": "Surveillance",
+        "description": "Choose the cameras to show on the SmartHus card and in the app. The cameras must be set up in Home Assistant first.",
+        "data": {
+          "cameras": "Cameras – optional"
+        },
+        "data_description": {
+          "cameras": "You can choose several. Shown as the 'Surveillance' tile with live video. Remove all to hide the tile."
+        }
+      },
       "weather": {
         "title": "Weather and outdoor temperature",
         "description": "Used for the weather and outdoor temperature in the energy flow on the card and for the heating limit ('Active below outdoor temperature'). Both are optional – if empty, SmartHus uses Home Assistant's own weather from the cloud (Met.no 'Home').",
@@ -351,6 +362,7 @@
           "ev": "EVs",
           "hotwater": "Hot water",
           "heating": "Heating / heat pump",
+          "cameras": "Surveillance",
           "prices": "Electricity price and tariffs",
           "weather": "Weather and outdoor temperature"
         }
@@ -570,6 +582,9 @@
       },
       "solar_roi": {
         "name": "Solar: paid back"
+      },
+      "cameras": {
+        "name": "Cameras"
       },
       "energy_overview": {
         "name": "Energy overview"

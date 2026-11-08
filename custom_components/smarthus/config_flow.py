@@ -82,6 +82,8 @@ from .const import (
     CONF_HEATING_SCRIPT_REDUCE,
     CONF_OUTDOOR_TEMP,
     CONF_WEATHER,
+    CONF_CAMERAS,
+    CAMERA_KEYS,
     CONF_HEATPUMP_ENERGY,
     CONF_HOTWATER_ENERGY,
     CONF_HOTWATER_TEMP,
@@ -168,6 +170,7 @@ SETPOINT = selector.EntitySelector(selector.EntitySelectorConfig(domain=["sensor
 WATER_TEMP = selector.EntitySelector(selector.EntitySelectorConfig(domain=["sensor", "input_number", "water_heater", "climate"]))
 CLIMATE = selector.EntitySelector(selector.EntitySelectorConfig(domain="climate"))
 WEATHER = selector.EntitySelector(selector.EntitySelectorConfig(domain="weather"))
+CAMERAS = selector.EntitySelector(selector.EntitySelectorConfig(domain="camera", multiple=True))
 OUTDOOR = selector.EntitySelector(selector.EntitySelectorConfig(domain=["sensor", "input_number"], device_class="temperature"))
 FORECAST = selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor"))
 
@@ -419,7 +422,7 @@ class SmartHusOptionsFlow(OptionsFlow):
     async def async_step_menu(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         return self.async_show_menu(
             step_id="menu",
-            menu_options=["preset", "battery", "solar", "ev", "hotwater", "heating", "weather", "prices"],
+            menu_options=["preset", "battery", "solar", "ev", "hotwater", "heating", "cameras", "weather", "prices"],
         )
 
     async def async_step_prices(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
@@ -826,6 +829,11 @@ class SmartHusOptionsFlow(OptionsFlow):
             vol.Required(AIR_SECTION): section(air_schema, {"collapsed": not is_air}),
         })
         return self.async_show_form(step_id="heating", data_schema=schema)
+
+    async def async_step_cameras(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        if user_input is not None:
+            return self._save(CAMERA_KEYS, user_input)
+        return self.async_show_form(step_id="cameras", data_schema=_entity_schema([(CONF_CAMERAS, CAMERAS)], self._current()))
 
     async def async_step_weather(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
