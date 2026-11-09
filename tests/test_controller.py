@@ -1052,19 +1052,6 @@ def test_default_profile_until_learned():
     assert hold and all(s.price == 2.0 for s in hold)
 
 
-def test_shown_soc_is_the_cars_own_unless_charging():
-    """Styringen bruger skønnet; kunden ser bilens tal, når bilen ikke lader."""
-    car = {"id": "ev", "name": "Bil", "charger": "switch.lader", "power": "sensor.p", "soc": "sensor.s"}
-    states = {"sensor.s": State("72"), "sensor.p": State("0", unit_of_measurement="W")}
-    c, h = make({}, states)
-    c.cars = [car]
-    c.settings.update({"ev_battery_capacity": 60.0})
-    c._soc_est["ev"] = {"base": 72.0, "kwh": 4.0}
-    assert c.car_soc(car) == 78.0 and c.car_soc_shown(car) == 72.0
-    states["sensor.p"] = State("7300", unit_of_measurement="W")
-    assert c.car_soc_shown(car) == 78.0
-
-
 def test_inverter_reserve_follows_min_soc():
     """Inverterens nedre grænse følger "Laveste niveau"; rører den ikke, når de er ens eller ukendt."""
     states = {"number.reserve": State("5.0", min=0, max=100)}

@@ -1749,14 +1749,10 @@ class SmartHusController:
         est = st["base"] + st["kwh"] * CHARGE_EFFICIENCY / cap * 100
         return round(min(max(rep, est), 100.0), 1)
 
-    def car_soc_shown(self, car: dict) -> float | None:
-        """Det niveau, kunden skal se: bilens eget tal, undtagen mens bilen lader, hvor skønnet er nyere."""
-        est = self.car_soc(car)
-        rep = self._float_state(car.get("soc")) if self.soc_sensor_ok(car) else None
-        if rep is None or est is None or est == rep:
-            return est
-        kw = self._power_kw(car.get("power")) if car.get("power") else None
-        return est if kw is not None and kw > 0.3 else rep
+    def car_soc_reported_at(self, car: dict) -> str | None:
+        """Hvornår bilen sidst sendte et nyt batteriniveau."""
+        st = self.hass.states.get(car.get("soc")) if car.get("soc") else None
+        return st.last_changed.isoformat() if st is not None else None
 
     @staticmethod
     def _charger_is_select(car: dict) -> bool:

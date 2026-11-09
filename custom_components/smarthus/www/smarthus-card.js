@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.66.9";
+const SMARTHUS_CARD_VERSION = "1.66.10";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -204,8 +204,13 @@ const HELP = {
 
 const CAR_COLORS = [COLORS.ev, COLORS.ev2, COLORS.ev3];
 /** Batteriniveau – "ca." når det er skønnet ud fra den ladede energi (bilen har ikke meldt et nyt tal). */
-const socShown = (a) => a.soc_shown ?? a.soc;
-const socT = (a) => `${a.soc_estimated && socShown(a) !== a.soc_reported ? "ca. " : ""}${nf(socShown(a), 0)} %`;
+const socT = (a) => `${a.soc_estimated ? "ca. " : ""}${nf(a.soc, 0)} %`;
+const socNote = (a) => {
+  if (!a.soc_estimated || a.soc_reported == null || !a.soc_reported_at) return "";
+  const t = new Date(a.soc_reported_at), now = new Date();
+  const day = t.toDateString() === now.toDateString() ? "" : `${t.getDate()}/${t.getMonth() + 1} `;
+  return `Bilen har ikke sendt SoC siden ${day}kl. ${hh(t)} (${nf(a.soc_reported, 0)} %)`;
+};
 
 /** Et felt pr. elbil. Bilens id er fx "ev" eller "ev_tesla". */
 function carModule(cid, name, first) {
@@ -1157,7 +1162,10 @@ class SmartHusCard extends HTMLElement {
 
   _moduleBody(m) {
     let extra = "";
-    if (m.car) extra = this._evCompare(m.id);
+    if (m.car) {
+      const sv = this._st("sensor", `${m.id}_smart_saving`)?.attributes;
+      extra = (sv && socNote(sv) ? `<div class="cmp wait">${socNote(sv)}</div>` : "") + this._evCompare(m.id);
+    }
     if (m.id === "battery") extra = this._tradeBox() + this._reserveBox();
     if (m.id === "hotwater") {
       const a = this._st("binary_sensor", "hotwater_now")?.attributes || {};
@@ -2523,7 +2531,7 @@ class SmartHusEvCard extends SmartHusCard {
     const a = this._st("sensor", `${cid}_smart_saving`)?.attributes || {};
     const flow = this._st("sensor", "energy_flow")?.attributes || {};
     const fc = (flow.cars || []).find((c) => c.id === cid) || {};
-    const soc = socShown(a) ?? fc.soc;
+    const soc = a.soc ?? fc.soc;
     const target = a.target_soc;
     const kw = fc.kw;
     const connected = a.connected !== false && fc.connected !== false;
@@ -2599,6 +2607,7 @@ class SmartHusEvCard extends SmartHusCard {
           ${sw ? this._modeBtn(sw.entity_id, on, "Smart", `Smart opladning af ${car.name}`) : ""}
         </div>
         <div class="ev-main">${ring}<div class="ev-facts">${facts}</div></div>
+        ${socNote(a) ? `<div class="cmp wait">${socNote(a)}</div>` : ""}
         ${prices}
         ${this._config.car ? "" : this._carViewPicker() + this._connectedPicker()}
         ${warn}
