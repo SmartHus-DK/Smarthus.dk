@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.66.2";
+const SMARTHUS_CARD_VERSION = "1.66.3";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -204,7 +204,8 @@ const HELP = {
 
 const CAR_COLORS = [COLORS.ev, COLORS.ev2, COLORS.ev3];
 /** Batteriniveau – "ca." når det er skønnet ud fra den ladede energi (bilen har ikke meldt et nyt tal). */
-const socT = (a) => `${a.soc_estimated ? "ca. " : ""}${nf(a.soc, 0)} %`;
+const socShown = (a) => a.soc_shown ?? a.soc;
+const socT = (a) => `${a.soc_estimated && socShown(a) !== a.soc_reported ? "ca. " : ""}${nf(socShown(a), 0)} %`;
 
 /** Et felt pr. elbil. Bilens id er fx "ev" eller "ev_tesla". */
 function carModule(cid, name, first) {
@@ -2522,7 +2523,7 @@ class SmartHusEvCard extends SmartHusCard {
     const a = this._st("sensor", `${cid}_smart_saving`)?.attributes || {};
     const flow = this._st("sensor", "energy_flow")?.attributes || {};
     const fc = (flow.cars || []).find((c) => c.id === cid) || {};
-    const soc = a.soc ?? fc.soc;
+    const soc = socShown(a) ?? fc.soc;
     const target = a.target_soc;
     const kw = fc.kw;
     const connected = a.connected !== false && fc.connected !== false;
