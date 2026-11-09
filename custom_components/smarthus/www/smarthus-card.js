@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.66.7";
+const SMARTHUS_CARD_VERSION = "1.66.8";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -15,7 +15,7 @@ const COLORS = {
   battery_charge: "#2FA37A",
   battery_discharge: "#8A5CC8",
   battery_sell: "#3C1A78",
-  battery_hold: "#B8862B",
+  battery_hold: "#E5383B",
   battery_use: "#9F7AEA",
   battery_solar: "#F2B705",
   hotwater: "#2BA3C9",
