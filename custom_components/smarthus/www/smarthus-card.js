@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.66.6";
+const SMARTHUS_CARD_VERSION = "1.66.7";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -2931,10 +2931,10 @@ class SmartHusEnergyCard extends SmartHusCard {
       }
     }
     if (has.import || has.export) {
+      src.push(row("grid", "#6F7F91", "mdi:transmission-tower", "Total net", "Købt minus solgt",
+        sKwh((p.grid_out || 0) - (p.grid_in || 0)), sKr(-p.bill), (p.bill || 0) < 0 ? "plus" : ""));
       if (has.import) src.push(row("grid_in", "#6F7F91", "mdi:transmission-tower-import", "Købt fra nettet", avg(p.grid_in, p.grid_in_kr), sKwh(-p.grid_in), sKr(-p.grid_in_kr), "sub"));
       if (has.export) src.push(row("grid_out", "#6F7F91", "mdi:transmission-tower-export", "Solgt til nettet", avg(p.grid_out, p.grid_out_kr), sKwh(p.grid_out), sKr(p.grid_out_kr), "plus sub"));
-      src.push(row("grid", "#6F7F91", "mdi:transmission-tower", "Total net", "Købt minus solgt",
-        sKwh((p.grid_out || 0) - (p.grid_in || 0)), sKr(-p.bill), `total${(p.bill || 0) < 0 ? " plus" : ""}`));
     }
     const group = (title, items) => (items.join("") ? `<div class="en-group"><div class="en-gtitle">${title}</div>${items.join("")}</div>` : "");
 
