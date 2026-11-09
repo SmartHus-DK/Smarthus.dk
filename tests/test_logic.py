@@ -1212,6 +1212,10 @@ def test_battery_charge_split_between_grid_and_solar():
     # Blandet: sol 1, hus 0,5, batteri 3 → 0,5 fra sol og 2,5 fra nettet
     f = energy.hour_fields(lay, {"i": 2.5, "e": 0, "s": 1, "bi": 3, "bo": 0}, 2.0, 1.0)
     assert round(f["bat_in_solar"], 3) == 0.5 and round(f["bat_in_grid"], 3) == 2.5 and round(f["bat_in_grid_kr"], 3) == 5.0
+    # Sol til batteriet til salgspris (1 kr), resten til købspris (2 kr) – regnskabet går stadig op
+    assert round(f["bat_in_solar_kr"], 3) == 0.5 and round(f["bat_in_kr"], 3) == 5.5
+    assert round(f["solar_self"], 3) == 0.5 and round(f["solar_self_kr"], 3) == 1.0 and round(f["solar_kr"], 3) == 1.5
+    assert round(f["bill"] + f["solar_kr"] + f["bat_out_kr"] - f["bat_in_kr"], 3) == round(f["house_kr"], 3)
 
 
 tariffs = _load("tariffs")

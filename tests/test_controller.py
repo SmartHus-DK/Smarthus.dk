@@ -1024,6 +1024,19 @@ def test_planned_charge_can_be_read_in_advance():
     assert c._plan_grid_charge(now) is None
 
 
+def test_battery_not_recharged_right_after_reaching_max():
+    """Billig time og 97 % af 98 %: lad, medmindre batteriet lige har været fuldt."""
+    planner = sys.modules["smarthus.planner"]
+    from datetime import datetime as D, timedelta as T, timezone as Z
+    now = D(2026, 11, 9, 2, 5, tzinfo=Z.utc)
+    start = now.replace(minute=0)
+    slots = [planner.Slot(start + T(hours=i), start + T(hours=i + 1), 0, 1.0 if i < 3 else 4.0, 0.5) for i in range(20)]
+    c, h = make({}, {})
+    s = dict(c.settings, battery_max_soc=98.0, battery_min_soc=7.0)
+    assert planner.build_plan(slots, now, Z.utc, s, soc=97.0, cars=[]).battery_action == "charge"
+    assert planner.build_plan(slots, now, Z.utc, s, soc=97.0, cars=[], battery_full=True).battery_action != "charge"
+
+
 def test_default_profile_until_learned():
     """Standardforbrug bruges til planen; det lærte (tomme) mønster er det, der vises."""
     prof = sys.modules["smarthus.profile"]

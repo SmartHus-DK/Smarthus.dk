@@ -139,6 +139,8 @@ from .const import (
 from .coordinator import SmartHusPriceCoordinator
 from . import growatt as gw
 from .planner import CHARGE_EFFICIENCY, full_charge_hours, CarInput, Plan, build_plan, car_ready, car_settings, heating_outdoor_ok
+BATTERY_RECHARGE_MARGIN = 2.0   # %-point under højeste niveau, før batteriet lades fra nettet igen
+
 from .profile import (default_profile, EFFICIENCY, plan_hold, forecast_battery, LEARN_DAYS, SUN_END, SUN_START, Profile, Reserve, build_profile, calc_reserve,
                       expected_load, grid_charge_target, solar_surplus, battery_need_at, simulate_battery)
 from .savings import SavingsCalculator
@@ -1252,7 +1254,14 @@ class SmartHusController:
             if need_h is not None:
                 # Kun de timer, der skal til for at nå målet ved den indtastede ladeeffekt ("Timer at lade" er loftet)
                 settings[S_BATTERY_CHARGE_HOURS] = min(settings[S_BATTERY_CHARGE_HOURS], need_h)
-        self.plan = build_plan(slots, dt_util.utcnow(), self.tz, settings, soc=soc, cars=cars)
+        # Når batteriet har nået højeste niveau, startes der først opladning igen, når det er faldet lidt
+        mx = float(settings["battery_max_soc"])
+        if soc is None or soc < mx - BATTERY_RECHARGE_MARGIN:
+            self._battery_full = False
+        elif soc >= mx:
+            self._battery_full = True
+        self.plan = build_plan(slots, dt_util.utcnow(), self.tz, settings, soc=soc, cars=cars,
+                               battery_full=self.__dict__.get("_battery_full", False))
         self._update_hotwater_demand()
         now = dt_util.utcnow()
         for cid, ep in self.plan.evs.items():

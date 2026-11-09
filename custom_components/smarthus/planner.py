@@ -520,7 +520,7 @@ def _percentile(values: list[float], q: float) -> float:
 
 def build_plan(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
                soc: float | None = None, ev_force: bool = False,
-               ev_soc: float | None = None, cars: list[CarInput] | None = None) -> Plan:
+               ev_soc: float | None = None, cars: list[CarInput] | None = None, battery_full: bool = False) -> Plan:
     """Byg den samlede plan for alle moduler ud fra priserne."""
     plan = Plan()
     if cars is None:
@@ -587,7 +587,7 @@ def build_plan(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
     if cur:
         # Eksport stoppes, når salgsprisen er under grænsen, og starter selv igen over den
         export_min = float(settings.get("solar_export_min_price", 0.0))
-        if cur in plan.battery_charge and (soc is None or soc < settings["battery_max_soc"]):
+        if cur in plan.battery_charge and (soc is None or soc < settings["battery_max_soc"]) and not battery_full:
             plan.battery_action = "charge"
         elif cur in plan.battery_discharge and (soc is None or soc > settings["battery_min_soc"]):
             plan.battery_action = "discharge"
