@@ -1201,6 +1201,19 @@ def test_preset_fronius_as_seen_on_a_gen24():
     assert m.roles["solar_energy"] == "sensor.total"
 
 
+def test_battery_charge_split_between_grid_and_solar():
+    lay = {"import": ["i"], "export": ["e"], "solar": ["s"], "battery_in": ["bi"], "battery_out": ["bo"], "devices": []}
+    # Tvunget fra nettet om natten: alt fra nettet
+    f = energy.hour_fields(lay, {"i": 5, "e": 0, "s": 0, "bi": 3.8, "bo": 0}, 2.0, 1.0)
+    assert f["bat_in_grid"] == 3.8 and f["bat_in_solar"] == 0
+    # Solen dækker huset (1 kWh) og lader med resten (2 kWh); intet fra nettet
+    f = energy.hour_fields(lay, {"i": 0, "e": 0, "s": 3, "bi": 2, "bo": 0}, 2.0, 1.0)
+    assert f["bat_in_solar"] == 2 and f["bat_in_grid"] == 0
+    # Blandet: sol 1, hus 0,5, batteri 3 → 0,5 fra sol og 2,5 fra nettet
+    f = energy.hour_fields(lay, {"i": 2.5, "e": 0, "s": 1, "bi": 3, "bo": 0}, 2.0, 1.0)
+    assert round(f["bat_in_solar"], 3) == 0.5 and round(f["bat_in_grid"], 3) == 2.5 and round(f["bat_in_grid_kr"], 3) == 5.0
+
+
 tariffs = _load("tariffs")
 
 

@@ -127,9 +127,10 @@ def layout_stats(layout: dict) -> set[str]:
 
 
 def layout_signature(layout: dict | None) -> str:
+    # "v" ændres, når regnskabet får nye felter: så genberegnes historikken én gang
     if not layout:
         return ""
-    parts = ["v3"] + [",".join(sorted(layout.get(k) or [])) for k in ("import", "export", "solar", "battery_in", "battery_out")]
+    parts = ["v4"] + [",".join(sorted(layout.get(k) or [])) for k in ("import", "export", "solar", "battery_in", "battery_out")]
     parts += [d["stat"] for d in layout.get("devices") or []]
     return "|".join(parts)
 
@@ -163,6 +164,11 @@ def hour_fields(layout: dict, kwh: dict[str, float], price: float | None, sale: 
             other = max(house - dev_sum, 0.0)
             f.update(other=other, other_kr=other * p)
         f["bill"] = imp * p - exp * sp
+        if layout.get("battery_in") and layout.get("solar"):
+            # Solen dækker først huset; det, der er tilbage af egetforbruget, er gået i batteriet. Resten kom fra nettet.
+            own = max(sol - min(exp, sol), 0.0)
+            b_sol = min(b_in, max(own - max(house - b_out, 0.0), 0.0))
+            f.update(bat_in_solar=b_sol, bat_in_solar_kr=b_sol * p, bat_in_grid=b_in - b_sol, bat_in_grid_kr=(b_in - b_sol) * p)
     if price is None:
         f["no_price"] = 1.0
     return f

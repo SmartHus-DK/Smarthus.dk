@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.66.4";
+const SMARTHUS_CARD_VERSION = "1.66.5";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -2881,32 +2881,33 @@ class SmartHusEnergyCard extends SmartHusCard {
       this._hidden(key) ? "" : `<div class="en-row ${cls}"><span class="en-ic" style="--c:${color}"><ha-icon icon="${icon}"></ha-icon></span>
         <span class="en-name">${esc(name)}${sub ? `<small>${sub}</small>` : ""}</span>
         <span class="en-kwh">${v1}</span><span class="en-kr">${v2}</span></div>`;
+    const avg = (v, k) => (v > 0.05 && k != null ? `snit ${nf(k / v, 2)} kr/kWh` : "");
+    const sub = (...t) => t.filter(Boolean).join(" · ");
     const share = (v) => (p.house > 0.05 ? `${Math.round(((v || 0) / p.house) * 100)} % af huset` : "");
     const use = [];
     for (const d of devs) {
       const icon = { ev: "mdi:ev-station", heatpump: "mdi:heat-pump-outline", hotwater: "mdi:water-boiler" }[d.kind] || "mdi:power-plug-outline";
-      use.push(row(d.id, d.color, icon, d.name, share(p[d.id]), sKwh(-p[d.id]), sKr(-p[`${d.id}_kr`])));
+      use.push(row(d.id, d.color, icon, d.name, sub(share(p[d.id]), avg(p[d.id], p[`${d.id}_kr`])), sKwh(-p[d.id]), sKr(-p[`${d.id}_kr`])));
     }
     if (devs.length && p.other != null) {
-      use.push(row("other", OTHER_COLOR, "mdi:dots-horizontal-circle-outline", "Andet", `Resten af huset · ${share(p.other)}`, sKwh(-p.other), sKr(-p.other_kr)));
+      use.push(row("other", OTHER_COLOR, "mdi:dots-horizontal-circle-outline", "Andet", sub("Resten af huset", share(p.other), avg(p.other, p.other_kr)), sKwh(-p.other), sKr(-p.other_kr)));
     }
     if (p.house != null) {
-      use.push(row("house", "#1E9E5C", "mdi:home-outline", "Total energi til huset", devs.length ? "Summen af ovenstående" : "Strøm fra nettet, solceller og batteri",
+      use.push(row("house", "#1E9E5C", "mdi:home-outline", "Total energi til huset", sub(devs.length ? "Summen af ovenstående" : "Strøm fra nettet, solceller og batteri", avg(p.house, p.house_kr)),
         sKwh(-p.house), sKr(-p.house_kr), "total"));
     }
     const src = [];
     if (has.solar) {
-      src.push(row("solar", COLORS.solar_sold, "mdi:solar-power-variant", "Solceller", "Produceret i alt", sKwh(p.solar),
+      src.push(row("solar", COLORS.solar_sold, "mdi:solar-power-variant", "Solceller", sub("Produceret i alt", avg(p.solar, p.solar_kr)), sKwh(p.solar),
         `${sKr(p.solar_kr)}<small>sparet + solgt</small>`, "plus"));
       // Delt op: hvad egetforbruget sparede, og hvad salget gav
       const selfKr = p.solar_self_kr ?? null, expKr = p.solar_export_kr ?? null;
-      const avgKr = (v, k) => (v > 0.05 && k != null ? ` · snit ${nf(k / v, 2)} kr/kWh` : "");
       if (!this._hidden("solar")) {
         src.push(row("solar_self", COLORS.solar_self, "mdi:home-import-outline", "Sparet – brugt selv",
-          `Strøm du ikke skulle købe${avgKr(p.solar_self, selfKr)}`, sKwh(p.solar_self), selfKr == null ? "–" : sKr(selfKr), "plus sub"));
+          sub("Strøm du ikke skulle købe", avg(p.solar_self, selfKr)), sKwh(p.solar_self), selfKr == null ? "–" : sKr(selfKr), "plus sub"));
         if (has.export) {
           src.push(row("solar_export", COLORS.solar_sold, "mdi:transmission-tower-export", "Solgt til nettet",
-            `Salg af overskud${avgKr(p.solar_export, expKr)}`, sKwh(p.solar_export), expKr == null ? "–" : sKr(expKr), "plus sub"));
+            sub("Salg af overskud", avg(p.solar_export, expKr)), sKwh(p.solar_export), expKr == null ? "–" : sKr(expKr), "plus sub"));
         }
       }
     }
@@ -2914,14 +2915,20 @@ class SmartHusEnergyCard extends SmartHusCard {
       // Netto i begge kolonner (afladet minus opladet), så rækken går op med "Total energi til huset"
       const net = (p.bat_out_kr || 0) - (p.bat_in_kr || 0);
       src.push(row("battery", COLORS.battery_discharge, "mdi:home-battery-outline", "Batteri",
-        `Opladet ${kwh(p.bat_in)} for ${kr(p.bat_in_kr)} · afladet ${kwh(p.bat_out)} for ${kr(p.bat_out_kr)}`,
+        p.bat_in_grid != null ? "Afladet minus opladet" : `Opladet ${kwh(p.bat_in)} for ${kr(p.bat_in_kr)} · afladet ${kwh(p.bat_out)} for ${kr(p.bat_out_kr)}`,
         sKwh((p.bat_out || 0) - (p.bat_in || 0)),
         // Negativt beløb er ikke et tab: strømmen ligger stadig på batteriet
         `${sKr(net)}<small>${net >= 0 ? "gevinst" : "netto"}</small>`, net >= 0 ? "plus" : ""));
+      if (p.bat_in_grid != null && !this._hidden("battery")) {
+        const part = (name, v, k, sign) => src.push(row(`battery_${name}`, COLORS.battery_discharge, "mdi:circle-small", name, avg(v, k), sKwh(sign * v), sKr(sign * k), `${sign > 0 ? "plus " : ""}sub`));
+        part("Opladet fra nettet", p.bat_in_grid, p.bat_in_grid_kr, -1);
+        part("Opladet fra sol", p.bat_in_solar, p.bat_in_solar_kr, -1);
+        part("Afladet", p.bat_out, p.bat_out_kr, 1);
+      }
     }
     if (has.import || has.export) {
       src.push(row("grid", "#6F7F91", "mdi:transmission-tower", "Nettet",
-        `Købt ${kwh(p.grid_in)} for ${kr(p.grid_in_kr)}${has.export ? ` · solgt ${kwh(p.grid_out)} for ${kr(p.grid_out_kr)}` : ""}`,
+        sub(`Købt ${kwh(p.grid_in)} for ${kr(p.grid_in_kr)}`, avg(p.grid_in, p.grid_in_kr), has.export && p.grid_out > 0.05 ? `solgt ${kwh(p.grid_out)} for ${kr(p.grid_out_kr)}` : "", has.export ? avg(p.grid_out, p.grid_out_kr) : ""),
         sKwh((p.grid_out || 0) - (p.grid_in || 0)), `${sKr(-p.bill)}<small>netto</small>`, (p.bill || 0) < 0 ? "plus" : ""));
     }
     const group = (title, items) => (items.join("") ? `<div class="en-group"><div class="en-gtitle">${title}</div>${items.join("")}</div>` : "");
