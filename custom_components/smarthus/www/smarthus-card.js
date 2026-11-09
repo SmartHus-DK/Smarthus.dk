@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.66.3";
+const SMARTHUS_CARD_VERSION = "1.66.4";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -1644,7 +1644,7 @@ class SmartHusCard extends HTMLElement {
     if (!r) return "";
     const a = r.attributes || {};
     if (!a.profile_ready) {
-      return `<div class="cmp wait">SmartHus lærer husets forbrug. Reserven bruges, når der er mindst 2 dages historik (har nu ${nf(a.learned_days || 0, 0)}).</div>`;
+      return `<div class="cmp wait">SmartHus lærer husets forbrug (har nu ${nf(a.learned_days || 0, 0)} af 2 dage). Indtil da regnes der med 0,5 kW – og 1,5 kW kl. 17–20 – så der gemmes lidt til aftenen.</div>`;
     }
     // Forbrugsmønster: i dag, hverdag eller weekend
     const ptab = ["today", "weekday", "weekend"].includes(this._profTab) && a.profile_weekday ? this._profTab : "today";

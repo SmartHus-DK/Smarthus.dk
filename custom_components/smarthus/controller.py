@@ -139,7 +139,7 @@ from .const import (
 from .coordinator import SmartHusPriceCoordinator
 from . import growatt as gw
 from .planner import CHARGE_EFFICIENCY, full_charge_hours, CarInput, Plan, build_plan, car_ready, car_settings, heating_outdoor_ok
-from .profile import (EFFICIENCY, plan_hold, forecast_battery, LEARN_DAYS, SUN_END, SUN_START, Profile, Reserve, build_profile, calc_reserve,
+from .profile import (default_profile, EFFICIENCY, plan_hold, forecast_battery, LEARN_DAYS, SUN_END, SUN_START, Profile, Reserve, build_profile, calc_reserve,
                       expected_load, grid_charge_target, solar_surplus, battery_need_at, simulate_battery)
 from .savings import SavingsCalculator
 from .hotwater import cooling_rate, plan_demand
@@ -218,7 +218,8 @@ class SmartHusController:
         self.savings = SavingsCalculator()
         self._savings_loaded = False
         self._savings_saved = 0.0          # hvornår regnskabet sidst blev skrevet til disken
-        self.profile = Profile()
+        self.profile = default_profile()    # det, der planlægges efter: standardforbrug, indtil mønsteret er lært
+        self.learned_profile = Profile()    # det, der er lært – det er kun det, kort og apps viser
         self.profile_updated: datetime | None = None
         self.reserve: Reserve | None = None
         self.reserve_holds = False  # True når salg fra batteriet er sat på pause for at gemme reserven
@@ -705,11 +706,12 @@ class SmartHusController:
             for ts, kwh in series(ev).items():
                 if ts in house_hours:
                     house_hours[ts] = max(house_hours[ts] - kwh, 0.0)
-        self.profile = build_profile(sorted(house_hours.items()))
+        self.learned_profile = build_profile(sorted(house_hours.items()))
+        self.profile = self.learned_profile if self.learned_profile.ready else default_profile()
         self.profile_updated = dt_util.now()
-        if not self.profile.ready:
-            _LOGGER.info("SmartHus: kun %s dage med historik for %s – reserven bruges fra 2 dage",
-                         self.profile.days, house)
+        if not self.learned_profile.ready:
+            _LOGGER.info("SmartHus: kun %s dage med historik for %s – bruger standardforbrug, til der er 2 dage",
+                         self.learned_profile.days, house)
         self.recalculate()
 
     def _reserve_until(self, now: datetime) -> datetime:

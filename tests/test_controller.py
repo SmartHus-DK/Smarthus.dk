@@ -1024,6 +1024,21 @@ def test_planned_charge_can_be_read_in_advance():
     assert c._plan_grid_charge(now) is None
 
 
+def test_default_profile_until_learned():
+    """Standardforbrug bruges til planen; det lærte (tomme) mønster er det, der vises."""
+    prof = sys.modules["smarthus.profile"]
+    p = prof.default_profile()
+    assert p.ready and p.weekday[16] == 0.5 and p.weekday[17] == 1.5 and p.weekend[19] == 1.5 and p.weekday[20] == 0.5
+    assert sum(p.weekday) == 15.0
+    # Billigt om eftermiddagen, dyrt kl. 17–20: et lille batteri gemmes til aftenen
+    from datetime import datetime as D, timedelta as T
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("Europe/Copenhagen"); now = D(2026, 11, 9, 14, 0, tzinfo=tz)
+    slots = [types.SimpleNamespace(start=now + T(hours=i), end=now + T(hours=i + 1), price=4.0 if 17 <= 14 + i < 20 else 2.0) for i in range(8)]
+    hold, _ = prof.plan_hold(slots, p, now, now + T(hours=8), usable_kwh=4.8)
+    assert hold and all(s.price == 2.0 for s in hold)
+
+
 def test_shown_soc_is_the_cars_own_unless_charging():
     """Styringen bruger skønnet; kunden ser bilens tal, når bilen ikke lader."""
     car = {"id": "ev", "name": "Bil", "charger": "switch.lader", "power": "sensor.p", "soc": "sensor.s"}

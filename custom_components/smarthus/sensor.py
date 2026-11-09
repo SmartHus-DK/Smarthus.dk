@@ -255,7 +255,7 @@ SENSORS: tuple[SmartHusSensorDescription, ...] = (
 # Batteriets reserve ud fra husets lærte forbrugsmønster
 def _reserve_attrs(c: SmartHusController) -> dict:
     attrs = c.reserve.as_dict() if c.reserve else {}
-    p = c.profile
+    p = c.learned_profile
     today = dt_util.now()
     attrs.update({
         "learned_days": p.days,

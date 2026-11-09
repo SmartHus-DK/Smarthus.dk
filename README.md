@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.66.3** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
+**Version 1.66.4** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
 
 SmartHus bruger strømmen, når den er billigst, og sparer, når den er dyrest. Den lader elbilen og batteriet i de billige timer, varmer vandet med billig strøm eller solcelleoverskud, skruer lidt op og ned for varmen og stopper salg af solstrøm, når prisen er for lav. Du ser det hele – og hvad du har sparet – på ét kort.
 
@@ -148,7 +148,7 @@ SmartHus lader batteriet, når strømmen er billig, og bruger eller sælger str�
 2. **Den regner reserven ud.** Hvor meget forventer huset at bruge, fra nu og til strømmen bliver billig igen? Forventet sol fra solcellerne trækkes fra.
 3. **Den sælger kun overskuddet.** I de dyre timer sælges kun det, batteriet har ud over reserven og det laveste niveau. Resten bruges i huset, så I ikke skal købe dyr strøm senere.
 
-Under **Batteri** på kortet kan du se reserven, hvor meget der må sælges, og en lille graf over husets forbrug time for time. Reserven bruges, når SmartHus har mindst 2 dages historik – indtil da står der "SmartHus lærer husets forbrug".
+Under **Batteri** på kortet kan du se reserven, hvor meget der må sælges, og en lille graf over husets forbrug time for time. Indtil SmartHus har mindst 2 dages historik, regnes der med et standardforbrug på 0,5 kW og 1,5 kW kl. 17–20, så der gemmes lidt til aftenen.
 
 Det kræver en energimåler for **husets forbrug** (kWh) under Konfigurer → Batteri / inverter, fx fra inverteren eller en P1-måler. Uden den sælger SmartHus efter prisen alene.
 

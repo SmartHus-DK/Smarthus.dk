@@ -21,6 +21,9 @@ BASE_HOURS = range(0, 6)  # nattens timer: det laveste af dem er husets grundfor
 MIN_DAY_KWH = 0.2    # døgn med mindre forbrug end dette har ingen data (måleren fandtes ikke endnu) – tæller ikke med
 SUN_START, SUN_END = 6, 21  # timer hvor solceller regnes at producere (lokal tid)
 EFFICIENCY = 0.95  # tab ved afladning
+DEFAULT_KW = 0.5     # standardforbrug, indtil mønsteret er lært
+EVENING_KW = 1.5
+EVENING_HOURS = range(17, 20)  # kl. 17–20
 
 
 @dataclass
@@ -42,6 +45,12 @@ class Profile:
         return {"weekday": [round(v, 3) for v in self.weekday],
                 "weekend": [round(v, 3) for v in self.weekend], "days": self.days,
                 "weekday_days": self.weekday_days, "weekend_days": self.weekend_days}
+
+
+def default_profile() -> Profile:
+    """Standardforbrug, indtil husets eget mønster er lært – så der gemmes lidt strøm til aftenens dyre timer."""
+    hours = [EVENING_KW if h in EVENING_HOURS else DEFAULT_KW for h in range(24)]
+    return Profile(weekday=list(hours), weekend=list(hours), days=MIN_DAYS)
 
 
 def build_profile(hours: list[tuple[datetime, float]]) -> Profile:
