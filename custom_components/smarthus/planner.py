@@ -216,6 +216,35 @@ def heating_blocks(slots: list[Slot], hours: float, tz: tzinfo, *, most_expensiv
     return sorted(out, key=lambda s: s.start)
 
 
+NIGHT_FROM_H, NIGHT_TO_H = 18, 8   # én ladenat: fra kl. 18 til kl. 8 næste morgen
+
+
+def _merge_night_charge(plan: Plan, slots: list[Slot], now: datetime, tz: tzinfo) -> None:
+    """Ladetimerne vælges pr. døgn. Når morgendagens priser kommer, kan i aftes ladetimer (fx 23–24) og
+    nattens (fx 02–05) blive valgt hver for sig, selv om batteriet kun skal lades én gang i nat.
+    Vælg derfor nattens ladetimer igen samlet: de billigste blokke fra kl. 18 til kl. 8 – højst så mange
+    timer, som det ene døgn havde valgt i natten."""
+    local = now.astimezone(tz)
+    first = local.replace(hour=NIGHT_FROM_H, minute=0, second=0, microsecond=0)
+    if local.hour < NIGHT_TO_H:
+        first -= timedelta(days=1)
+    start = first.astimezone(now.tzinfo or tz)
+    end = (first + timedelta(hours=24 - NIGHT_FROM_H + NIGHT_TO_H)).astimezone(now.tzinfo or tz)
+    night = [s for s in slots if start <= s.start < end]
+    if not night or max(s.end for s in night) < end:
+        return                                  # nattens priser kendes ikke helt endnu
+    chosen = [s for s in plan.battery_charge if start <= s.start < end]
+    if not chosen:
+        return
+    midnight = (first + timedelta(days=1)).replace(hour=0)
+    hrs = lambda xs: sum((x.end - x.start).total_seconds() for x in xs) / 3600  # noqa: E731
+    quota = max(hrs([s for s in chosen if s.start < midnight]), hrs([s for s in chosen if s.start >= midnight]))
+    pick = cheapest_blocks(night, quota, BATTERY_MIN_BLOCK_H, min_gap_h=BATTERY_MIN_GAP_H)
+    keep = [s for s in plan.battery_charge if not (start <= s.start < end)]
+    plan.battery_charge = sorted(keep + pick, key=lambda s: s.start)
+    plan.battery_discharge = [s for s in plan.battery_discharge if s not in pick]
+
+
 def local_days(slots: list[Slot], tz: tzinfo) -> dict[str, list[Slot]]:
     """Grupper tidsrum pr. lokal dato."""
     days: dict[str, list[Slot]] = {}
@@ -581,6 +610,7 @@ def build_plan(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
         plan.heating_reduce += reduce
         plan.heating_boost += boost
 
+    _merge_night_charge(plan, slots, now, tz)
     plan.evs = plan_cars(slots, now, tz, settings, cars)
 
     cur = plan.current

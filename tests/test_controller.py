@@ -1258,3 +1258,27 @@ def test_planned_charge_spans_night_blocks():
     c.plan.battery_charge = [s for s in c.coordinator.data if s.price == 1.0]
     pc = c._plan_grid_charge(now)
     assert pc["periods"] == 1 and pc["prices_pending"], pc
+
+
+def test_night_charge_picked_across_midnight():
+    """Når morgendagens priser kommer, vælges nattens ladetimer samlet (ikke 23–24 fra i dag + 02–05 fra i morgen)."""
+    import datetime as _dt
+    from zoneinfo import ZoneInfo
+    planner = sys.modules["smarthus.planner"]
+    tz = ZoneInfo("Europe/Copenhagen")
+    c, _ = make({}, {})
+    now = _dt.datetime(2026, 11, 10, 19, 36, tzinfo=tz)
+    day0 = _dt.datetime(2026, 11, 10, tzinfo=tz)
+    price = {0: 2.5, 1: 2.5, 2: 2.5, 3: 2.6, 4: 3.0, 5: 3.0, 23: 2.45}         # i dag: 23–24 er blandt dagens billigste
+    price2 = {0: 2.3, 1: 2.2, 2: 2.1, 3: 2.1, 4: 2.1, 5: 2.4}                   # i morgen tidlig
+    slots = []
+    for h in range(48):
+        t = day0 + _dt.timedelta(hours=h)
+        p = price.get(h, 4.0) if h < 24 else price2.get(h - 24, 4.0)
+        for q in range(4):
+            s = t + _dt.timedelta(minutes=15 * q)
+            slots.append(planner.Slot(s, s + _dt.timedelta(minutes=15), 0, p, 1.0))
+    st = {**c.settings, "battery_charge_hours": 4.0, "battery_full_charge": True, "battery_discharge_hours": 3.0}
+    plan = planner.build_plan(slots, now, tz, st, cars=[])
+    night = sorted({s.start.astimezone(tz).hour for s in plan.battery_charge if s.start > now})
+    assert 23 not in night and night == [1, 2, 3, 4], night
