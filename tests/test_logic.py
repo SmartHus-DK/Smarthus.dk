@@ -1477,6 +1477,11 @@ def test_forecast_battery_charge_use_hold_and_sell():
                                  sell=sell, stock_price=2.4, can_hold=False)
     e = h["days"]["2026-11-02"]
     assert e["sell_kwh"] > 0 and e["sell_gain"] > 0 and e["sell_kwh"] + e["house_kwh"] <= 5.0 + 1e-6
+    assert h["sell"] and {x.start.hour for x in h["sell"]} == {17}
+    # Kun reserven i batteriet: salgstimen er planlagt, men der forventes intet salg
+    k = profile.forecast_battery(sp, prof, t0 + timedelta(hours=16), battery_kwh=2.0, floor_kwh=1.0, full_kwh=6.0, charge=[], hold=[],
+                                 sell=sell, stock_price=2.4, can_hold=False)
+    assert k["sell"] == [] and k["days"]["2026-11-02"]["sell_kwh"] == 0
 
 
 def test_profile_ignores_days_without_data():

@@ -342,6 +342,7 @@ def forecast_battery(slots: list, profile: Profile, now: datetime, *, battery_kw
             j += 1
         return j
 
+    selling: list = []                               # salgstimer, hvor der forventes noget over reserven
     for i, s in enumerate(fut):
         d = days.setdefault(s.start.astimezone(tz).date().isoformat(), _blank_day())
         a, b = max(s.start.astimezone(tz), now), s.end.astimezone(tz)
@@ -389,6 +390,7 @@ def forecast_battery(slots: list, profile: Profile, now: datetime, *, battery_kw
             d["house_value"] += used * s.price
             d["house_cost"] += used * cost
         if sold > 0.005:
+            selling.append(s)
             d["sell_kwh"] += sold
             d["sell_income"] += sold * s.sale
             d["sell_cost"] += sold * cost
@@ -398,7 +400,7 @@ def forecast_battery(slots: list, profile: Profile, now: datetime, *, battery_kw
         for k in list(d):
             d[k] = round(d[k], 2)
     held = [s for s in fut if s.start in hd]
-    return {"days": days, "use": use, "hold": held, "solar": sunny, "sun_cover": sun_cover}
+    return {"days": days, "use": use, "hold": held, "solar": sunny, "sun_cover": sun_cover, "sell": selling}
 
 
 def _hour_steps(start: datetime, end: datetime):

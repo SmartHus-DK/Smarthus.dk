@@ -139,6 +139,7 @@ from .const import (
 from .coordinator import SmartHusPriceCoordinator
 from . import growatt as gw
 from .planner import CHARGE_EFFICIENCY, full_charge_hours, CarInput, Plan, build_plan, car_ready, car_settings, heating_outdoor_ok
+SELL_RESTART_KWH = 0.5   # kWh over reserven, før salg starter igen efter et stop
 BATTERY_RECHARGE_MARGIN = 2.0   # %-point under højeste niveau, før batteriet lades fra nettet igen
 
 from .profile import (default_profile, EFFICIENCY, plan_hold, forecast_battery, LEARN_DAYS, SUN_END, SUN_START, Profile, Reserve, build_profile, calc_reserve,
@@ -800,9 +801,14 @@ class SmartHusController:
             solar_remaining=((self._energy_kwh(CONF_SOLAR_FORECAST) if self.has(CONF_SOLAR_FORECAST) and not self.solar_cal.active
                               else self.solar_forecast.get("remaining_kwh")) or 0) * self.solar_factor_today,
         )
-        # Sælg kun det, der er ud over reserven
-        if self.plan.battery_action == ACTION_DISCHARGE and self.reserve.sellable_kwh is not None \
-                and self.reserve.sellable_kwh <= 0.05:
+        # Sælg kun det, der er ud over reserven. Er salget stoppet ved reserven, startes det først igen,
+        # når der er lidt at sælge – ellers skifter batteriet frem og tilbage hvert minut.
+        sellable = self.reserve.sellable_kwh
+        if sellable is not None and sellable <= 0.05:
+            self._sell_stopped = True
+        elif sellable is None or sellable >= SELL_RESTART_KWH:
+            self._sell_stopped = False
+        if self.plan.battery_action == ACTION_DISCHARGE and self.__dict__.get("_sell_stopped"):
             self.plan.battery_action = ACTION_NORMAL
             self.reserve_holds = True
         self._decide_grid_charge(now)
@@ -1094,6 +1100,9 @@ class SmartHusController:
                              solar=self._solar_hours(),
                              charge_target=lambda t: self._charge_target(t, by_start[t]))
         p.battery_use = f["use"]
+        # Vis kun salg, hvor der forventes strøm over reserven (den igangværende time styres af reserven selv)
+        will_sell = {s.start for s in f.get("sell", [])}
+        p.battery_discharge = [s for s in p.battery_discharge if s.start in will_sell or s is p.current]
         p.battery_solar = f["solar"]
         p.solar_cover = f["sun_cover"]
         # Vis også gem-tidsrummene efter næste opladning (de nuværende styrer stadig inverteren)

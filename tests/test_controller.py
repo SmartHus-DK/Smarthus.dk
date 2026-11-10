@@ -1024,6 +1024,13 @@ def test_planned_charge_can_be_read_in_advance():
     assert c._plan_grid_charge(now) is None
 
 
+def test_sell_waits_after_reserve_stop():
+    """Salg stoppet ved reserven starter først igen ved mindst 0,5 kWh til salg."""
+    ct = sys.modules["smarthus.controller"]
+    src = open(ct.__file__, encoding="utf8").read()
+    assert "SELL_RESTART_KWH" in src and ct.SELL_RESTART_KWH == 0.5
+
+
 def test_battery_not_recharged_right_after_reaching_max():
     """Billig time og 97 % af 98 %: lad, medmindre batteriet lige har været fuldt."""
     planner = sys.modules["smarthus.planner"]
