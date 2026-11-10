@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.66.11";
+const SMARTHUS_CARD_VERSION = "1.66.12";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -73,7 +73,9 @@ function chargePlanText(a) {
   const nextDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
   const word = s <= now ? "nu" : s.getHours() < 6 && s - now < 12 * 3600e3 ? "i nat" : s < nextDay ? "i dag" : "i morgen";
   const dec = (v) => String(v).replace(".", ",");
-  return `<b>Lader ${word} ${clock(s)}–${clock(e)}</b>: ca. ${dec(c.kwh)} kWh op til ${c.target_soc} % · ca. ${dec(c.cost.toFixed(0))} kr`;
+  const parts = c.periods > 1 ? ` (${c.periods} tidsrum, ${dec(Math.round(c.hours * 10) / 10)} t)` : "";
+  const more = c.prices_pending ? " · flere timer kan komme til, når morgendagens priser kommer ca. kl. 13" : "";
+  return `<b>Lader ${word} ${clock(s)}–${clock(e)}</b>${parts}: ca. ${dec(c.kwh)} kWh op til ${c.target_soc} % · ca. ${dec(c.cost.toFixed(0))} kr${more}`;
 }
 
 const MODULES = [

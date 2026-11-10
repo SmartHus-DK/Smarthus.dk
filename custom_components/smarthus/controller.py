@@ -872,12 +872,20 @@ class SmartHusController:
         cap = self.settings[S_BATTERY_CAPACITY]
         if not later or soc is None or cap <= 0:
             return None
+        # Samme ladenat: tidsrum med højst 8 timers mellemrum og ingen afladning/salg imellem
+        stops = sorted(s.start for s in p.battery_discharge if s.end > now)
         block = [later[0]]
         for s in later[1:]:
-            if s.start != block[-1].end:
+            gap_end = s.start
+            if (gap_end - block[-1].end) > timedelta(hours=8) or any(block[-1].end <= d < gap_end for d in stops):
                 break
             block.append(s)
         start, end = max(block[0].start, now), block[-1].end
+        hours = sum(((sl.end - max(sl.start, now)).total_seconds() for sl in block if sl.end > now), 0.0) / 3600
+        periods, prev = 0, None
+        for sl in block:
+            periods += prev is None or sl.start != prev
+            prev = sl.end
         price = sum(s.price for s in block) / len(block)
         floor, full = cap * self.settings[S_BATTERY_MIN_SOC] / 100, cap * self.settings[S_BATTERY_MAX_SOC] / 100
         e = cap * soc / 100
@@ -890,10 +898,18 @@ class SmartHusController:
         kwh = max(target - e, 0.0)
         kw = float(self.settings.get(S_BATTERY_MAX_CHARGE_KW, 0) or 0)
         if kw > 0:                                  # kan ikke lade mere, end tidsrummet giver plads til
-            kwh = min(kwh, kw * 0.95 * (end - start).total_seconds() / 3600)
+            kwh = min(kwh, kw * 0.95 * hours)
         if kwh <= 0.05:
             return None
+        # Morgendagens priser kendes ikke endnu: flere ladetimer i nat kan komme til
+        data = getattr(self.coordinator, "data", None) or []
+        last = max((sl.end for sl in data), default=end)
+        next_morning = (end.astimezone(self.tz) + timedelta(hours=12)).replace(hour=6, minute=0, second=0, microsecond=0)
+        if next_morning - end.astimezone(self.tz) > timedelta(hours=18):
+            next_morning -= timedelta(days=1)
+        pending = last < next_morning and e + kwh < target - 0.3
         return {"start": start.isoformat(), "end": end.isoformat(), "kwh": round(kwh, 1),
+                "hours": round(hours, 2), "periods": periods, "prices_pending": pending,
                 "soc_at_start": round(e / cap * 100), "target_soc": round((e + kwh) / cap * 100),
                 "avg_price": round(price, 2), "cost": round(kwh * price, 2)}
 

@@ -1225,3 +1225,36 @@ def test_charge_fault_warning_until_unplugged():
         clock[0] = 2000; c._track_fault(); clock[0] = 2400; c._track_fault(); assert "ev" not in c.ev_fault
     finally:
         ctl_mod.time.monotonic = real
+
+
+def test_planned_charge_spans_night_blocks():
+    """Ladning før og efter midnat (uden afladning imellem) tælles som én ladenat."""
+    prof = sys.modules["smarthus.profile"]
+    planner = sys.modules["smarthus.planner"]
+    import datetime as _dt
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("Europe/Copenhagen")
+    now = _dt.datetime(2026, 11, 10, 10, 45, tzinfo=tz)
+    c, _ = make({"battery_mode_entity": "select.mode", "battery_soc_sensor": "sensor.soc"}, {"sensor.soc": State("9")})
+    c.settings.update(battery_capacity=13.8, battery_min_soc=5, battery_max_soc=100, battery_max_charge_kw=3.8)
+    c.flags["battery_full_charge"] = True
+    c.profile = prof.Profile(weekday=[0.3] * 24, weekend=[0.3] * 24, days=9, weekday_days=7, weekend_days=2)
+    c._forecast_wh = {}
+    slots, t = [], now.replace(minute=0)
+    while t < _dt.datetime(2026, 11, 11, 13, tzinfo=tz):
+        cheap = (t.day == 10 and t.hour == 23) or (t.day == 11 and 2 <= t.hour < 5)
+        slots.append(planner.Slot(t, t + _dt.timedelta(minutes=15), 0, 1.0 if cheap else 3.0, 1.4))
+        t += _dt.timedelta(minutes=15)
+    c.coordinator = types.SimpleNamespace(data=slots)
+    c.plan.battery_charge = [s for s in slots if s.price == 1.0]
+    c.plan.battery_discharge = []
+    c.plan.current = slots[0]
+    pc = c._plan_grid_charge(now)
+    assert pc["start"].startswith("2026-11-10T23:00") and pc["end"].startswith("2026-11-11T05:00"), pc
+    assert pc["periods"] == 2 and pc["hours"] == 4 and pc["target_soc"] >= 99, pc
+    assert not pc["prices_pending"]
+    # Kun kendte priser til midnat: viser 1 time og at flere kan komme
+    c.coordinator = types.SimpleNamespace(data=[s for s in slots if s.start.day == 10])
+    c.plan.battery_charge = [s for s in c.coordinator.data if s.price == 1.0]
+    pc = c._plan_grid_charge(now)
+    assert pc["periods"] == 1 and pc["prices_pending"], pc
