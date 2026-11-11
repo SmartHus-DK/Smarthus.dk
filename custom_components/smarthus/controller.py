@@ -826,7 +826,7 @@ class SmartHusController:
         return full_charge_hours(self.settings[S_BATTERY_CAPACITY], self.settings[S_BATTERY_MIN_SOC],
                                  self.settings[S_BATTERY_MAX_SOC], kw)
 
-    def _night_need(self, now: datetime) -> dict | None:
+    def _night_need(self, now: datetime, until: datetime | None = None) -> dict | None:
         """Hvor meget batteriet skal have, når solen står op, for at klare huset resten af dagen og aftenen –
         regnet time for time med husets forbrugsmønster og solprognosen. None = mangler data."""
         solar = self._solar_hours()
@@ -840,6 +840,12 @@ class SmartHusController:
         day = local if local.hour < SUN_START else local + timedelta(days=1)
         sun = day.replace(hour=SUN_START, minute=0, second=0, microsecond=0)
         end = (day + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        if until is None:
+            # Kun frem til næste opladning fra nettet samme dag (fx kl. 21:30) – den dækker resten af aftenen
+            nxt = [s.start.astimezone(self.tz) for s in self.plan.battery_charge
+                   if sun < s.start.astimezone(self.tz) < end]
+            until = min(nxt) if nxt else end
+        end = min(max(until.astimezone(self.tz), sun), end)
         need = battery_need_at(self.profile, solar, sun, end, floor=floor, full=full)
         return {"sun": sun, "need_at_sun": need, "floor": floor, "full": full, "solar": solar}
 
@@ -862,7 +868,22 @@ class SmartHusController:
         day = local if local.hour < SUN_END - 3 else local + timedelta(days=1)
         if self._sell_solar_better(day, price)[1]:
             return full
-        return min(n["need_at_sun"] + expected_load(self.profile, local, n["sun"]) / EFFICIENCY, full)
+        return min(n["need_at_sun"] + self._load_until_sun(start, n["sun"]) / EFFICIENCY, full)
+
+    def _charge_end(self, t: datetime) -> datetime:
+        """Slut på den sammenhængende ladeblok, som `t` ligger i (eller `t`, hvis der ikke lades)."""
+        end = t
+        for s in sorted(self.plan.battery_charge, key=lambda s: s.start):
+            if s.start <= end < s.end or (s.start == end and end > t):
+                end = s.end
+        return end
+
+    def _load_until_sun(self, t: datetime, sun: datetime) -> float:
+        """Husets forbrug fra batteriet indtil solen: mens der lades fra nettet, kører huset på nettet
+        (og batteriet står stille, når målet er nået), så forbruget tæller først fra ladeblokkens slutning."""
+        start = self._charge_end(t) if self.has_hold else t
+        local = start.astimezone(self.tz)
+        return expected_load(self.profile, local, sun) if local < sun else 0.0
 
     def _plan_grid_charge(self, now: datetime) -> dict | None:
         """Næste opladning fra nettet: tidsrum, kWh, SoC og pris. None = ingen opladning planlagt."""
@@ -933,7 +954,7 @@ class SmartHusController:
         else:
             start = local
         # Samme mål som planen og styringen (_charge_target / _decide_grid_charge): inkl. ladetab, højst fuldt
-        target = min(n["need_at_sun"] + expected_load(self.profile, start, n["sun"]) / EFFICIENCY, n["full"])
+        target = min(n["need_at_sun"] + self._load_until_sun(start, n["sun"]) / EFFICIENCY, n["full"])
         need_kwh = target - e
         if need_kwh <= 0.05:
             return 0.0
@@ -974,7 +995,7 @@ class SmartHusController:
         n = self._night_need(now)
         if n is not None and local < n["sun"]:
             # Time for time: det batteriet skal have ved solopgang + husets forbrug indtil da
-            target = min(n["need_at_sun"] + expected_load(self.profile, local, n["sun"]) / EFFICIENCY, cap * mx / 100)
+            target = min(n["need_at_sun"] + self._load_until_sun(now, n["sun"]) / EFFICIENCY, cap * mx / 100)
         # Er salg af solstrøm midt på dagen bedre end at bruge den selv? Så lades der fuldt fra nettet.
         sale_mid, sell_better = self._sell_solar_better(day, p.current.price)
         if sell_better or self.full_charge_hours:

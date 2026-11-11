@@ -1309,3 +1309,28 @@ def test_full_night_charge_not_moved_to_next_evening():
     end = _dt.datetime(2026, 11, 12, 8, tzinfo=tz)
     night = [s for s in plan.battery_charge if now < s.start < end]
     assert len(night) * 0.25 >= 3.75, sorted({s.start.astimezone(tz).hour for s in night})
+
+
+def test_charge_end_and_need_until_next_charge():
+    """Forbrug under netopladningen tæller ikke; behovet regnes kun frem til næste opladning (Karsten 11/11)."""
+    import datetime as _dt
+    from zoneinfo import ZoneInfo
+    planner = sys.modules["smarthus.planner"]
+    tz = ZoneInfo("Europe/Copenhagen")
+    c, _ = make({}, {})
+    t0 = _dt.datetime(2026, 11, 12, 2, 30, tzinfo=tz)
+    q = _dt.timedelta(minutes=15)
+    night = [planner.Slot(t0 + i * q, t0 + (i + 1) * q, 0, 2.0, 1.0) for i in range(14)]         # 02:30–06:00
+    eve0 = _dt.datetime(2026, 11, 12, 21, 30, tzinfo=tz)
+    eve = [planner.Slot(eve0 + i * q, eve0 + (i + 1) * q, 0, 2.0, 1.0) for i in range(10)]       # 21:30–24:00
+    c.plan.battery_charge = night + eve
+    assert c._charge_end(t0) == _dt.datetime(2026, 11, 12, 6, tzinfo=tz)
+    assert c._charge_end(t0 + 5 * q) == _dt.datetime(2026, 11, 12, 6, tzinfo=tz)
+    c.profile = sys.modules["smarthus.profile"].Profile(weekday=[1.0] * 24, weekend=[1.0] * 24, days=9,
+                                                        weekday_days=7, weekend_days=2)
+    c._forecast_wh = {_dt.datetime(2026, 11, 12, 12, tzinfo=tz).isoformat(): 0}
+    c.settings.update(battery_capacity=30, battery_min_soc=0, battery_max_soc=100)
+    n = c._night_need(t0)
+    assert n is not None
+    if n is not None:   # 1 kW fra kl. 6 til næste opladning kl. 21:30 = 15,5 kWh (ikke til midnat)
+        assert abs(n["need_at_sun"] - 15.5 / 0.95) < 0.6 or abs(n["need_at_sun"] - 15.5) < 0.6, n["need_at_sun"]
