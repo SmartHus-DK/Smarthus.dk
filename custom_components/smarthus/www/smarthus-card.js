@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.66.13";
+const SMARTHUS_CARD_VERSION = "1.66.14";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -2911,7 +2911,7 @@ class SmartHusEnergyCard extends SmartHusCard {
       use.push(row("other", OTHER_COLOR, "mdi:dots-horizontal-circle-outline", "Andet", sub("Resten af huset", share(p.other), avg(p.other, p.other_kr)), sKwh(-p.other), sKr(-p.other_kr), "sub"));
     }
     if (p.house != null) {
-      use.unshift(row("house", "#1E9E5C", "mdi:home-outline", "Total energi til huset", sub("Strøm fra nettet, solceller og batteri", avg(p.house, p.house_kr)),
+      use.unshift(row("house", "#1E9E5C", "mdi:home-outline", "Forbrug i huset", sub("Strøm fra nettet, solceller og batteri", avg(p.house, p.house_kr)),
         sKwh(-p.house), sKr(-p.house_kr)));
     }
     const src = [];
@@ -2948,12 +2948,13 @@ class SmartHusEnergyCard extends SmartHusCard {
         part("Afladet", p.bat_out, p.bat_out_kr, 1);
       }
     }
+    // Nettet øverst: forbrug (minus), solceller (plus) og batteri (netto) giver tilsammen nettet – solgt minus købt
+    const grid = [];
     if (has.import || has.export) {
-      src.push(row("grid", "#6F7F91", "mdi:transmission-tower", "Total net", "Købt minus solgt",
-        // Nettet leverer til huset og står med plus, så solceller, batteri og net tilsammen giver husets forbrug
-        sKwh((p.grid_in || 0) - (p.grid_out || 0)), sKr(p.bill)));
-      if (has.import) src.push(row("grid_in", "#6F7F91", "mdi:transmission-tower-import", "Købt fra nettet", avg(p.grid_in, p.grid_in_kr), sKwh(p.grid_in), sKr(p.grid_in_kr), "sub"));
-      if (has.export) src.push(row("grid_out", "#6F7F91", "mdi:transmission-tower-export", "Solgt til nettet", avg(p.grid_out, p.grid_out_kr), sKwh(-p.grid_out), sKr(-p.grid_out_kr), "sub"));
+      grid.push(row("grid", "#6F7F91", "mdi:transmission-tower", "Total net", "Solgt minus købt · summen af punkterne herunder",
+        sKwh((p.grid_out || 0) - (p.grid_in || 0)), sKr(-(p.bill || 0)), (p.bill || 0) < 0 ? "plus" : ""));
+      if (has.import) grid.push(row("grid_in", "#6F7F91", "mdi:transmission-tower-import", "Købt fra nettet", avg(p.grid_in, p.grid_in_kr), sKwh(-p.grid_in), sKr(-p.grid_in_kr), "sub"));
+      if (has.export) grid.push(row("grid_out", "#6F7F91", "mdi:transmission-tower-export", "Solgt til nettet", avg(p.grid_out, p.grid_out_kr), sKwh(p.grid_out), sKr(p.grid_out_kr), "plus sub"));
     }
     // Hovedrækkerne står alene; underposterne foldes ud med et tryk på hovedrækken
     const group = (title, items) => {
@@ -2978,7 +2979,7 @@ class SmartHusEnergyCard extends SmartHusCard {
               <span class="big-lbl">brugt i huset${picked ? ` ${esc(this._enLabel(view.kind, picked, true))}${view.year ? ` ${view.year}` : ""}` : view.year ? ` i ${view.year}` : ""} · ${kr(p.house_kr)}</span></div>
             ${this._energyChart(view, devs)}
           </div>
-          <div class="en-list">${group("Forbrug i huset", use)}${group("Produktion og nettet", src)}</div>
+          <div class="en-list">${group("Nettet", grid).replace('class="en-group"', 'class="en-group en-net"')}${group("Forbrug og produktion", [...use, ...src])}</div>
         </div>
         ${foot}
       </div>`;
@@ -3068,6 +3069,7 @@ class SmartHusEnergyCard extends SmartHusCard {
                 border-top: 1px solid var(--sh-line); }
       .en-gtitle + .en-row { border-top: 0; }
       .en-group + .en-group { margin-top: 14px; }
+      .en-group.en-net { border-bottom: 2px solid var(--divider-color, rgba(127,127,127,.35)); padding-bottom: 4px; }
       .en-gtitle { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--secondary-text-color); padding: 4px 0 2px; }
       .en-row.total { border-top: 2px solid var(--secondary-text-color); font-weight: 600; }
       .en-ic { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; color: var(--c);
