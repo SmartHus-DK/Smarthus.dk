@@ -1694,3 +1694,36 @@ def test_temperature_model_needs_variation():
     hours, temps = _temp_house(0.08)
     flat = {t: 8.0 for t in temps}
     assert not profile.fit_temperature(hours, flat).active
+
+
+def test_heatpump_model_learns_daily_energy_and_shifts_with_plan():
+    """Varmepumpe med egen måler: døgnforbrug mod graddage, fordelt på timer og flyttet af sparetimer."""
+    import random
+    rnd = random.Random(3)
+    t0 = datetime(2026, 10, 14, tzinfo=TZ)
+    hours, temps = [], {}
+    for i in range(28 * 24):
+        t = t0 + timedelta(hours=i)
+        day_temp = 10 - (i // 24) * 0.25 + rnd.uniform(-2, 2) * (1 if (i // 24) % 3 else -1)
+        temps[t] = day_temp
+        hours.append((t, (2.0 + 1.5 * max(16 - day_temp, 0)) / 24))   # døgn: 2 kWh + 1,5 kWh pr. graddag
+    today = (t0 + timedelta(days=28)).date()
+    m = profile.fit_heatpump(hours, temps, today, profile_from=t0 + timedelta(days=14))
+    assert m.active and abs(m.k - 1.5) < 0.05 and abs(m.c0 - 2.0) < 0.5, m.as_dict()
+    assert m.yesterday["error_pct"] is not None and abs(m.yesterday["error_pct"]) < 3
+    day = datetime(2026, 11, 11, tzinfo=TZ)
+    plain = profile.heatpump_hours(m, day, 10.0)
+    assert abs(sum(plain) - m.day_kwh(10.0)) < 1e-6
+    shifted = profile.heatpump_hours(m, day, 10.0, reduce={17, 18}, boost={13, 14})
+    assert abs(sum(shifted) - sum(plain)) < 1e-6                     # samme energi – bare flyttet
+    assert shifted[17] < plain[17] and shifted[13] > plain[13]
+    # Uden ekstra-timer hentes varmen ind lige efter sparetimerne
+    after = profile.heatpump_hours(m, day, 10.0, reduce={17, 18})
+    assert after[19] > plain[19] and abs(sum(after) - sum(plain)) < 1e-6
+
+
+def test_heatpump_model_needs_days():
+    t0 = datetime(2026, 11, 9, tzinfo=TZ)
+    hours = [(t0 + timedelta(hours=i), 0.5) for i in range(48)]
+    temps = {t: 5.0 for t, _ in hours}
+    assert not profile.fit_heatpump(hours, temps, (t0 + timedelta(days=2)).date()).active

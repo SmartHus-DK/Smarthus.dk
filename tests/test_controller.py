@@ -1334,3 +1334,29 @@ def test_charge_end_and_need_until_next_charge():
     assert n is not None
     if n is not None:   # 1 kW fra kl. 6 til næste opladning kl. 21:30 = 15,5 kWh (ikke til midnat)
         assert abs(n["need_at_sun"] - 15.5 / 0.95) < 0.6 or abs(n["need_at_sun"] - 15.5) < 0.6, n["need_at_sun"]
+
+
+def test_apply_temp_adjust_heatpump_follows_plan():
+    """Planens sparetimer flytter varmepumpens forventede forbrug i husets mønster (samme døgnforbrug)."""
+    import datetime as _dt
+    prof = sys.modules["smarthus.profile"]
+    planner = sys.modules["smarthus.planner"]
+    c, _ = make({}, {})
+    now = ctl_mod.dt_util.now().astimezone(c.tz)
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    c.learned_profile = prof.Profile(weekday=[1.0] * 24, weekend=[1.0] * 24, days=9, weekday_days=7, weekend_days=2)
+    c.profile = c.learned_profile
+    c.temp_model = prof.TempModel()
+    m = prof.HeatPumpModel(c0=12.0, k=0.0, days=10, active=True)
+    m.share = {False: [1 / 24] * 24, True: [1 / 24] * 24}
+    c.hp_model = m
+    c._hp_avg = {False: [0.5] * 24, True: [0.5] * 24}
+    c._temps = {today + _dt.timedelta(hours=h): 5.0 for h in range(72)}
+    tm = today + _dt.timedelta(days=1)
+    red = [planner.Slot(tm.replace(hour=18) + _dt.timedelta(minutes=15 * q), tm.replace(hour=18) + _dt.timedelta(minutes=15 * (q + 1)), 0, 4.0, 1.0) for q in range(4)]
+    c.plan.heating_reduce, c.plan.heating_boost = red, []
+    c.enabled = {ctl_mod.MODULE_MASTER: True, ctl_mod.MODULE_HEATING: True}
+    c._apply_temp_adjust()
+    hrs = c.profile.hours_for(tm)
+    assert abs(sum(hrs) - (24 * 1.0 + 12.0 - 24 * 0.5)) < 1e-6        # huset + varmepumpens døgnforbrug
+    assert hrs[18] < hrs[12] < hrs[19]                                 # sparet kl. 18, hentet ind kl. 19–21

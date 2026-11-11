@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.66.19";
+const SMARTHUS_CARD_VERSION = "1.66.20";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -153,7 +153,7 @@ const HELP = {
     { k: ["battery_capacity"], t: "Batteriets størrelse",
       d: "Den brugbare kapacitet i kWh – står på batteriet eller i inverterens app. Bruges til at regne ud, hvor meget der skal lades, hvor meget huset skal have i reserve, og hvor meget der kan sælges. Et forkert tal giver forkerte beslutninger." },
     { k: ["battery_capacity"], t: "Husets forbrugsmønster",
-      d: "SmartHus lærer selv, hvad huset bruger time for time – hverdage og weekender hver for sig, og uden elbilens opladning. Mønsteret regnes forfra hver nat ud fra de seneste 14 dage, så det følger med, når forbruget ændrer sig (fx vinter, ny varmepumpe). De første 2 dage bruges et standardforbrug på 0,5 kW og 1,5 kW kl. 17–20. Varmes huset med el (fx en varmepumpe, også en der ikke er koblet på), lærer SmartHus selv, hvor meget forbruget stiger, når det bliver koldere, og regner vejrudsigten med – så der lades mere før en kold dag." },
+      d: "SmartHus lærer selv, hvad huset bruger time for time – hverdage og weekender hver for sig, og uden elbilens opladning. Mønsteret regnes forfra hver nat ud fra de seneste 14 dage, så det følger med, når forbruget ændrer sig (fx vinter, ny varmepumpe). De første 2 dage bruges et standardforbrug på 0,5 kW og 1,5 kW kl. 17–20. Varmes huset med el (fx en varmepumpe, også en der ikke er koblet på), lærer SmartHus selv, hvor meget forbruget stiger, når det bliver koldere, og regner vejrudsigten med – så der lades mere før en kold dag. Har varmepumpen sin egen måler, planlægges den for sig: døgnets forbrug ud fra vejrudsigten, flyttet efter SmartHus' spare- og ekstra-timer, og modellen retter sig selv hver nat ud fra, hvad den faktisk brugte." },
     { k: ["battery_capacity"], t: "Batteriets besparelse",
       d: "Besparelsen regnes, når strømmen i batteriet bruges: hvad den er værd i huset (eller sælges for), minus hvad den kostede at lade – netstrøm til købsprisen, solstrøm til den salgspris, du gav afkald på. En opladning om natten trækker derfor ikke dagens besparelse ned, før strømmen bruges." },
     { k: ["battery_solar_forecast_pct"], t: "Regn med af solprognosen",
@@ -1663,6 +1663,16 @@ class SmartHusCard extends HTMLElement {
   }
 
   /** Batteriets reserve: forventet husforbrug til strømmen bliver billig igen, og hvad der må sælges. */
+  /** Varmepumpe med egen måler: forventet døgnforbrug og hvor godt modellen ramte i går. */
+  _hpNote(a, tab) {
+    const hp = a.heatpump_model;
+    if (!hp) return "";
+    const kwh = tab === "today" ? a.heatpump_today_kwh : tab === "tomorrow" ? a.heatpump_tomorrow_kwh : null;
+    const y = hp.yesterday || {};
+    const yTxt = y.expected_kwh != null ? ` · i går forventet ${nf(y.expected_kwh, 1)}, faktisk ${nf(y.actual_kwh, 1)} kWh` : "";
+    return `<br><span class="muted">Varmepumpen${kwh != null ? `: ca. <b>${nf(kwh, 1)} kWh</b> ${tab === "today" ? "i dag" : "i morgen"}` : ""} – efter vejrudsigten og SmartHus' spare- og ekstra-timer${yTxt}.</span>`;
+  }
+
   _reserveBox() {
     const r = this._st("sensor", "battery_reserve");
     if (!r) return "";
@@ -1689,7 +1699,7 @@ class SmartHusCard extends HTMLElement {
     const tempTxt = tm.active && extra != null && Math.abs(extra) >= 0.1
       ? ` · ${extra > 0 ? "koldere" : "mildere"} end normalt: <b>${extra > 0 ? "+" : "−"}${nf(Math.abs(extra), 1)} kWh</b>` : "";
     const dayWord = ptab === "today" ? "i dag" : ptab === "tomorrow" ? "i morgen" : `pr. ${isWe ? "weekenddag" : "hverdag"}`;
-    const profSum = `Forventet forbrug <b>${nf(dayKwh, 1)} kWh</b> ${dayWord}${tempTxt}${restKwh != null ? ` · resten af i dag ca. <b>${nf(restKwh, 1)} kWh</b>` : ""}${learned != null ? ` <span class="muted">· lært af ${nf(learned, 0)} ${learned === 1 ? "dag" : "dage"}</span>` : ""}${tm.active ? `<br><span class="muted">Huset bruger ca. ${nf(tm.k, 2)} kWh mere i timen pr. grad, det er koldere – vejrudsigten regnes med.</span>` : ""}`;
+    const profSum = `Forventet forbrug <b>${nf(dayKwh, 1)} kWh</b> ${dayWord}${tempTxt}${restKwh != null ? ` · resten af i dag ca. <b>${nf(restKwh, 1)} kWh</b>` : ""}${learned != null ? ` <span class="muted">· lært af ${nf(learned, 0)} ${learned === 1 ? "dag" : "dage"}</span>` : ""}${tm.active ? `<br><span class="muted">Huset bruger ca. ${nf(tm.k, 2)} kWh mere i timen pr. grad, det er koldere – vejrudsigten regnes med.</span>` : ""}${this._hpNote(a, ptab)}`;
     const until = a.until ? new Date(a.until) : null;
     const untilTxt = until ? `${until.getDate() !== new Date().getDate() ? "i morgen " : ""}kl. ${hh(until)}` : "";
     const bat = a.battery_kwh, sell = a.sellable_kwh ?? 0;

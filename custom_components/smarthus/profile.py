@@ -196,6 +196,104 @@ def temperature_adjust(model: TempModel, forecast: dict[datetime, float]) -> dic
     return out
 
 
+# --- Varmepumpe med egen måler: døgnets forbrug ud fra udetemperaturen, fordelt efter timerne og SmartHus' plan ---
+HP_HALF_LIFE_DAYS = 10.0   # nyere døgn vejer mest – så modellen følger med sæsonen og varmepumpens virkningsgrad
+HP_MIN_DAYS = 3
+HP_REDUCE_KEEP = 0.5       # i sparetimerne bruger varmepumpen ca. halvdelen – resten flyttes til ekstra-timerne
+
+
+def hour_averages(hours: list[tuple[datetime, float]]) -> dict[bool, list[float]]:
+    """Gennemsnit pr. time på døgnet (weekend?, time) – uden grundforbrugs-trick, til en enkelt måler."""
+    acc = {False: [[0.0, 0] for _ in range(24)], True: [[0.0, 0] for _ in range(24)]}
+    for t, k in hours:
+        if k is None or not 0 <= k <= MAX_HOUR_KWH:
+            continue
+        a = acc[t.weekday() >= 5][t.hour]
+        a[0] += k
+        a[1] += 1
+    out = {}
+    for we in (False, True):
+        other = acc[not we]
+        out[we] = [a[0] / a[1] if a[1] else (other[h][0] / other[h][1] if other[h][1] else 0.0)
+                   for h, a in enumerate(acc[we])]
+    return out
+
+
+@dataclass
+class HeatPumpModel:
+    """Varmepumpens døgnforbrug: c0 + k × (døgnets gennemsnitlige graddage). Fordeles efter timeprofilen."""
+    c0: float = 0.0
+    k: float = 0.0
+    days: int = 0
+    active: bool = False
+    avg: dict = field(default_factory=dict)      # weekend? -> 24 timers gennemsnit (seneste 14 dage)
+    share: dict = field(default_factory=dict)    # weekend? -> andel af døgnet pr. time
+    yesterday: dict = field(default_factory=dict)
+
+    def day_kwh(self, mean_hdd: float) -> float:
+        return max(self.c0 + self.k * mean_hdd, 0.0)
+
+    def as_dict(self) -> dict:
+        return {"active": self.active, "days": self.days, "base_kwh_day": round(self.c0, 2),
+                "kwh_per_degree_day": round(self.k, 2), "yesterday": self.yesterday}
+
+
+def fit_heatpump(hp_hours: list[tuple[datetime, float]], temps: dict[datetime, float], today,
+                 profile_from: datetime | None = None) -> HeatPumpModel:
+    """Lær varmepumpens døgnforbrug mod udetemperaturen (vægtet, så de nyeste døgn tæller mest)."""
+    m = HeatPumpModel()
+    recent = [(t, k) for t, k in hp_hours if profile_from is None or t >= profile_from]
+    m.avg = hour_averages(recent)
+    for we in (False, True):
+        tot = sum(m.avg[we])
+        m.share[we] = [v / tot for v in m.avg[we]] if tot > 0 else [1 / 24] * 24
+    per_day: dict = {}
+    for t, k in hp_hours:
+        if k is None or not 0 <= k <= MAX_HOUR_KWH or t not in temps or t.date() >= today:
+            continue
+        d = per_day.setdefault(t.date(), [0.0, 0.0, 0])
+        d[0] += k
+        d[1] += hdd(temps[t])
+        d[2] += 1
+    days = [(d, v[0], v[1] / v[2]) for d, v in per_day.items() if v[2] >= 22]   # (næsten) hele døgn
+    m.days = len(days)
+    if m.days < HP_MIN_DAYS:
+        return m
+    w = [0.5 ** ((today - d).days / HP_HALF_LIFE_DAYS) for d, _, _ in days]
+    sw = sum(w)
+    mx = sum(wi * x for wi, (_, _, x) in zip(w, days)) / sw
+    my = sum(wi * y for wi, (_, y, _) in zip(w, days)) / sw
+    sxx = sum(wi * (x - mx) ** 2 for wi, (_, _, x) in zip(w, days))
+    sxy = sum(wi * (x - mx) * (y - my) for wi, (_, y, x) in zip(w, days))
+    m.k = max(sxy / sxx, 0.0) if sxx > 0.5 else 0.0      # for lidt temperaturudsving: kun gennemsnittet
+    m.c0 = my - m.k * mx
+    m.active = True
+    last = max(days)
+    pred = m.day_kwh(last[2])
+    m.yesterday = {"date": last[0].isoformat(), "expected_kwh": round(pred, 1), "actual_kwh": round(last[1], 1),
+                   "error_pct": round((last[1] - pred) / pred * 100) if pred > 0.5 else None}
+    return m
+
+
+def heatpump_hours(m: HeatPumpModel, day: datetime, mean_hdd: float,
+                   reduce: set[int] | None = None, boost: set[int] | None = None) -> list[float]:
+    """Varmepumpens forventede forbrug time for time en given dag – med SmartHus' sparetimer og ekstra-timer."""
+    total = m.day_kwh(mean_hdd)
+    out = [total * f for f in m.share[day.weekday() >= 5]]
+    reduce, boost = reduce or set(), boost or set()
+    moved = 0.0
+    for h in sorted(reduce):
+        cut = out[h] * (1 - HP_REDUCE_KEEP)
+        out[h] -= cut
+        moved += cut
+    if moved > 0:
+        # Den sparede varme hentes ind i ekstra-timerne – ellers i timerne lige efter sparetimerne
+        targets = sorted(boost - reduce) or sorted({(max(reduce) + i) % 24 for i in (1, 2, 3)} - reduce)
+        for h in targets:
+            out[h] += moved / len(targets)
+    return out
+
+
 def expected_load(profile: Profile, start: datetime, end: datetime) -> float:
     """Forventet forbrug (kWh) mellem to lokale tidspunkter."""
     if end <= start:

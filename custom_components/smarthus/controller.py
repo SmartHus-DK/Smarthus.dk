@@ -143,7 +143,8 @@ from .planner import CHARGE_EFFICIENCY, full_charge_hours, CarInput, Plan, build
 SELL_RESTART_KWH = 0.5   # kWh over reserven, før salg starter igen efter et stop
 BATTERY_RECHARGE_MARGIN = 2.0   # %-point under højeste niveau, før batteriet lades fra nettet igen
 
-from .profile import (default_profile, EFFICIENCY, TEMP_LEARN_DAYS, TempModel, fit_temperature, temperature_adjust, plan_hold, forecast_battery, LEARN_DAYS, SUN_END, SUN_START, Profile, Reserve, build_profile, calc_reserve,
+from .profile import (default_profile, EFFICIENCY, TEMP_LEARN_DAYS, TempModel, fit_temperature, temperature_adjust,
+                      HeatPumpModel, fit_heatpump, heatpump_hours, hour_averages, hdd, plan_hold, forecast_battery, LEARN_DAYS, SUN_END, SUN_START, Profile, Reserve, build_profile, calc_reserve,
                       expected_load, grid_charge_target, solar_surplus, battery_need_at, simulate_battery)
 from .savings import SavingsCalculator
 from .hotwater import cooling_rate, plan_demand
@@ -239,6 +240,9 @@ class SmartHusController:
         self._temps: dict[datetime, float] = {}      # udetemperatur pr. lokal time (historik + vejrudsigt)
         self._temps_at: datetime | None = None
         self._house_hours: list = []
+        self._hp_hours: list = []                     # varmepumpens egen måler pr. time (planlægges for sig)
+        self.hp_model = HeatPumpModel()
+        self._hp_avg: dict = {}
         self._unsub_sun_learn = None
         self._unsub_sun_learn_first = None
         self._unsub_energy = None
@@ -694,9 +698,10 @@ class SmartHusController:
         start = end - timedelta(days=TEMP_LEARN_DAYS)        # længere historik til varmebehovet
         profile_from = end - timedelta(days=LEARN_DAYS)      # mønsteret selv: de seneste 14 dage
         ev_ids = {c["energy"] for c in self.cars if c.get("energy")}
+        hp_id = self.config.get(CONF_HEATPUMP_ENERGY)
         try:
             stats = await get_instance(self.hass).async_add_executor_job(
-                statistics_during_period, self.hass, start, end, {house} | ev_ids, "hour",
+                statistics_during_period, self.hass, start, end, {house} | ev_ids | ({hp_id} if hp_id else set()), "hour",
                 {"energy": "kWh"}, {"change"},
             )
         except Exception as err:  # noqa: BLE001
@@ -718,7 +723,18 @@ class SmartHusController:
             for ts, kwh in series(ev).items():
                 if ts in house_hours:
                     house_hours[ts] = max(house_hours[ts] - kwh, 0.0)
+        # Varmepumpe med egen måler: planlægges for sig (temperatur og SmartHus' spare-/ekstra-timer) –
+        # huset lærer resten. Kun timer, hvor varmepumpens måler har data.
+        hp = series(hp_id) if hp_id else {}
+        self._hp_hours = sorted((t, k) for t, k in hp.items() if t in house_hours)
+        for ts, kwh in hp.items():
+            if ts in house_hours:
+                house_hours[ts] = max(house_hours[ts] - kwh, 0.0)
         self.learned_profile = build_profile(sorted((t, k) for t, k in house_hours.items() if t >= profile_from))
+        self._hp_avg = hour_averages([(t, k) for t, k in self._hp_hours if t >= profile_from]) if self._hp_hours else {}
+        if self._hp_avg:   # mønsteret viser hele huset: læg varmepumpens gennemsnit oven i
+            for we, attr in ((False, "weekday"), (True, "weekend")):
+                setattr(self.learned_profile, attr, [v + a for v, a in zip(getattr(self.learned_profile, attr), self._hp_avg[we])])
         self.profile = self.learned_profile if self.learned_profile.ready else default_profile()
         self._house_hours = sorted(house_hours.items())
         self._profile_from = profile_from
@@ -761,20 +777,57 @@ class SmartHusController:
         if not self._temps or not self._house_hours:
             return
         self.temp_model = fit_temperature(self._house_hours, self._temps, getattr(self, "_profile_from", None))
-        today = now.astimezone(self.tz).replace(hour=0, minute=0, second=0, microsecond=0)
+        if self._hp_hours:
+            self.hp_model = fit_heatpump(self._hp_hours, self._temps, now.astimezone(self.tz).date(),
+                                         getattr(self, "_profile_from", None))
+        self.recalculate()          # justeringen regnes i recalculate, når planen (spare-/ekstra-timer) er klar
+
+    def _apply_temp_adjust(self) -> None:
+        """Justér forbrugsmønsteret efter vejrudsigten – og varmepumpens forbrug efter SmartHus' plan."""
+        p = self.learned_profile
+        if not self._temps:
+            p.adjust = {}
+            return
+        now = dt_util.now().astimezone(self.tz)
+        today = now.replace(hour=0, minute=0, second=0, microsecond=0)
         future = {t: v for t, v in self._temps.items() if t >= today}
         adj = temperature_adjust(self.temp_model, future)
-        self.learned_profile.adjust = adj
-        if self.profile is not self.learned_profile:
+        hp = self.hp_model
+        if hp.active and self._hp_avg:
+            plan_on = self.active(MODULE_HEATING)
+            for i in range(3):
+                day = today + timedelta(days=i)
+                temps = [v for t, v in future.items() if t.date() == day.date()]
+                if len(temps) < 20:
+                    continue
+                mean = sum(hdd(v) for v in temps) / len(temps)
+                hrs = lambda slots: {s.start.astimezone(self.tz).hour for s in slots  # noqa: E731
+                                     if s.start.astimezone(self.tz).date() == day.date()}
+                red = hrs(self.plan.heating_reduce) if plan_on else set()
+                boo = hrs(self.plan.heating_boost) if plan_on else set()
+                vals = heatpump_hours(hp, day, mean, red, boo)
+                avg = self._hp_avg[day.weekday() >= 5]
+                for h in range(24):
+                    adj[(day.date(), h)] = adj.get((day.date(), h), 0.0) + vals[h] - avg[h]
+        p.adjust = adj
+        if self.profile is not p:
             self.profile.adjust = {}
-        self.recalculate()
 
     async def _async_temps_tick(self, *_args) -> None:
         await self._async_update_temps()
 
+    def heatpump_day(self, day) -> float | None:
+        """Varmepumpens forventede forbrug (kWh) en given dag – None = ingen model/udsigt."""
+        if not self.hp_model.active:
+            return None
+        temps = [v for t, v in self._temps.items() if t.date() == day]
+        if len(temps) < 20:
+            return None
+        return round(self.hp_model.day_kwh(sum(hdd(v) for v in temps) / len(temps)), 1)
+
     def temp_extra(self, day) -> float | None:
         """Ekstra forbrug (kWh) en given dag pga. temperaturen i forhold til normalt – None = ingen model/udsigt."""
-        if not self.temp_model.active or not self.learned_profile.adjust:
+        if not (self.temp_model.active or self.hp_model.active) or not self.learned_profile.adjust:
             return None
         vals = [v for (d, _h), v in self.learned_profile.adjust.items() if d == day]
         return round(sum(vals), 1) if vals else None
@@ -1370,6 +1423,8 @@ class SmartHusController:
             self._battery_full = True
         self.plan = build_plan(slots, dt_util.utcnow(), self.tz, settings, soc=soc, cars=cars,
                                battery_full=self.__dict__.get("_battery_full", False))
+        if "_temps" in self.__dict__:
+            self._apply_temp_adjust()
         self._update_hotwater_demand()
         now = dt_util.utcnow()
         for cid, ep in self.plan.evs.items():
