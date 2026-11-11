@@ -163,7 +163,7 @@ def test_savings():
     calc.update(now_local, cheap, avg, {"ev": 100.0, "battery_charge": 10.0, "battery_discharge": 5.0})
     calc.update(now_local, cheap, avg, {"ev": 101.0, "battery_charge": 11.0, "battery_discharge": 5.0})
     assert abs(calc.value("today", "ev") - round(avg - cheap.price, 2)) < 0.011
-    assert calc.value("today", "battery") < 0
+    assert calc.value("today", "battery") == 0     # opladning bogføres først, når strømmen bruges
     # Måler nulstillet -> ingen negativ besparelse
     calc.update(now_local, cheap, avg, {"ev": 0.0})
     assert calc.value("today", "ev") > 0
@@ -174,16 +174,56 @@ def test_savings():
 
 
 def test_battery_savings_solar_charge_costs_sale_price():
-    """Solen lader batteriet: det koster kun den mistede salgspris – ikke købsprisen."""
+    """Besparelsen bogføres, når strømmen bruges: solstrøm koster den mistede salgspris, netstrøm købsprisen."""
     slots = model().build_slots(records("2026-10-18", CURVE))
     calc = savings.SavingsCalculator()
     sl = slots[40]
     t = sl.start.astimezone(TZ)
     calc.update(t, sl, None, {"battery_charge": 10.0, "battery_discharge": 5.0}, battery_action="normal")
     calc.update(t, sl, None, {"battery_charge": 11.0, "battery_discharge": 5.0}, battery_action="normal")
-    assert abs(calc.data["today"]["battery"] + sl.sale) < 1e-3
-    calc.update(t, sl, None, {"battery_charge": 12.0, "battery_discharge": 5.0}, battery_action="charge")
-    assert abs(calc.data["today"]["battery"] + sl.sale + sl.price) < 1e-3
+    assert calc.data["today"]["battery"] == 0                     # solen lader: ingen udgift endnu
+    # 0,9 kWh ud (1 kWh inkl. tab) til huset: værdi købspris minus den mistede salgspris
+    calc.update(t, sl, None, {"battery_charge": 11.0, "battery_discharge": 5.9}, battery_action="normal")
+    assert abs(calc.data["today"]["battery"] - (0.9 * sl.price - sl.sale)) < 1e-3
+    # Netstrøm: koster købsprisen, når den bruges
+    calc2 = savings.SavingsCalculator()
+    calc2.update(t, sl, None, {"battery_charge": 10.0, "battery_discharge": 5.0}, battery_action="charge")
+    calc2.update(t, sl, None, {"battery_charge": 11.0, "battery_discharge": 5.0}, battery_action="charge")
+    assert calc2.data["today"]["battery"] == 0
+    dear = max(slots, key=lambda x: x.price)
+    calc2.update(dear.start.astimezone(TZ), dear, None, {"battery_charge": 11.0, "battery_discharge": 5.9}, battery_action="normal")
+    assert abs(calc2.data["today"]["battery"] - (0.9 * dear.price - sl.price)) < 1e-3
+
+
+def test_full_charge_cost_counted_separately():
+    """Sol solgt, fordi "lad helt op" fyldte batteriet med netstrøm: vises for sig, ikke i besparelsen."""
+    slots = model().build_slots(records("2026-10-18", CURVE))
+    calc = savings.SavingsCalculator()
+    night, day = slots[12], slots[48]
+    tn, td = night.start.astimezone(TZ), day.start.astimezone(TZ)
+    r = {"battery_charge": 0.0, "battery_discharge": 0.0, "export": 0.0}
+    calc.update(tn, night, None, r, battery_action="charge", battery_kwh=0.0, full_charge=True)
+    for k in (2.5, 5.0, 7.5, 10.0):
+        calc.update(tn, night, None, {**r, "battery_charge": k}, battery_action="charge", battery_kwh=k, full_charge=True)
+    # Næste dag: batteriet er fuldt, solen eksporteres 3 kWh
+    calc.update(td, day, None, {**r, "battery_charge": 10.0, "export": 3.0}, battery_action="normal",
+                battery_kwh=10.0, battery_full=True, full_charge=True)
+    tr = calc.trade("today")
+    assert tr["full_charge_kwh"] == 3.0
+    assert abs(tr["full_charge_cost"] - round(3 * max(night.price - max(day.sale, 0), 0), 2)) < 0.011
+    assert calc.data["today"]["battery"] == 0                     # tælles ikke i SmartHus-besparelsen
+    # Højst den netstrøm, der blev ladet
+    for e in (7.0, 11.0, 15.0, 19.0):
+        calc.update(td, day, None, {**r, "battery_charge": 10.0, "export": e}, battery_action="normal",
+                    battery_kwh=10.0, battery_full=True, full_charge=True)
+    assert calc.trade("today")["full_charge_kwh"] == 10.0
+    # Uden "lad helt op" tælles intet
+    c2 = savings.SavingsCalculator()
+    c2.update(tn, night, None, r, battery_action="charge", battery_kwh=0.0)
+    for k in (2.5, 5.0, 7.5, 10.0):
+        c2.update(tn, night, None, {**r, "battery_charge": k}, battery_action="charge", battery_kwh=k)
+    c2.update(td, day, None, {**r, "battery_charge": 10.0, "export": 3.0}, battery_action="normal", battery_kwh=10.0, battery_full=True)
+    assert c2.trade("today")["full_charge_kwh"] == 0
 
 
 def test_solar_overview():

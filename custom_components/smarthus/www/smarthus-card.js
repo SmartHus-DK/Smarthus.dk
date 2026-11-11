@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.66.14";
+const SMARTHUS_CARD_VERSION = "1.66.15";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -89,7 +89,7 @@ const MODULES = [
       { title: "Solprognose", items: ["battery_solar_forecast_pct"] },
       { title: "Solstrøm: sælg eller gem", items: ["battery_solar_sell_margin"] },
       { title: "Batteri fra nettet", items: [{ sw: "battery_full_charge", label: "Lad batteriet helt op i de billigste timer",
-      note: "Fra laveste til højeste niveau" }] },
+      note: "Fra laveste til højeste niveau – også når der er sol på vej" }] },
     ],
   },
   {
@@ -118,7 +118,7 @@ const MODULES = [
   { id: "solar", name: "Solceller", icon: "mdi:solar-power", sw: "control_solar",
     groups: [{ title: null, items: ["solar_export_min_price"] },
       { title: "Batteri fra nettet", items: [{ sw: "battery_full_charge", label: "Lad batteriet helt op i de billigste timer",
-      note: "Fra laveste til højeste niveau" }] }] },
+      note: "Fra laveste til højeste niveau – også når der er sol på vej" }] }] },
 ];
 
 // Forklaringer under "Sådan virker indstillingerne" (foldet sammen). k = indstillingen(e), der skal
@@ -180,7 +180,7 @@ const HELP = {
   ],
   solar: [
     { k: ["battery_full_charge"], t: "Lad batteriet helt op",
-      d: "Slået til lader batteriet fra nettet fra laveste til højeste niveau i døgnets billigste timer – også når solen ventes at fylde det, og uanset prisforskellen. Antallet af timer regnes ud fra batteriets størrelse og den maks. ladeeffekt, du taster ind (fx 5 kW). 0 kW = ikke sat, så sker der intet." },
+      d: "Slået til lader batteriet fra nettet fra laveste til højeste niveau i døgnets billigste timer – også når solen ventes at fylde det, og uanset prisforskellen. Kommer der sol, mens batteriet er fyldt med netstrøm, må solen sælges billigt i stedet – den pris vises for sig under Batteriets salg og trækkes ikke fra SmartHus' besparelse. Antallet af timer regnes ud fra batteriets størrelse og den maks. ladeeffekt, du taster ind (fx 5 kW). 0 kW = ikke sat, så sker der intet." },
     { k: ["solar_export_min_price"], t: "Stop eksport under",
       d: "Er salgsprisen under denne grænse, stoppes eksporten (kræver at inverteren kan begrænse eksport), og batteriet lader af solstrømmen i stedet, hvis der er plads. 0 kr. betyder kun ved negativ pris." },
   ],
@@ -1752,6 +1752,8 @@ class SmartHusCard extends HTMLElement {
         <div class="tr-head"><span class="cmp-title" style="margin:0">Batteriets salg</span><span class="tabs" role="group" aria-label="Periode">${tabs}</span></div>
         ${body}
         ${a.avg_cost_in_battery != null ? `<div class="cmp-sub" style="margin-left:0">Strømmen i batteriet nu har kostet ca. ${nf(a.avg_cost_in_battery)} kr/kWh.</div>` : ""}
+        ${(a.full_charge_kwh || 0) > 0.05 ? `${row("Fuld opladning (dit valg)", `−${nf(a.full_charge_cost || 0)} kr`, "neg")}
+          <div class="cmp-sub" style="margin-left:0">${nf(a.full_charge_kwh, 1)} kWh sol blev solgt, fordi batteriet var fyldt med netstrøm fra "Lad batteriet helt op". Tælles ikke med i SmartHus' besparelse.</div>` : ""}
       </div>`;
   }
 

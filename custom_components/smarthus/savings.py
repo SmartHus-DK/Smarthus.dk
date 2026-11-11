@@ -27,7 +27,8 @@ def _zero_solar() -> dict:
 
 # Batteriets handel: hvad strømmen i batteriet har kostet, og hvad salget gav
 TRADE_FIELDS = ("sold_kwh", "income", "cost_grid", "cost_solar", "profit",
-                "house_kwh", "house_value", "house_cost", "charged_grid_kwh", "charged_solar_kwh")
+                "house_kwh", "house_value", "house_cost", "charged_grid_kwh", "charged_solar_kwh",
+                "full_charge_kwh", "full_charge_cost")   # sol solgt, fordi batteriet var fyldt med netstrøm (kundens valg)
 TRADE_BUCKETS = ("today", "month", "total")
 ROUND_TRIP = 0.90  # ca. 10 % tab fra opladning til afladning
 
@@ -38,6 +39,8 @@ def _zero_trade() -> dict:
 
 def _empty_trade() -> dict:
     return {"stock_kwh": 0.0, "stock_grid": 0.0, "stock_solar": 0.0,
+            "stock_grid_kwh": 0.0,   # kWh i batteriet, der er ladet fra nettet
+            "fc_room": 0.0,          # kWh netstrøm ladet med "lad helt op", som solen kunne have fyldt i stedet
             **{b: _zero_trade() for b in TRADE_BUCKETS}}
 
 
@@ -147,13 +150,15 @@ class SavingsCalculator:
 
     def update(self, now_local: datetime, slot: Slot | None, day_avg: float | None,
                readings: dict[str, float | None], battery_action: str | None = None,
-               battery_kwh: float | None = None) -> None:
+               battery_kwh: float | None = None, battery_full: bool = False, full_charge: bool = False) -> None:
         self._roll(now_local)
         deltas = {k: self._delta(k, v) for k, v in readings.items()}
         if slot is None:
             return
+        trade = None
         if "battery_charge" in readings or "battery_discharge" in readings:
-            self._trade(slot, deltas, battery_action, battery_kwh, export_known=readings.get("export") is not None)
+            trade = self._trade(slot, deltas, battery_action, battery_kwh, export_known=readings.get("export") is not None,
+                                battery_full=battery_full, full_charge=full_charge)
         price, sale = slot.price, slot.sale
         ref = day_avg if day_avg is not None else price
 
@@ -163,10 +168,11 @@ class SavingsCalculator:
         gained["ev"] = ev_kwh * (ref - price)
         gained["heatpump"] = deltas.get("heatpump", 0.0) * (ref - price)
         gained["hotwater"] = deltas.get("hotwater", 0.0) * (ref - price)
-        # Batteriet: strøm ud sparer købsprisen. Opladning fra nettet koster købsprisen; opladning fra solen
-        # koster kun den salgspris, man gav afkald på (ellers falder besparelsen midt på dagen, når solen lader)
-        charge_cost = price if battery_action == "charge" else max(sale, 0.0)
-        gained["battery"] = deltas.get("battery_discharge", 0.0) * price - deltas.get("battery_charge", 0.0) * charge_cost
+        # Batteriet bogføres, når strømmen bruges: værdien (købsprisen sparet i huset eller salgsprisen) minus hvad
+        # strømmen kostede at lade (netstrøm: købsprisen, solstrøm: den salgspris man gav afkald på). Så går dagens
+        # besparelse ikke i minus om natten, bare fordi batteriet lades.
+        if trade:
+            gained["battery"] = trade["profit"] + trade["house_value"] - trade["house_cost"]
         for c, v in gained.items():
             for bucket in ("today", "month_values", "total"):
                 self.data[bucket][c] = round(self.data[bucket].get(c, 0.0) + v, 4)
@@ -211,7 +217,7 @@ class SavingsCalculator:
         self._trim()
 
     def _trade(self, slot: Slot, deltas: dict, action: str | None, battery_kwh: float | None,
-               export_known: bool) -> None:
+               export_known: bool, battery_full: bool = False, full_charge: bool = False) -> dict:
         """Følg hvad strømmen i batteriet har kostet, og hvad den giver, når den bruges eller sælges.
 
         * Opladning i en planlagt netopladning koster købsprisen.
@@ -228,7 +234,10 @@ class SavingsCalculator:
         if charge > 0:
             if action == "charge":
                 t["stock_grid"] += charge * price
+                t["stock_grid_kwh"] += charge
                 add["charged_grid_kwh"] = charge
+                if full_charge:
+                    t["fc_room"] += charge
             else:
                 t["stock_solar"] += charge * max(sale, 0.0)
                 add["charged_solar_kwh"] = charge
@@ -240,6 +249,7 @@ class SavingsCalculator:
             if not used:  # ukendt oprindelse (fx lige efter start): regn med købsprisen nu
                 cost_g = out / ROUND_TRIP * price
             t["stock_grid"] -= t["stock_grid"] * share
+            t["stock_grid_kwh"] -= t["stock_grid_kwh"] * share
             t["stock_solar"] -= t["stock_solar"] * share
             t["stock_kwh"] -= used
             if action == "discharge":
@@ -255,17 +265,31 @@ class SavingsCalculator:
             add["cost_solar"] = cost_s * frac_sold
             add["house_cost"] = (cost_g + cost_s) * (1 - frac_sold)
             add["profit"] = add["income"] - add["cost_grid"] - add["cost_solar"]
+        # Sol solgt, mens batteriet var fyldt med netstrøm fra "lad helt op": den kunne være gemt i stedet.
+        # Prisen for valget er netstrømmens pris minus salgsprisen, solen fik.
+        export = deltas.get("export", 0.0) if export_known else 0.0
+        if battery_full and export > 0 and action != "discharge" and t["fc_room"] > 0 and t["stock_grid_kwh"] > 0.05:
+            d = min(export, t["fc_room"])
+            t["fc_room"] -= d
+            per = t["stock_grid"] / t["stock_grid_kwh"]
+            add["full_charge_kwh"] = d
+            add["full_charge_cost"] = d * max(per - max(sale, 0.0), 0.0)
         # Hold lageret i takt med batteriets niveau (behold kr/kWh)
         if battery_kwh is not None and battery_kwh >= 0:
             if t["stock_kwh"] > 0.01:
                 f = battery_kwh / t["stock_kwh"]
                 t["stock_grid"] *= f
                 t["stock_solar"] *= f
+                t["stock_grid_kwh"] *= f
+            elif battery_kwh > 0.05:   # ukendt indhold (fx første gang): regn med købsprisen nu – ingen gratis strøm
+                t["stock_grid"] = battery_kwh * price
             t["stock_kwh"] = battery_kwh
+        t["fc_room"] = min(t["fc_room"], t["stock_grid_kwh"])
         if any(add.values()):
             for b in TRADE_BUCKETS:
                 for k, v in add.items():
                     t[b][k] = round(t[b].get(k, 0.0) + v, 4)
+        return add
 
     def replace_today(self, rows: list[dict], now_local: datetime, last: dict[str, float] | None = None) -> dict:
         """Erstat dagens solcelle- og købstal med timerne fra langtidsstatistikken.

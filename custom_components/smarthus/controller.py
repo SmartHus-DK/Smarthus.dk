@@ -1533,8 +1533,10 @@ class SmartHusController:
         soc = self._float_state(self.config.get(CONF_BATTERY_SOC))
         bat_kwh = soc / 100 * self.settings[S_BATTERY_CAPACITY] if soc is not None else None
         action = self.plan.battery_action if self.active(MODULE_BATTERY) else None
+        full = soc is not None and soc >= self.settings[S_BATTERY_MAX_SOC] - BATTERY_RECHARGE_MARGIN - 1
         self.savings.update(dt_util.now(), self.plan.current, self.plan.day_avg, readings,
-                            battery_action=action, battery_kwh=bat_kwh)
+                            battery_action=action, battery_kwh=bat_kwh, battery_full=full,
+                            full_charge=bool(self.flags.get(F_BATTERY_FULL_CHARGE)))
         # async_delay_save skubbes 60 s frem ved hvert kald (hvert 30. sekund) og ville aldrig nå at
         # skrive – kun ved en pæn nedlukning. Derfor skrives der fast hvert 5. minut, og delay_save
         # sørger for den sidste skrivning, når Home Assistant lukker ned.
