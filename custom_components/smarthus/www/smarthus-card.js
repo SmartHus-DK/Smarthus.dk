@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.66.18";
+const SMARTHUS_CARD_VERSION = "1.66.19";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -153,7 +153,7 @@ const HELP = {
     { k: ["battery_capacity"], t: "Batteriets størrelse",
       d: "Den brugbare kapacitet i kWh – står på batteriet eller i inverterens app. Bruges til at regne ud, hvor meget der skal lades, hvor meget huset skal have i reserve, og hvor meget der kan sælges. Et forkert tal giver forkerte beslutninger." },
     { k: ["battery_capacity"], t: "Husets forbrugsmønster",
-      d: "SmartHus lærer selv, hvad huset bruger time for time – hverdage og weekender hver for sig, og uden elbilens opladning. Mønsteret regnes forfra hver nat ud fra de seneste 14 dage, så det følger med, når forbruget ændrer sig (fx vinter, ny varmepumpe). De første 2 dage bruges et standardforbrug på 0,5 kW og 1,5 kW kl. 17–20." },
+      d: "SmartHus lærer selv, hvad huset bruger time for time – hverdage og weekender hver for sig, og uden elbilens opladning. Mønsteret regnes forfra hver nat ud fra de seneste 14 dage, så det følger med, når forbruget ændrer sig (fx vinter, ny varmepumpe). De første 2 dage bruges et standardforbrug på 0,5 kW og 1,5 kW kl. 17–20. Varmes huset med el (fx en varmepumpe, også en der ikke er koblet på), lærer SmartHus selv, hvor meget forbruget stiger, når det bliver koldere, og regner vejrudsigten med – så der lades mere før en kold dag." },
     { k: ["battery_capacity"], t: "Batteriets besparelse",
       d: "Besparelsen regnes, når strømmen i batteriet bruges: hvad den er værd i huset (eller sælges for), minus hvad den kostede at lade – netstrøm til købsprisen, solstrøm til den salgspris, du gav afkald på. En opladning om natten trækker derfor ikke dagens besparelse ned, før strømmen bruges." },
     { k: ["battery_solar_forecast_pct"], t: "Regn med af solprognosen",
@@ -1671,18 +1671,25 @@ class SmartHusCard extends HTMLElement {
       return `<div class="cmp wait">SmartHus lærer husets forbrug (har nu ${nf(a.learned_days || 0, 0)} af 2 dage). Indtil da regnes der med 0,5 kW – og 1,5 kW kl. 17–20 – så der gemmes lidt til aftenen.</div>`;
     }
     // Forbrugsmønster: i dag, hverdag eller weekend
-    const ptab = ["today", "weekday", "weekend"].includes(this._profTab) && a.profile_weekday ? this._profTab : "today";
-    const prof = (ptab === "weekday" ? a.profile_weekday : ptab === "weekend" ? a.profile_weekend : a.profile_today) || [];
+    const ptab = ["today", "tomorrow", "weekday", "weekend"].includes(this._profTab) && a.profile_weekday && (this._profTab !== "tomorrow" || a.profile_tomorrow) ? this._profTab : "today";
+    const prof = (ptab === "weekday" ? a.profile_weekday : ptab === "weekend" ? a.profile_weekend : ptab === "tomorrow" ? a.profile_tomorrow : a.profile_today) || [];
     const max = Math.max(...(a.profile_weekday || []), ...(a.profile_weekend || []), ...prof, 0.01);   // samme skala i alle faner
     const nowH = ptab === "today" ? new Date().getHours() : -1;
     const bars = prof.map((v, i) => `<i title="kl. ${String(i).padStart(2, "0")}: ${nf(v, 2)} kWh" style="height:${Math.max((v / max) * 100, 3)}%" class="${i === nowH ? "now" : i < nowH ? "past" : ""}"></i>`).join("");
     const dayKwh = prof.reduce((x, y) => x + y, 0);
     const restKwh = ptab === "today" ? prof.slice(nowH + 1).reduce((x, y) => x + y, 0) + (prof[nowH] || 0) * (1 - new Date().getMinutes() / 60) : null;
     const kindDays = (k) => a[`profile_${k}_days`];
-    const learned = ptab === "today" ? (a.today_is_weekend ? kindDays("weekend") : kindDays("weekday")) : kindDays(ptab);
-    const ptabs = a.profile_weekday ? [["today", "I dag"], ["weekday", "Hverdag"], ["weekend", "Weekend"]]
+    const isWe = ptab === "weekend" || (ptab === "today" && a.today_is_weekend) || (ptab === "tomorrow" && a.tomorrow_is_weekend);
+    const learned = kindDays(isWe ? "weekend" : "weekday");
+    const ptabs = a.profile_weekday ? [["today", "I dag"], ...(a.profile_tomorrow ? [["tomorrow", "I morgen"]] : []), ["weekday", "Hverdag"], ["weekend", "Weekend"]]
       .map(([id, l]) => `<button class="tab ${id === ptab ? "on" : ""}" data-action="prof-tab" data-tab="${id}" aria-pressed="${id === ptab}">${l}</button>`).join("") : "";
-    const profSum = `Forventet forbrug <b>${nf(dayKwh, 1)} kWh</b> pr. ${ptab === "weekend" || (ptab === "today" && a.today_is_weekend) ? "weekenddag" : "hverdag"}${restKwh != null ? ` · resten af i dag ca. <b>${nf(restKwh, 1)} kWh</b>` : ""}${learned != null ? ` <span class="muted">· lært af ${nf(learned, 0)} ${learned === 1 ? "dag" : "dage"}</span>` : ""}`;
+    // Varmebehov: koldere end normalt giver mere forbrug (lært af udetemperaturen og vejrudsigten)
+    const tm = a.temp_model || {};
+    const extra = ptab === "today" ? a.temp_extra_today_kwh : ptab === "tomorrow" ? a.temp_extra_tomorrow_kwh : null;
+    const tempTxt = tm.active && extra != null && Math.abs(extra) >= 0.1
+      ? ` · ${extra > 0 ? "koldere" : "mildere"} end normalt: <b>${extra > 0 ? "+" : "−"}${nf(Math.abs(extra), 1)} kWh</b>` : "";
+    const dayWord = ptab === "today" ? "i dag" : ptab === "tomorrow" ? "i morgen" : `pr. ${isWe ? "weekenddag" : "hverdag"}`;
+    const profSum = `Forventet forbrug <b>${nf(dayKwh, 1)} kWh</b> ${dayWord}${tempTxt}${restKwh != null ? ` · resten af i dag ca. <b>${nf(restKwh, 1)} kWh</b>` : ""}${learned != null ? ` <span class="muted">· lært af ${nf(learned, 0)} ${learned === 1 ? "dag" : "dage"}</span>` : ""}${tm.active ? `<br><span class="muted">Huset bruger ca. ${nf(tm.k, 2)} kWh mere i timen pr. grad, det er koldere – vejrudsigten regnes med.</span>` : ""}`;
     const until = a.until ? new Date(a.until) : null;
     const untilTxt = until ? `${until.getDate() !== new Date().getDate() ? "i morgen " : ""}kl. ${hh(until)}` : "";
     const bat = a.battery_kwh, sell = a.sellable_kwh ?? 0;

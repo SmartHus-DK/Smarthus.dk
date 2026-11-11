@@ -1648,3 +1648,49 @@ def test_bil_uden_for_laderen_faar_pris_men_ingen_plan():
     alone = planner.plan_cars(slots, now, TZ, settings, [cs("ev2", "Bil 2", soc=40, connected=True)])["ev2"]
     assert b.connected and [s.start for s in b.slots] == [s.start for s in alone.slots]
     assert b.cost_planned == alone.cost_planned
+
+
+def _temp_house(k_true, days=28, noise=0.05, seed=1):
+    """Syntetisk hus: dagsrytme + k × graddage, temperatur med døgnsving og vejrskift."""
+    import math
+    import random
+    rnd = random.Random(seed)
+    t0 = datetime(2026, 10, 14, tzinfo=TZ)
+    hours, temps = [], {}
+    for i in range(days * 24):
+        t = t0 + timedelta(hours=i)
+        temp = 9 + 5 * math.sin(i / 24 / 3.0) - 3 * math.cos(2 * math.pi * t.hour / 24) + rnd.uniform(-1, 1)
+        base = 0.4 + (1.2 if 17 <= t.hour < 20 else 0.0)
+        hours.append((t, base + k_true * max(16 - temp, 0) + rnd.uniform(-noise, noise)))
+        temps[t] = temp
+    return hours, temps
+
+
+def test_temperature_model_learns_heating():
+    hours, temps = _temp_house(0.08)
+    m = profile.fit_temperature(hours, temps, profile_from=hours[-14 * 24][0])
+    assert m.active and abs(m.k - 0.08) < 0.01, m.as_dict()
+    # Koldere end de seneste 14 dage i morgen: mere forbrug
+    tm = datetime(2026, 11, 11, 3, tzinfo=TZ)
+    typ = m.typical_hdd[(False, 3)]
+    adj = profile.temperature_adjust(m, {tm: 16 - typ - 5})        # 5 grader koldere end normalt kl. 3
+    assert abs(adj[(tm.date(), 3)] - m.k * 5) < 1e-6
+    p = profile.build_profile(hours[-14 * 24:])
+    plain = p.hours_for(tm)[3]
+    p.adjust = adj
+    assert abs(p.hours_for(tm)[3] - (plain + m.k * 5)) < 1e-6
+    # En meget mild dag trækker højst ned til 30 % af mønsteret
+    p.adjust = {(tm.date(), 3): -100.0}
+    assert abs(p.hours_for(tm)[3] - plain * profile.MIN_ADJUST_SHARE) < 1e-6
+
+
+def test_temperature_model_off_without_electric_heating():
+    hours, temps = _temp_house(0.0)
+    m = profile.fit_temperature(hours, temps)
+    assert not m.active and profile.temperature_adjust(m, {hours[0][0]: -10}) == {}
+
+
+def test_temperature_model_needs_variation():
+    hours, temps = _temp_house(0.08)
+    flat = {t: 8.0 for t in temps}
+    assert not profile.fit_temperature(hours, flat).active

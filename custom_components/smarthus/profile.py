@@ -25,6 +25,16 @@ DEFAULT_KW = 0.5     # standardforbrug, indtil mønsteret er lært
 EVENING_KW = 1.5
 EVENING_HOURS = range(17, 20)  # kl. 17–20
 
+# Varmebehov: forbruget stiger, når det er koldt (varmepumpe, elvarme). Graddage pr. time under BASE_TEMP.
+TEMP_LEARN_DAYS = 28   # længere historik til varmebehovet – temperaturen er regnet ud, så det følger stadig sæsonen
+BASE_TEMP = 16.0       # °C – over denne udetemperatur regnes der ikke med opvarmning
+MIN_K = 0.01           # kWh pr. grad pr. time – mindre end dette: huset varmes ikke med el
+MAX_K = 1.0
+MIN_T_STAT = 3.0       # sammenhængen skal være tydelig (ellers bruges mønsteret uden justering)
+MIN_TEMP_SD = 1.0      # °C – temperaturen skal have varieret nok inden for samme time på døgnet
+MIN_TEMP_HOURS = 72
+MIN_ADJUST_SHARE = 0.3  # en mild dag kan højst trække timens forbrug ned til 30 % af mønsteret
+
 
 @dataclass
 class Profile:
@@ -33,13 +43,20 @@ class Profile:
     days: int = 0
     weekday_days: int = 0
     weekend_days: int = 0
+    # Temperaturjustering: ekstra (eller mindre) forbrug pr. (dato, time) i forhold til mønsterets
+    # gennemsnit, ud fra vejrudsigten og husets lærte varmebehov. Tom = ingen justering.
+    adjust: dict = field(default_factory=dict)
 
     @property
     def ready(self) -> bool:
         return self.days >= MIN_DAYS
 
     def hours_for(self, day: datetime) -> list[float]:
-        return self.weekend if day.weekday() >= 5 else self.weekday
+        base = self.weekend if day.weekday() >= 5 else self.weekday
+        if not self.adjust:
+            return base
+        d = day.date()
+        return [max(v + self.adjust.get((d, h), 0.0), v * MIN_ADJUST_SHARE) for h, v in enumerate(base)]
 
     def as_dict(self) -> dict:
         return {"weekday": [round(v, 3) for v in self.weekday],
@@ -88,6 +105,95 @@ def build_profile(hours: list[tuple[datetime, float]]) -> Profile:
         base = min(vals[h] for h in BASE_HOURS)
         setattr(p, kind, [max(v, base) for v in vals])
     return p
+
+
+def hdd(temp: float, base: float = BASE_TEMP) -> float:
+    """Graddage for én time: hvor mange grader koldere end basistemperaturen."""
+    return max(base - temp, 0.0)
+
+
+@dataclass
+class TempModel:
+    """Husets varmebehov: k kWh ekstra pr. grad under BASE_TEMP pr. time."""
+    k: float = 0.0
+    active: bool = False
+    hours: int = 0
+    t_stat: float = 0.0
+    temp_sd: float = 0.0
+    typical_hdd: dict = field(default_factory=dict)   # (weekend?, time) -> gennemsnitlige graddage i mønsterets periode
+    reason: str = ""
+
+    def as_dict(self) -> dict:
+        return {"k": round(self.k, 3), "active": self.active, "hours": self.hours, "t_stat": round(self.t_stat, 1),
+                "temp_sd": round(self.temp_sd, 1), "base_temp": BASE_TEMP, "reason": self.reason}
+
+
+def fit_temperature(hours: list[tuple[datetime, float]], temps: dict[datetime, float],
+                    profile_from: datetime | None = None) -> TempModel:
+    """Lær hvor meget forbruget stiger pr. grad koldere – ud fra (lokal timestart, kWh) og udetemperatur pr. time.
+
+    Hver time på døgnet (hverdag/weekend for sig) har sit eget niveau, så kun temperaturens udsving
+    inden for samme time tæller – aftensmaden kl. 18 forveksles ikke med kulde.
+    `profile_from`: starten af mønsterets periode (de seneste 14 dage) – til det typiske varmebehov."""
+    rows = [(t, k, hdd(temps[t])) for t, k in hours if k is not None and 0 <= k <= MAX_HOUR_KWH and t in temps]
+    m = TempModel(hours=len(rows))
+    if len(rows) < MIN_TEMP_HOURS:
+        m.reason = "for få timer med både forbrug og temperatur"
+        return m
+    groups: dict = {}
+    for t, k, x in rows:
+        groups.setdefault((t.weekday() >= 5, t.hour), []).append((k, x))
+    sxy = sxx = 0.0
+    for vals in groups.values():
+        if len(vals) < 2:
+            continue
+        my = sum(v[0] for v in vals) / len(vals)
+        mx = sum(v[1] for v in vals) / len(vals)
+        for y, x in vals:
+            sxy += (x - mx) * (y - my)
+            sxx += (x - mx) ** 2
+    n = sum(len(v) for v in groups.values() if len(v) >= 2)
+    m.temp_sd = (sxx / n) ** 0.5 if n else 0.0
+    if sxx <= 0 or m.temp_sd < MIN_TEMP_SD:
+        m.reason = "temperaturen har ikke varieret nok endnu"
+        return m
+    k = sxy / sxx
+    # Usikkerhed: restspredning omkring linjen
+    sse = 0.0
+    for vals in groups.values():
+        if len(vals) < 2:
+            continue
+        my = sum(v[0] for v in vals) / len(vals)
+        mx = sum(v[1] for v in vals) / len(vals)
+        sse += sum((y - my - k * (x - mx)) ** 2 for y, x in vals)
+    dof = max(n - len(groups) - 1, 1)
+    se = (sse / dof / sxx) ** 0.5 if sse > 0 else 1e-9
+    m.k, m.t_stat = min(max(k, 0.0), MAX_K), k / se
+    if k < MIN_K:
+        m.reason = "forbruget afhænger ikke af udetemperaturen"
+    elif m.t_stat < MIN_T_STAT:
+        m.reason = "sammenhængen er ikke tydelig nok endnu"
+    else:
+        m.active = True
+    recent = [(t, x) for t, _, x in rows if profile_from is None or t >= profile_from]
+    acc: dict = {}
+    for t, x in recent:
+        acc.setdefault((t.weekday() >= 5, t.hour), []).append(x)
+    m.typical_hdd = {g: sum(v) / len(v) for g, v in acc.items()}
+    return m
+
+
+def temperature_adjust(model: TempModel, forecast: dict[datetime, float]) -> dict:
+    """Ekstra forbrug pr. (dato, time) ud fra vejrudsigten: k × (graddage − mønsterets typiske graddage)."""
+    if not model.active:
+        return {}
+    out = {}
+    for t, temp in forecast.items():
+        typ = model.typical_hdd.get((t.weekday() >= 5, t.hour))
+        if typ is None:
+            continue
+        out[(t.date(), t.hour)] = model.k * (hdd(temp) - typ)
+    return out
 
 
 def expected_load(profile: Profile, start: datetime, end: datetime) -> float:

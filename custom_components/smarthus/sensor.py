@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -262,6 +262,11 @@ def _reserve_attrs(c: SmartHusController) -> dict:
         "profile_ready": p.ready,
         "profile_updated": c.profile_updated.isoformat() if c.profile_updated else None,
         "profile_today": [round(v, 2) for v in p.hours_for(today)],
+        "profile_tomorrow": [round(v, 2) for v in p.hours_for(today + timedelta(days=1))],
+        "tomorrow_is_weekend": (today + timedelta(days=1)).weekday() >= 5,
+        "temp_model": c.temp_model.as_dict(),
+        "temp_extra_today_kwh": c.temp_extra(today.date()),
+        "temp_extra_tomorrow_kwh": c.temp_extra((today + timedelta(days=1)).date()),
         "profile_weekday": [round(v, 2) for v in p.weekday],
         "profile_weekend": [round(v, 2) for v in p.weekend],
         "profile_weekday_days": p.weekday_days,

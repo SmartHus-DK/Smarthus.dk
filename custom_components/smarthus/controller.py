@@ -26,6 +26,7 @@ from .const import (
     S_HOTWATER_WATCH_TEMP,
     EDS_DAYAHEAD_FROM,
     EDS_OLD_URL,
+    OPEN_METEO_URL,
     CONF_SALE_FEE,
     CONF_SL_PRICE_VAT,
     CONF_SL_SPOT_VAT,
@@ -142,7 +143,7 @@ from .planner import CHARGE_EFFICIENCY, full_charge_hours, CarInput, Plan, build
 SELL_RESTART_KWH = 0.5   # kWh over reserven, før salg starter igen efter et stop
 BATTERY_RECHARGE_MARGIN = 2.0   # %-point under højeste niveau, før batteriet lades fra nettet igen
 
-from .profile import (default_profile, EFFICIENCY, plan_hold, forecast_battery, LEARN_DAYS, SUN_END, SUN_START, Profile, Reserve, build_profile, calc_reserve,
+from .profile import (default_profile, EFFICIENCY, TEMP_LEARN_DAYS, TempModel, fit_temperature, temperature_adjust, plan_hold, forecast_battery, LEARN_DAYS, SUN_END, SUN_START, Profile, Reserve, build_profile, calc_reserve,
                       expected_load, grid_charge_target, solar_surplus, battery_need_at, simulate_battery)
 from .savings import SavingsCalculator
 from .hotwater import cooling_rate, plan_demand
@@ -233,6 +234,11 @@ class SmartHusController:
         self.grid_charge: dict | None = None  # hvor meget der lades fra nettet, når solen kan fylde resten
         self._unsub_learn = None
         self._unsub_learn_first = None
+        self._unsub_temps = None
+        self.temp_model = TempModel(reason="ikke lært endnu")
+        self._temps: dict[datetime, float] = {}      # udetemperatur pr. lokal time (historik + vejrudsigt)
+        self._temps_at: datetime | None = None
+        self._house_hours: list = []
         self._unsub_sun_learn = None
         self._unsub_sun_learn_first = None
         self._unsub_energy = None
@@ -340,6 +346,8 @@ class SmartHusController:
             # Lær forbrugsmønsteret hver nat og kort efter opstart (når historikken er klar)
             self._unsub_learn = async_track_time_change(self.hass, self.async_learn, hour=0, minute=20, second=30)
             self._unsub_learn_first = async_call_later(self.hass, 60, self.async_learn)
+            # Vejrudsigten (udetemperatur) hentes igen hver 3. time, så forbruget følger med, når det bliver koldere
+            self._unsub_temps = async_track_time_change(self.hass, self._async_temps_tick, minute=7, second=40)
         if self.has(CONF_SOLAR_ENERGY) or self.has(CONF_SOLAR_POWER):
             # Sammenlign solprognosen med den faktiske produktion hver nat og kort efter opstart
             self._unsub_sun_learn = async_track_time_change(self.hass, self.async_learn_solar, hour=0, minute=25, second=30)
@@ -683,7 +691,8 @@ class SmartHusController:
             _LOGGER.warning("SmartHus: historik (recorder) er ikke tilgængelig – kan ikke lære forbrugsmønsteret")
             return
         end = dt_util.now().replace(minute=0, second=0, microsecond=0)
-        start = end - timedelta(days=LEARN_DAYS)
+        start = end - timedelta(days=TEMP_LEARN_DAYS)        # længere historik til varmebehovet
+        profile_from = end - timedelta(days=LEARN_DAYS)      # mønsteret selv: de seneste 14 dage
         ev_ids = {c["energy"] for c in self.cars if c.get("energy")}
         try:
             stats = await get_instance(self.hass).async_add_executor_job(
@@ -709,13 +718,66 @@ class SmartHusController:
             for ts, kwh in series(ev).items():
                 if ts in house_hours:
                     house_hours[ts] = max(house_hours[ts] - kwh, 0.0)
-        self.learned_profile = build_profile(sorted(house_hours.items()))
+        self.learned_profile = build_profile(sorted((t, k) for t, k in house_hours.items() if t >= profile_from))
         self.profile = self.learned_profile if self.learned_profile.ready else default_profile()
+        self._house_hours = sorted(house_hours.items())
+        self._profile_from = profile_from
+        await self._async_update_temps(force=True)
         self.profile_updated = dt_util.now()
         if not self.learned_profile.ready:
             _LOGGER.info("SmartHus: kun %s dage med historik for %s – bruger standardforbrug, til der er 2 dage",
                          self.learned_profile.days, house)
         self.recalculate()
+
+    async def _async_fetch_temps(self) -> dict[datetime, float]:
+        """Udetemperatur pr. time fra Open-Meteo: de seneste 28 dage og 3 dage frem (kun husets omtrentlige position)."""
+        import asyncio
+
+        lat, lon = getattr(self.hass.config, "latitude", None), getattr(self.hass.config, "longitude", None)
+        if lat is None or lon is None:
+            return {}
+        params = {"latitude": f"{lat:.2f}", "longitude": f"{lon:.2f}", "hourly": "temperature_2m",
+                  "past_days": str(TEMP_LEARN_DAYS + 1), "forecast_days": "3", "timeformat": "unixtime", "timezone": "GMT"}
+        async with asyncio.timeout(30):
+            async with self.coordinator._session.get(OPEN_METEO_URL, params=params) as resp:  # noqa: SLF001
+                resp.raise_for_status()
+                data = await resp.json()
+        h = data.get("hourly") or {}
+        return {datetime.fromtimestamp(t, self.tz): float(v)
+                for t, v in zip(h.get("time") or [], h.get("temperature_2m") or []) if v is not None}
+
+    async def _async_update_temps(self, force: bool = False) -> None:
+        """Hent udetemperaturen, lær husets varmebehov og justér forbrugsmønsteret efter vejrudsigten."""
+        now = dt_util.now()
+        if not force and self._temps_at and now - self._temps_at < timedelta(hours=3):
+            return
+        try:
+            temps = await self._async_fetch_temps()
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("SmartHus: kunne ikke hente udetemperatur (Open-Meteo): %s", err)
+            temps = {}
+        if temps:
+            self._temps, self._temps_at = temps, now
+        if not self._temps or not self._house_hours:
+            return
+        self.temp_model = fit_temperature(self._house_hours, self._temps, getattr(self, "_profile_from", None))
+        today = now.astimezone(self.tz).replace(hour=0, minute=0, second=0, microsecond=0)
+        future = {t: v for t, v in self._temps.items() if t >= today}
+        adj = temperature_adjust(self.temp_model, future)
+        self.learned_profile.adjust = adj
+        if self.profile is not self.learned_profile:
+            self.profile.adjust = {}
+        self.recalculate()
+
+    async def _async_temps_tick(self, *_args) -> None:
+        await self._async_update_temps()
+
+    def temp_extra(self, day) -> float | None:
+        """Ekstra forbrug (kWh) en given dag pga. temperaturen i forhold til normalt – None = ingen model/udsigt."""
+        if not self.temp_model.active or not self.learned_profile.adjust:
+            return None
+        vals = [v for (d, _h), v in self.learned_profile.adjust.items() if d == day]
+        return round(sum(vals), 1) if vals else None
 
     def _reserve_until(self, now: datetime) -> datetime:
         """Hvor længe skal batteriet række? Til næste planlagte opladning – ellers til den sidste kendte pris.
@@ -1175,7 +1237,7 @@ class SmartHusController:
         }
 
     async def async_stop(self) -> None:
-        for name in ("_unsub_learn", "_unsub_learn_first", "_unsub_sun_learn", "_unsub_sun_learn_first", "_unsub_energy", "_unsub_energy_first"):
+        for name in ("_unsub_learn", "_unsub_learn_first", "_unsub_temps", "_unsub_sun_learn", "_unsub_sun_learn_first", "_unsub_energy", "_unsub_energy_first"):
             unsub = getattr(self, name, None)
             if unsub:
                 unsub()
