@@ -219,11 +219,12 @@ def heating_blocks(slots: list[Slot], hours: float, tz: tzinfo, *, most_expensiv
 NIGHT_FROM_H, NIGHT_TO_H = 18, 8   # én ladenat: fra kl. 18 til kl. 8 næste morgen
 
 
-def _merge_night_charge(plan: Plan, slots: list[Slot], now: datetime, tz: tzinfo) -> None:
+def _merge_night_charge(plan: Plan, slots: list[Slot], now: datetime, tz: tzinfo, settings: dict | None = None) -> None:
     """Ladetimerne vælges pr. døgn. Når morgendagens priser kommer, kan i aftes ladetimer (fx 23–24) og
     nattens (fx 02–05) blive valgt hver for sig, selv om batteriet kun skal lades én gang i nat.
-    Vælg derfor nattens ladetimer igen samlet: de billigste blokke fra kl. 18 til kl. 8 – højst så mange
-    timer, som det ene døgn havde valgt i natten."""
+    Vælg derfor nattens ladetimer igen samlet: de billigste blokke fra kl. 18 til kl. 8. Natten får de timer,
+    der skal til ("Timer at lade" – ved "lad helt op" timerne til et fuldt batteri), også selv om døgnet
+    havde lagt nogle af dem sidst på dagen efter (dem til næste nat)."""
     local = now.astimezone(tz)
     first = local.replace(hour=NIGHT_FROM_H, minute=0, second=0, microsecond=0)
     if local.hour < NIGHT_TO_H:
@@ -238,7 +239,8 @@ def _merge_night_charge(plan: Plan, slots: list[Slot], now: datetime, tz: tzinfo
         return
     midnight = (first + timedelta(days=1)).replace(hour=0)
     hrs = lambda xs: sum((x.end - x.start).total_seconds() for x in xs) / 3600  # noqa: E731
-    quota = max(hrs([s for s in chosen if s.start < midnight]), hrs([s for s in chosen if s.start >= midnight]))
+    quota = max(hrs([s for s in chosen if s.start < midnight]), hrs([s for s in chosen if s.start >= midnight]),
+                float((settings or {}).get("battery_charge_hours") or 0))
     pick = cheapest_blocks(night, quota, BATTERY_MIN_BLOCK_H, min_gap_h=BATTERY_MIN_GAP_H)
     keep = [s for s in plan.battery_charge if not (start <= s.start < end)]
     plan.battery_charge = sorted(keep + pick, key=lambda s: s.start)
@@ -610,7 +612,7 @@ def build_plan(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
         plan.heating_reduce += reduce
         plan.heating_boost += boost
 
-    _merge_night_charge(plan, slots, now, tz)
+    _merge_night_charge(plan, slots, now, tz, settings)
     plan.evs = plan_cars(slots, now, tz, settings, cars)
 
     cur = plan.current

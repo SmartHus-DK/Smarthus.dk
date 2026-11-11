@@ -1282,3 +1282,30 @@ def test_night_charge_picked_across_midnight():
     plan = planner.build_plan(slots, now, tz, st, cars=[])
     night = sorted({s.start.astimezone(tz).hour for s in plan.battery_charge if s.start > now})
     assert 23 not in night and night == [1, 2, 3, 4], night
+
+
+def test_full_night_charge_not_moved_to_next_evening():
+    """Lad helt op: døgnets timer må ikke havne sidst på dagen i morgen, så natten kun får 1 time (Karsten 11/11)."""
+    import datetime as _dt
+    from zoneinfo import ZoneInfo
+    planner = sys.modules["smarthus.planner"]
+    tz = ZoneInfo("Europe/Copenhagen")
+    c, _ = make({}, {})
+    now = _dt.datetime(2026, 11, 11, 18, 26, tzinfo=tz)
+    day0 = _dt.datetime(2026, 11, 11, tzinfo=tz)
+    p1 = {h: 4.0 for h in range(24)}
+    p1.update({0: 1.0, 1: 1.0, 2: 1.0, 3: 1.0})                                   # i dag: nat (forbi)
+    p2 = {h: 3.5 for h in range(24)}
+    p2.update({0: 2.4, 1: 2.4, 2: 2.3, 3: 2.1, 4: 2.3, 21: 2.0, 22: 2.0, 23: 1.9})  # i morgen: aften billigst
+    slots = []
+    for h in range(48):
+        t = day0 + _dt.timedelta(hours=h)
+        p = p1[h] if h < 24 else p2[h - 24]
+        for q in range(4):
+            s = t + _dt.timedelta(minutes=15 * q)
+            slots.append(planner.Slot(s, s + _dt.timedelta(minutes=15), 0, p, 1.0))
+    st = {**c.settings, "battery_charge_hours": 3.75, "battery_full_charge": True, "battery_discharge_hours": 3.0}
+    plan = planner.build_plan(slots, now, tz, st, cars=[])
+    end = _dt.datetime(2026, 11, 12, 8, tzinfo=tz)
+    night = [s for s in plan.battery_charge if now < s.start < end]
+    assert len(night) * 0.25 >= 3.75, sorted({s.start.astimezone(tz).hour for s in night})
