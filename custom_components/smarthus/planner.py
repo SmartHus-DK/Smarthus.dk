@@ -234,6 +234,9 @@ def _merge_night_charge(plan: Plan, slots: list[Slot], now: datetime, tz: tzinfo
     night = [s for s in slots if start <= s.start < end]
     if not night or max(s.end for s in night) < end:
         return                                  # nattens priser kendes ikke helt endnu
+    st = settings or {}
+    if "battery_charge_from" in st and "battery_charge_to" in st:   # kun inden for kundens ladetidsrum
+        night = in_window(night, tz, float(st["battery_charge_from"]), float(st["battery_charge_to"]))
     chosen = [s for s in plan.battery_charge if start <= s.start < end]
     if not chosen:
         return

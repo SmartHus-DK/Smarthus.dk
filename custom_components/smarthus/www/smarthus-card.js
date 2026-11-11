@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.66.16";
+const SMARTHUS_CARD_VERSION = "1.66.17";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -121,6 +121,10 @@ const MODULES = [
       note: "Fra laveste til højeste niveau – også når der er sol på vej" }] }] },
 ];
 
+// "Lad batteriet helt op" står både under Batteri og Solceller
+const HELP_FULL_CHARGE = { k: ["battery_full_charge"], t: "Lad batteriet helt op",
+  d: "Slået til lades batteriet fra nettet fra laveste til højeste niveau i nattens billigste timer – også når solen ventes at fylde det, og uanset prisforskellen. Antallet af timer regnes ud fra batteriets størrelse og den maks. ladeeffekt (0 kW = ikke sat, så sker der intet). Det giver mening, hvis du venter et større forbrug end normalt (gæster, byggeri, sauna), hvis vejrudsigten er usikker, eller hvis du vil have strøm i reserve ved strømsvigt. Men det kan koste på besparelsen: bliver strømmen ikke brugt i de dyre timer bagefter, har du betalt for den plus ca. 10 % tab, og kommer der sol, mens batteriet er fuldt, må solstrømmen sælges billigt i stedet for at blive gemt. Den pris vises for sig som 'Fuld opladning (dit valg)' og trækkes ikke fra SmartHus' besparelse. Til daglig er det som regel billigst at have den slået fra – så lader SmartHus kun det, huset forventes at bruge." };
+
 // Forklaringer under "Sådan virker indstillingerne" (foldet sammen). k = indstillingen(e), der skal
 // findes, for at forklaringen vises – så kunden kun ser det, der passer til hans anlæg.
 const HELP = {
@@ -128,7 +132,8 @@ const HELP = {
     { k: ["battery_max_charge_kw"], t: "Maks. ladeeffekt fra nettet",
       d: "Hvor hurtigt inverteren kan lade batteriet fra nettet, fx 3 kW. SmartHus regner time for time ud, hvad huset bruger, og hvad solen ventes at give i morgen, og lader kun det, der mangler – ladetiden er det, der mangler, delt med ladeeffekten. 0 = ikke sat, så bruges 'Timer at lade'." },
     { k: ["battery_charge_hours"], t: "Timer at lade",
-      d: "Højst så mange af døgnets billigste timer må batteriet lade fra nettet. SmartHus vælger selv timerne ud fra elprisen, når morgendagens priser kommer ved 13-tiden. Er ladeeffekten sat, bruges kun de timer, der skal til." },
+      d: "Højst så mange af døgnets billigste timer må batteriet lade fra nettet. SmartHus vælger selv timerne ud fra elprisen, når morgendagens priser kommer ved 13-tiden. Nattens opladning (kl. 18–8) lægges samlet i nattens billigste timer, også hen over midnat. Er ladeeffekten sat, bruges kun de timer, der skal til." },
+    HELP_FULL_CHARGE,
     { k: ["battery_charge_from"], t: "Tidsrum for opladning",
       d: "De billige timer søges kun inden for dette tidsrum. 00–24 betyder hele døgnet. Brug fx 00–06, hvis batteriet kun må lade om natten." },
     { k: ["battery_discharge_hours"], t: "Timer at sælge",
@@ -142,11 +147,15 @@ const HELP = {
     { k: ["battery_min_spread"], t: "Min. prisforskel",
       d: "Batteriet lades kun fra nettet, når husets dyre timer er mindst så meget dyrere end de billige timer. Og der sælges kun til nettet, når salgsprisen er mindst så meget højere end ladeprisen inkl. tab. Ellers kører batteriet normalt, fordi tabet (ca. 10 %) og slid ellers æder gevinsten. 0,30–0,50 kr. er et godt udgangspunkt." },
     { k: ["battery_min_soc"], t: "Laveste niveau",
-      d: "Batteriet aflades aldrig under dette niveau af SmartHus. Hæv det, hvis du vil have strøm i reserve, fx ved strømsvigt." },
+      d: "Batteriet aflades aldrig under dette niveau af SmartHus. Har inverteren selv en reserve-indstilling (fx Fronius), sættes den automatisk til det samme. Hæv det, hvis du vil have strøm i reserve, fx ved strømsvigt." },
     { k: ["battery_max_soc"], t: "Højeste niveau",
-      d: "Opladning fra nettet stopper her. 90–95 % skåner batteriet og efterlader plads til solstrøm." },
+      d: "Opladning fra nettet stopper her, og batteriet lades først fra nettet igen, når det er faldet 2 %-point – så det ikke skifter frem og tilbage ved grænsen. 90–95 % skåner batteriet og efterlader plads til solstrøm." },
     { k: ["battery_capacity"], t: "Batteriets størrelse",
       d: "Den brugbare kapacitet i kWh – står på batteriet eller i inverterens app. Bruges til at regne ud, hvor meget der skal lades, hvor meget huset skal have i reserve, og hvor meget der kan sælges. Et forkert tal giver forkerte beslutninger." },
+    { k: ["battery_capacity"], t: "Husets forbrugsmønster",
+      d: "SmartHus lærer selv, hvad huset bruger time for time – hverdage og weekender hver for sig, og uden elbilens opladning. Mønsteret regnes forfra hver nat ud fra de seneste 14 dage, så det følger med, når forbruget ændrer sig (fx vinter, ny varmepumpe). De første 2 dage bruges et standardforbrug på 0,5 kW og 1,5 kW kl. 17–20." },
+    { k: ["battery_capacity"], t: "Batteriets besparelse",
+      d: "Besparelsen regnes, når strømmen i batteriet bruges: hvad den er værd i huset (eller sælges for), minus hvad den kostede at lade – netstrøm til købsprisen, solstrøm til den salgspris, du gav afkald på. En opladning om natten trækker derfor ikke dagens besparelse ned, før strømmen bruges." },
     { k: ["battery_solar_forecast_pct"], t: "Regn med af solprognosen",
       d: "Så stor en del af solprognosen bruges, når SmartHus planlægger batteriet. Lavere tal er mere forsigtigt: der lades mere fra nettet om natten, så der ikke mangler strøm til de dyre timer, hvis solen svigter. Højere tal køber mindre natstrøm, men risikerer dyr strøm om aftenen. 100 % bruger hele prognosen, 0 % regner slet ikke med sol." },
     { k: ["battery_solar_sell_margin"], t: "Sælg når gevinsten er mindst",
@@ -155,6 +164,8 @@ const HELP = {
   hotwater: [
     { k: ["hotwater_hours"], t: "Timer at opvarme",
       d: "Vandet varmes op i døgnets billigste sammenhængende timer inden for tidsrummet." },
+    { k: ["hotwater_from"], t: "Tidsrum",
+      d: "De billige timer søges kun inden for dette tidsrum. 00–24 betyder hele døgnet. Brug fx 00–07, så vandet er varmt til morgenbadet." },
     { k: ["hotwater_surplus_kw"], t: "Overskud over",
       d: "Sender solcellerne mere end dette ud på nettet, varmes vandet op med overskuddet. 0 slår det fra." },
     { k: ["hotwater_surplus_smart"], t: "Kun når det betaler sig",
@@ -175,12 +186,15 @@ const HELP = {
       d: "Huset varmes lidt ekstra op i de billigste timer og bruger varmen bagefter. Huset virker som et batteri. 0 grader slår det fra." },
     { k: ["heating_reduce_degrees", "heating_reduce_hours"], t: "Spar i dyre timer",
       d: "Temperaturen sænkes i de dyreste timer. 1–2 grader mærkes sjældent, især når huset er forvarmet. 0 grader slår det fra." },
+    { k: ["heating_boost_from", "heating_reduce_from"], t: "Tidsrum",
+      d: "Ekstra varme og sparetimer søges kun inden for hvert sit tidsrum – også med 'Automatisk plan'. 00–24 betyder hele døgnet." },
+    { k: ["heating_off_in_reduce"], t: "Sluk i sparetimer",
+      d: "Kun til små luft-til-luft varmepumper, fx i et sommerhus med vinterbeskyttelse: pumpen slukkes helt i de dyre timer og tændes igen bagefter. Bliver det koldere inde end 'Mindste indetemperatur', springes sparetimerne over." },
     { k: ["heating_min_indoor"], t: "Mindste indetemperatur",
       d: "Frostsikring: bliver det koldere inde, springes sparetimerne over." },
   ],
   solar: [
-    { k: ["battery_full_charge"], t: "Lad batteriet helt op",
-      d: "Slået til lader batteriet fra nettet fra laveste til højeste niveau i døgnets billigste timer – også når solen ventes at fylde det, og uanset prisforskellen. Kommer der sol, mens batteriet er fyldt med netstrøm, må solen sælges billigt i stedet – den pris vises for sig under Batteriets salg og trækkes ikke fra SmartHus' besparelse. Antallet af timer regnes ud fra batteriets størrelse og den maks. ladeeffekt, du taster ind (fx 5 kW). 0 kW = ikke sat, så sker der intet." },
+    HELP_FULL_CHARGE,
     { k: ["solar_export_min_price"], t: "Stop eksport under",
       d: "Er salgsprisen under denne grænse, stoppes eksporten (kræver at inverteren kan begrænse eksport), og batteriet lader af solstrømmen i stedet, hvis der er plads. 0 kr. betyder kun ved negativ pris." },
   ],
@@ -190,7 +204,7 @@ const HELP = {
     { k: ["_ready_hour"], t: "Klar kl.",
       d: "Hvornår bilen skal være færdig. Jo længere tid til, desto flere billige timer at vælge imellem." },
     { k: ["_manual_soc"], t: "Batteriniveau nu",
-      d: "Til biler uden måler: står på 0 %, når bilen sættes til – ret det til det rigtige niveau, så beregnes ladetiden. Det skønnes videre, mens bilen lader." },
+      d: "Til biler uden måler – eller når bilens måler ikke svarer: står på 0 %, når bilen sættes til – ret det til det rigtige niveau, så beregnes ladetiden. Det skønnes videre, mens bilen lader." },
     { k: ["_car_target"], t: "Lademål i bilen",
       d: "Har bilen selv et lademål, holdes laderen tændt lidt længere end beregnet, og bilen stopper selv." },
     { k: ["_battery_capacity", "_charge_power"], t: "Bil og lader",
