@@ -88,6 +88,7 @@ from .const import (
     S_HEATING_MIN_INDOOR,
     F_HEATING_OFF_REDUCE,
     CONF_HEATPUMP_ENERGY,
+    S_BATTERY_MIN_SPREAD,
     CONF_OUTDOOR_TEMP,
     CONF_WEATHER,
     HEATING_OUTDOOR_HYSTERESIS,
@@ -140,6 +141,8 @@ from .const import (
 from .coordinator import SmartHusPriceCoordinator
 from . import growatt as gw
 from .planner import CHARGE_EFFICIENCY, full_charge_hours, CarInput, Plan, build_plan, car_ready, car_settings, heating_outdoor_ok
+from .planner import BATTERY_MIN_BLOCK_H, BATTERY_MIN_GAP_H, BATTERY_ROUND_TRIP, cheapest_blocks, in_window
+DAY_CYCLE_FROM_H, DAY_CYCLE_PEAK_H = 8, 15   # ladning midt på dagen (fra kl. 8) til aftenens top (fra kl. 15)
 SELL_RESTART_KWH = 0.5   # kWh over reserven, før salg starter igen efter et stop
 BATTERY_RECHARGE_MARGIN = 2.0   # %-point under højeste niveau, før batteriet lades fra nettet igen
 
@@ -972,8 +975,81 @@ class SmartHusController:
         margin = float(self.settings.get(S_SOLAR_SELL_MARGIN, 0.10))
         return sale_mid, bool(self.has_sell_solar and sale_mid is not None and sale_mid - price / EFFICIENCY >= margin)
 
+    def _plan_day_cycle(self, now: datetime) -> None:
+        """Ekstra opladning midt på dagen: er der en billig dal før aftenens dyre top, og er forskellen
+        (inkl. ca. 10 % tab) mindst "min. prisforskel", lades lige nok til at dække toppen – minus det,
+        solen selv lægger i batteriet. Nattens opladning er uændret."""
+        self.day_cycle = None
+        p = self.plan
+        kw = float(self.settings.get(S_BATTERY_MAX_CHARGE_KW, 0) or 0)
+        soc = self._float_state(self.config.get(CONF_BATTERY_SOC))
+        if (kw <= 0 or soc is None or not self.active(MODULE_BATTERY) or not self.profile.ready
+                or not self.coordinator.data or p.current is None):
+            return
+        cap, mx, mn = self.settings[S_BATTERY_CAPACITY], self.settings[S_BATTERY_MAX_SOC], self.settings[S_BATTERY_MIN_SOC]
+        if cap <= 0:
+            return
+        floor, full = cap * mn / 100, cap * mx / 100
+        spread = float(self.settings.get(S_BATTERY_MIN_SPREAD, 0.0))
+        solar = self._solar_hours() or {}
+        tz = self.tz
+        local = now.astimezone(tz)
+        loc = lambda sl: sl.start.astimezone(tz)  # noqa: E731
+        today = [sl for sl in self.coordinator.data if loc(sl).date() == local.date() and sl.end > now]
+        charge = set(p.battery_charge)
+        night = [sl for sl in p.battery_charge if loc(sl).hour >= DAY_CYCLE_PEAK_H and sl.start > now]
+        stop = min((sl.start for sl in night), default=None)            # aftenens netopladning
+        cand = [sl for sl in today if DAY_CYCLE_FROM_H <= loc(sl).hour < DAY_CYCLE_PEAK_H + 2 and sl not in charge]
+        cand = in_window(cand, tz, float(self.settings.get("battery_charge_from", 0)),
+                         float(self.settings.get("battery_charge_to", 24)))
+        if not cand:
+            return
+        first = cheapest_blocks(cand, BATTERY_MIN_BLOCK_H, BATTERY_MIN_BLOCK_H)
+        if not first:
+            return
+        cost = sum(sl.price for sl in first) / len(first) / BATTERY_ROUND_TRIP
+        peak = [sl for sl in today if loc(sl).hour >= DAY_CYCLE_PEAK_H and sl not in charge and sl.start > first[-1].end
+                and (stop is None or sl.start < stop) and sl.price - cost >= spread]
+        if not peak:
+            return
+        peak_start = min(sl.start for sl in peak)
+        cand = [sl for sl in cand if sl.end <= peak_start]
+        # Batteriet frem til toppen uden ladning fra nettet (huset trækker, solen lægger til)
+        _, e_peak = simulate_battery(cap * soc / 100, self.profile, solar, local, peak_start.astimezone(tz),
+                                     floor=floor, full=full)
+        e_peak = max(e_peak, floor)
+        need = 0.0
+        for sl in peak:
+            h = loc(sl).replace(minute=0, second=0, microsecond=0)
+            frac = (sl.end - sl.start).total_seconds() / 3600
+            need += max(self.profile.hours_for(h)[h.hour] - (solar.get(h) or 0.0), 0.0) * frac
+        kwh = min(need / EFFICIENCY - (e_peak - floor), full - e_peak)
+        if kwh < 1.0:            # under 1 kWh: ikke værd at starte en opladning for
+            return
+        hours = math.ceil(kwh / (kw * 0.95) * 4) / 4
+        pick = cheapest_blocks(cand, hours, BATTERY_MIN_BLOCK_H, min_gap_h=BATTERY_MIN_GAP_H)
+        if not pick:
+            return
+        avg_c = sum(sl.price for sl in pick) / len(pick)
+        avg_p = sum(sl.price for sl in peak) / len(peak)
+        if avg_p - avg_c / BATTERY_ROUND_TRIP < spread:
+            return
+        _, e_start = simulate_battery(cap * soc / 100, self.profile, solar, local, max(pick[0].start.astimezone(tz), local),
+                                      floor=floor, full=full)
+        target = min(max(e_start, floor) + kwh, full)
+        p.battery_charge = sorted(set(p.battery_charge) | set(pick), key=lambda sl: sl.start)
+        p.battery_discharge = [sl for sl in p.battery_discharge if sl not in pick]
+        self.day_cycle = {"slots": set(pick), "target_kwh": target, "kwh": round(kwh, 1),
+                          "start": pick[0].start, "end": pick[-1].end, "peak_from": peak_start,
+                          "charge_price": round(avg_c, 3), "peak_price": round(avg_p, 3)}
+        if p.current in self.day_cycle["slots"] and soc < mx:
+            p.battery_action = ACTION_CHARGE
+
     def _charge_target(self, start: datetime, price: float) -> float:
         """Hvor mange kWh batteriet skal lades op til fra nettet i en ladeblok, der starter på `start`."""
+        dc = self.__dict__.get("day_cycle")
+        if dc and any(sl.start <= start < sl.end for sl in dc["slots"]):
+            return dc["target_kwh"]                     # dagens ekstra opladning til aftenens top
         cap, mx = self.settings[S_BATTERY_CAPACITY], self.settings[S_BATTERY_MAX_SOC]
         full = cap * mx / 100
         n = self._night_need(start)
@@ -1010,10 +1086,13 @@ class SmartHusController:
             return None
         # Samme ladenat: tidsrum med højst 8 timers mellemrum og ingen afladning/salg imellem
         stops = sorted(s.start for s in p.battery_discharge if s.end > now)
+        dc = self.__dict__.get("day_cycle")
+        dcs = dc["slots"] if dc else set()
         block = [later[0]]
         for s in later[1:]:
             gap_end = s.start
-            if (gap_end - block[-1].end) > timedelta(hours=8) or any(block[-1].end <= d < gap_end for d in stops):
+            if (gap_end - block[-1].end) > timedelta(hours=8) or any(block[-1].end <= d < gap_end for d in stops) \
+                    or (s in dcs) != (block[0] in dcs):      # dagens ekstra opladning er sin egen blok
                 break
             block.append(s)
         start, end = max(block[0].start, now), block[-1].end
@@ -1043,8 +1122,10 @@ class SmartHusController:
         next_morning = (end.astimezone(self.tz) + timedelta(hours=12)).replace(hour=6, minute=0, second=0, microsecond=0)
         if next_morning - end.astimezone(self.tz) > timedelta(hours=18):
             next_morning -= timedelta(days=1)
-        pending = last < next_morning and e + kwh < target - 0.3
+        in_dc = block[0] in dcs
+        pending = last < next_morning and e + kwh < target - 0.3 and not in_dc
         return {"start": start.isoformat(), "end": end.isoformat(), "kwh": round(kwh, 1),
+                "day_cycle": in_dc, "peak_from": dc["peak_from"].isoformat() if in_dc else None,
                 "hours": round(hours, 2), "periods": periods, "prices_pending": pending,
                 "soc_at_start": round(e / cap * 100), "target_soc": round((e + kwh) / cap * 100),
                 "avg_price": round(price, 2), "cost": round(kwh * price, 2)}
@@ -1089,6 +1170,18 @@ class SmartHusController:
             return
         soc = self._float_state(self.config.get(CONF_BATTERY_SOC))
         if soc is None:
+            return
+        dc = self.__dict__.get("day_cycle")
+        if dc and p.current in dc["slots"]:
+            # Dagens ekstra opladning: lad til det, aftenens top kræver
+            cap, mx = self.settings[S_BATTERY_CAPACITY], self.settings[S_BATTERY_MAX_SOC]
+            target = dc["target_kwh"]
+            skip = cap * soc / 100 >= target - 0.05
+            self.grid_charge = {"target_kwh": round(target, 2),
+                                "target_soc": round(min(target / cap * 100, mx), 0) if cap else None,
+                                "charge_price": round(p.current.price, 3), "day_cycle": True, "skipping": skip}
+            if skip:
+                p.battery_action = ACTION_HOLD if self.has_hold else ACTION_NORMAL
             return
         fc = self.solar_forecast
         local = now.astimezone(self.tz)
@@ -1425,6 +1518,11 @@ class SmartHusController:
                                battery_full=self.__dict__.get("_battery_full", False))
         if "_temps" in self.__dict__:
             self._apply_temp_adjust()
+        self.day_cycle = None
+        try:
+            self._plan_day_cycle(dt_util.utcnow())
+        except Exception:  # noqa: BLE001 – en fejl her må aldrig stoppe resten af styringen
+            _LOGGER.exception("SmartHus: kunne ikke planlægge dagens ekstra opladning")
         self._update_hotwater_demand()
         now = dt_util.utcnow()
         for cid, ep in self.plan.evs.items():

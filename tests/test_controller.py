@@ -1383,3 +1383,63 @@ def test_night_charge_kept_after_midnight_when_evening_is_cheaper():
     plan = planner.build_plan(slots, now, tz, st, cars=[])
     night = sorted({s.start.astimezone(tz).hour for s in plan.battery_charge if s.start.astimezone(tz).hour < 8})
     assert len([s for s in plan.battery_charge if s.start.astimezone(tz).hour < 8]) * 0.25 >= 3.0, night
+
+
+def _karsten_day(c, now, soc="6"):
+    """Karstens priser 12/11: dal kl. 13–15 (ca. 2,0 kr), top kl. 17–20 (ca. 2,8 kr), billigst kl. 21–24."""
+    import datetime as _dt
+    prof = sys.modules["smarthus.profile"]
+    tz = c.tz
+    price = [2.33, 2.29, 2.19, 2.05, 2.02, 2.03, 2.36, 2.68, 2.77, 2.57, 2.37, 2.25, 2.15, 2.02, 2.06, 2.10,
+             2.26, 2.78, 2.82, 2.69, 2.62, 1.96, 1.85, 1.78]
+    day0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    q = _dt.timedelta(minutes=15)
+    slots = [planner.Slot(day0 + i * q, day0 + (i + 1) * q, 0, price[i // 4], 1.0) for i in range(96)]
+    c.coordinator = types.SimpleNamespace(data=slots)
+    wd = [0.82, 0.77, 0.88, 0.61, 0.7, 0.66, 0.69, 0.76, 1, 1.02, 0.63, 1.18, 1.31, 1.58, 1.12, 0.76, 0.89, 1.51,
+          2.08, 1.92, 1.65, 0.91, 1.9, 1.08]
+    c.profile = prof.Profile(weekday=wd, weekend=wd, days=9, weekday_days=7, weekend_days=2)
+    c.settings.update(battery_capacity=13.8, battery_min_soc=5, battery_max_soc=100, battery_max_charge_kw=3.8,
+                      battery_min_spread=0.5)
+    c.enabled = {ctl_mod.MODULE_MASTER: True, ctl_mod.MODULE_BATTERY: True}
+    c._solar_hours = lambda: {}
+    c.plan.current = next(s for s in slots if s.start <= now < s.end)
+    c.plan.battery_charge = [s for s in slots if s.start.astimezone(tz).hour >= 22]
+    c.plan.battery_discharge = []
+    return slots
+
+
+def test_day_cycle_charges_midday_for_evening_peak():
+    import datetime as _dt
+    c, _ = make({"battery_mode_entity": "select.mode", "battery_soc_sensor": "sensor.soc"}, {"sensor.soc": State("6")})
+    now = _dt.datetime(2026, 11, 12, 8, 20, tzinfo=c.tz)
+    _karsten_day(c, now)
+    c._plan_day_cycle(now)
+    dc = c.day_cycle
+    assert dc is not None
+    hrs = sorted({s.start.astimezone(c.tz).hour for s in dc["slots"]})
+    assert all(12 <= h < 17 for h in hrs), hrs                       # i middagsdalen
+    assert dc["peak_from"].astimezone(c.tz).hour == 17               # dækker aftenens top
+    # Toppen er kl. 17–19 (2,78–2,82 kr) – kl. 19–21 (2,6–2,7 kr) er under 0,5 kr bedre end ladeprisen inkl. tab
+    assert 3 < dc["kwh"] < 5 and dc["target_kwh"] <= 13.8
+    assert all(s in c.plan.battery_charge for s in dc["slots"])
+    assert c._charge_target(min(s.start for s in dc["slots"]), 2.0) == dc["target_kwh"]
+
+
+def test_day_cycle_respects_spread():
+    import datetime as _dt
+    c, _ = make({"battery_mode_entity": "select.mode", "battery_soc_sensor": "sensor.soc"}, {"sensor.soc": State("6")})
+    now = _dt.datetime(2026, 11, 12, 8, 20, tzinfo=c.tz)
+    _karsten_day(c, now)
+    c.settings["battery_min_spread"] = 0.8          # 2,8 − 2,02/0,9 ≈ 0,56 < 0,8
+    c._plan_day_cycle(now)
+    assert c.day_cycle is None
+
+
+def test_day_cycle_not_needed_when_battery_full():
+    import datetime as _dt
+    c, _ = make({"battery_mode_entity": "select.mode", "battery_soc_sensor": "sensor.soc"}, {"sensor.soc": State("95")})
+    now = _dt.datetime(2026, 11, 12, 8, 20, tzinfo=c.tz)
+    _karsten_day(c, now)
+    c._plan_day_cycle(now)
+    assert c.day_cycle is None

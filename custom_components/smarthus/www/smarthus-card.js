@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.66.21";
+const SMARTHUS_CARD_VERSION = "1.66.22";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -74,7 +74,8 @@ function chargePlanText(a) {
   const word = s <= now ? "nu" : s.getHours() < 6 && s - now < 12 * 3600e3 ? "i nat" : s < nextDay ? "i dag" : "i morgen";
   const dec = (v) => String(v).replace(".", ",");
   const parts = c.periods > 1 ? ` (${c.periods} tidsrum, ${dec(Math.round(c.hours * 10) / 10)} t)` : "";
-  const more = c.prices_pending ? " · flere timer kan komme til, når morgendagens priser kommer ca. kl. 13" : "";
+  const more = c.day_cycle && c.peak_from ? ` · til aftenens dyre timer fra kl. ${clock(new Date(c.peak_from))}`
+    : c.prices_pending ? " · flere timer kan komme til, når morgendagens priser kommer ca. kl. 13" : "";
   return `<b>Lader ${word} ${clock(s)}–${clock(e)}</b>${parts}: ca. ${dec(c.kwh)} kWh op til ${c.target_soc} % · ca. ${dec(c.cost.toFixed(0))} kr${more}`;
 }
 
@@ -145,7 +146,7 @@ const HELP = {
     { k: ["battery_discharge_from"], t: "Tidsrum for afladning",
       d: "De dyre timer søges kun inden for dette tidsrum, fx 16–21 for kun at bruge batteriet i aftenspidsen." },
     { k: ["battery_min_spread"], t: "Min. prisforskel",
-      d: "Batteriet lades kun fra nettet, når husets dyre timer er mindst så meget dyrere end de billige timer. Og der sælges kun til nettet, når salgsprisen er mindst så meget højere end ladeprisen inkl. tab. Ellers kører batteriet normalt, fordi tabet (ca. 10 %) og slid ellers æder gevinsten. 0,30–0,50 kr. er et godt udgangspunkt." },
+      d: "Batteriet lades kun fra nettet, når husets dyre timer er mindst så meget dyrere end de billige timer. Og der sælges kun til nettet, når salgsprisen er mindst så meget højere end ladeprisen inkl. tab. Ellers kører batteriet normalt, fordi tabet (ca. 10 %) og slid ellers æder gevinsten. Er der en billig dal midt på dagen før en dyr aftentop, lades der også ekstra midt på dagen – lige nok til de timer i toppen, der er mindst så meget dyrere end dalen inkl. tab. 0,30–0,50 kr. er et godt udgangspunkt." },
     { k: ["battery_min_soc"], t: "Laveste niveau",
       d: "Batteriet aflades aldrig under dette niveau af SmartHus. Har inverteren selv en reserve-indstilling (fx Fronius), sættes den automatisk til det samme. Hæv det, hvis du vil have strøm i reserve, fx ved strømsvigt." },
     { k: ["battery_max_soc"], t: "Højeste niveau",
