@@ -2991,6 +2991,30 @@ class SmartHusController:
         cutoff = now - timedelta(hours=4)
         self._hw_samples = [x for x in self._hw_samples if x[0] >= cutoff]
 
+    def _skip_late_hotwater(self, now, temp: float | None) -> None:
+        """Dagens almindelige opvarmning, der endnu ikke er kørt, springes over, når morgendagens er billigere.
+
+        Planen tager én opvarmning pr. kalenderdag – sent på dagen er "dagens billigste" bare den billigste af
+        de få timer, der er tilbage (fx kl. 23), selv om nattens eller morgendagens timer er billigere. Med en
+        temperaturføler sørger ekstra-opvarmningen (plan_demand) for, at vandet ikke bliver for koldt inden da.
+        """
+        if temp is None or self.hotwater_heated_today:
+            return
+        today = now.astimezone(self.tz).date()
+        mine = [s for s in self.plan.hotwater_slots if s.start.astimezone(self.tz).date() == today]
+        if not mine or any(s.start <= now for s in mine):
+            return                                  # ingen tilbage i dag – eller den er i gang
+        later = [s for s in self.plan.hotwater_slots if s.start.astimezone(self.tz).date() > today]
+        if not later:
+            return                                  # morgendagens priser kendes ikke endnu
+        avg = lambda xs: sum(x.price for x in xs) / len(xs)  # noqa: E731
+        if avg(later) < avg(mine) - 0.01:
+            skip = {s.start for s in mine}
+            self.plan.hotwater_slots = [s for s in self.plan.hotwater_slots if s.start not in skip]
+            cur = self.plan.current
+            if cur is not None and cur.start in skip:
+                self.plan.hotwater_on = False
+
     def _update_hotwater_demand(self) -> None:
         """Ekstra opvarmning i den billigste time, før vandet bliver så koldt, at varmepumpen selv starter."""
         self.hw_demand_now = False
@@ -3002,6 +3026,7 @@ class SmartHusController:
         self.hw_rate = cooling_rate(sorted(self._hw_samples), now)
         watch = float(self.settings.get(S_HOTWATER_WATCH_TEMP, 45.0))
         floor = self.hotwater_min_temp
+        self._skip_late_hotwater(now, temp)
         regular = [s for s in self.plan.hotwater_slots if s.end > now]
         keep = [s for s in self.hw_demand if s.end > now]
         if temp is not None and temp >= watch:

@@ -1493,3 +1493,28 @@ def test_no_grid_charge_while_sun_gives_surplus():
     c._solar_hours = lambda: {}
     c._drop_solar_charge(now)
     assert all(s in c.plan.battery_charge for s in mid)
+
+
+def test_late_hotwater_skipped_when_tomorrow_cheaper():
+    """Kl. 19.37: dagens opvarmning ville ligge kl. 23 (1,73 kr), morgendagens kl. 12 (1,20 kr). Med
+    temperaturføler springes den sene over – ekstra-opvarmningen passer på, at vandet ikke bliver for koldt."""
+    from datetime import datetime, timedelta
+    tz = ZoneInfo("Europe/Copenhagen")
+    q = timedelta(minutes=15)
+    def block(h, d, price):
+        t0 = datetime(2026, 11, d, h, 0, tzinfo=tz).astimezone(timezone.utc)
+        return [planner.Slot(t0 + i * q, t0 + (i + 1) * q, price, price, 1.0) for i in range(4)]
+    tonight, tomorrow = block(23, 12, 1.73), block(12, 13, 1.20)
+    c, h = make({}, {})
+    c._hw_done_date = None
+    now = datetime(2026, 11, 12, 19, 37, tzinfo=tz).astimezone(timezone.utc)
+    c.plan = planner.Plan(hotwater_slots=tonight + tomorrow)
+    c._skip_late_hotwater(now, 45.5)
+    assert c.plan.hotwater_slots == tomorrow
+    # Uden temperaturføler, eller når morgendagen er dyrere: som før
+    c.plan = planner.Plan(hotwater_slots=tonight + tomorrow)
+    c._skip_late_hotwater(now, None)
+    assert c.plan.hotwater_slots == tonight + tomorrow
+    c.plan = planner.Plan(hotwater_slots=tonight + block(12, 13, 2.5))
+    c._skip_late_hotwater(now, 45.5)
+    assert len(c.plan.hotwater_slots) == 8
