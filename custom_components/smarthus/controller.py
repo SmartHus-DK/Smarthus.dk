@@ -167,6 +167,7 @@ HEAL_TODAY_DELAY_SEC = 120 # efter opstart: byg dagens tal op fra statistikken (
 RESTORE_DELAY_SEC = 10     # slås styringen til igen inden for 10 s, sendes der intet til enhederne
 EV_FULL_IDLE_SEC = 900    # bilen stopper selv: tændt lader uden strømforbrug i 15 min = bilen er fuld
 HUAWEI_DISCHARGE_KEY = "storage_maximum_discharging_power"
+EV_SOC_WAIT_SEC = 300          # efter genstart: vent på bilens batteriniveau før opladning planlægges
 EV_FAULT_RATIO = 0.8          # ladefejl: under 80 % af ladeeffekten …
 EV_FAULT_SEC = 300            # … i 5 minutter
 EV_FAULT_MAX_SOC = 90         # over 90 % sætter bilen selv strømmen ned
@@ -261,6 +262,7 @@ class SmartHusController:
         self._script_state: dict[str, str] = {}
         self.hold_sun = False                 # "gem batteriet", men solens overskud lader det (Growatt SPH)
         self._hold_sun_since: float | None = None
+        self._born = time.monotonic()           # start – bilens batteriniveau ventes på (_soc_pending)
         # Varmt vand med temperaturføler: True når øvre grænse er nået
         self.hotwater_full = False
         self.heating_outdoor_ok = True     # varmestyringen er aktiv ift. udetemperaturen
@@ -1490,7 +1492,7 @@ class SmartHusController:
         cars = [
             CarInput(car["id"], car.get("name") or "Elbil",
                      soc=self.car_soc(car), force=self.ev_force.get(car["id"], False),
-                     connected=self.connected.get(car["id"], True),
+                     connected=self.connected.get(car["id"], True) and not self._soc_pending(car),
                      charged_h=self._charged_hours(car["id"]),
                      extra_h=self._extra_hours(car),
                      was_on_slot=self._ev_on_slot(car["id"]),
@@ -1969,6 +1971,14 @@ class SmartHusController:
                                "since": dt_util.now().isoformat(timespec="minutes")}
                 _LOGGER.warning("SmartHus: %s lader kun med %.1f kW (forventet ca. %.1f kW) – begrænset ladestrøm",
                                 car.get("name") or cid, kw, expected)
+
+    def _soc_pending(self, car: dict) -> bool:
+        """Lige efter en genstart er bilens batteriniveau ofte ikke hentet endnu. Planlæg ikke ud fra
+        ladetimer i stedet (det kan starte laderen med det samme) – vent op til 5 min på bilens måler."""
+        born = self.__dict__.setdefault("_born", time.monotonic())
+        if time.monotonic() - born > EV_SOC_WAIT_SEC or getattr(self, "ev_force", {}).get(car["id"], False):
+            return False
+        return self.has_soc_sensor(car) and not self.soc_sensor_ok(car)
 
     def _ev_on_slot(self, cid: str):
         """Kvarteret, hvor bilen allerede lader efter planen (fra sidste beregning) – eller None."""

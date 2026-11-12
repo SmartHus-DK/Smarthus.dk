@@ -1443,3 +1443,29 @@ def test_day_cycle_not_needed_when_battery_full():
     _karsten_day(c, now)
     c._plan_day_cycle(now)
     assert c.day_cycle is None
+
+
+def test_wait_for_car_soc_after_restart():
+    """Lige efter genstart: har bilen en SoC-måler, der ikke har svaret endnu, planlægges der ikke (ellers
+    planlægges der ud fra ladetimer, og laderen kan starte med det samme). Efter 5 min eller med Lad nu: som før."""
+    st = {"sensor.soc": State("unavailable")}
+    c, h = make({}, st)
+    car = {"id": "ev", "name": "Bil", "soc": "sensor.soc"}
+    c.cars = [car]
+    c.ev_force = {}
+    clock = [1000.0]
+    real = ctl_mod.time.monotonic
+    ctl_mod.time.monotonic = lambda: clock[0]
+    try:
+        c._born = 1000.0
+        assert c._soc_pending(car)
+        st["sensor.soc"] = State("8")
+        assert not c._soc_pending(car)
+        st["sensor.soc"] = State("unknown")
+        c.ev_force["ev"] = True
+        assert not c._soc_pending(car)
+        c.ev_force["ev"] = False
+        clock[0] = 1301
+        assert not c._soc_pending(car)
+    finally:
+        ctl_mod.time.monotonic = real
