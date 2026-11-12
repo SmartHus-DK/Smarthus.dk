@@ -1469,3 +1469,27 @@ def test_wait_for_car_soc_after_restart():
         assert not c._soc_pending(car)
     finally:
         ctl_mod.time.monotonic = real
+
+
+def test_no_grid_charge_while_sun_gives_surplus():
+    """Karsten 13/11: døgnets billigste timer kl. 11–13 – men solen giver overskud, så nettet skal ikke lade."""
+    import datetime as _dt
+    c, _ = make({"battery_mode_entity": "select.mode", "battery_soc_sensor": "sensor.soc"}, {"sensor.soc": State("70")})
+    now = _dt.datetime(2026, 11, 12, 13, 50, tzinfo=c.tz)
+    _karsten_day(c, now)
+    tm = _dt.datetime(2026, 11, 13, tzinfo=c.tz)
+    q = _dt.timedelta(minutes=15)
+    night = [planner.Slot(tm.replace(hour=3) + i * q, tm.replace(hour=3) + (i + 1) * q, 0, 1.68, 1.0) for i in range(7)]
+    mid = [planner.Slot(tm.replace(hour=11, minute=15) + i * q, tm.replace(hour=11, minute=15) + (i + 1) * q, 0, 1.52, 1.0)
+           for i in range(7)]
+    c.plan.battery_charge = night + mid
+    sun = {tm.replace(hour=h): v for h, v in {9: 1.5, 10: 2.5, 11: 3.0, 12: 3.0, 13: 2.5, 14: 1.5}.items()}
+    c._solar_hours = lambda: sun
+    c._drop_solar_charge(now)
+    assert all(s in c.plan.battery_charge for s in night)
+    assert not any(s in c.plan.battery_charge for s in mid)
+    # Overskyet: ingen sol – så må nettet gerne lade midt på dagen
+    c.plan.battery_charge = night + mid
+    c._solar_hours = lambda: {}
+    c._drop_solar_charge(now)
+    assert all(s in c.plan.battery_charge for s in mid)

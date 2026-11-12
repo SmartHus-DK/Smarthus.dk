@@ -142,6 +142,7 @@ from .coordinator import SmartHusPriceCoordinator
 from . import growatt as gw
 from .planner import CHARGE_EFFICIENCY, full_charge_hours, CarInput, Plan, build_plan, car_ready, car_settings, heating_outdoor_ok
 from .planner import BATTERY_MIN_BLOCK_H, BATTERY_MIN_GAP_H, BATTERY_ROUND_TRIP, cheapest_blocks, in_window
+SOLAR_CHARGE_SURPLUS_KWH = 0.3   # forventet soloverskud i timen, hvor der ikke lades fra nettet
 DAY_CYCLE_FROM_H, DAY_CYCLE_PEAK_H = 8, 15   # ladning midt på dagen (fra kl. 8) til aftenens top (fra kl. 15)
 SELL_RESTART_KWH = 0.5   # kWh over reserven, før salg starter igen efter et stop
 BATTERY_RECHARGE_MARGIN = 2.0   # %-point under højeste niveau, før batteriet lades fra nettet igen
@@ -977,6 +978,30 @@ class SmartHusController:
         margin = float(self.settings.get(S_SOLAR_SELL_MARGIN, 0.10))
         return sale_mid, bool(self.has_sell_solar and sale_mid is not None and sale_mid - price / EFFICIENCY >= margin)
 
+    def _drop_solar_charge(self, now: datetime) -> None:
+        """Lad ikke fra nettet i timer, hvor solen forventes at give overskud – så fylder solen batteriet,
+        og nettets strøm ville bare skubbe solstrømmen ud til salg til en lavere pris.
+        (Planen vælger døgnets billigste timer uden at kende solen; fx kl. 11–13 på en solrig dag.)"""
+        p = self.plan
+        if not p.battery_charge or not self.profile.ready:
+            return
+        solar = self._solar_hours()
+        if not solar:
+            return
+        drop = set()
+        for sl in p.battery_charge:
+            if sl.end <= now:
+                continue
+            h = sl.start.astimezone(self.tz).replace(minute=0, second=0, microsecond=0)
+            surplus = (solar.get(h) or 0.0) - self.profile.hours_for(h)[h.hour]
+            if surplus >= SOLAR_CHARGE_SURPLUS_KWH and sl.price > sl.sale:
+                drop.add(sl)
+        if not drop:
+            return
+        p.battery_charge = [sl for sl in p.battery_charge if sl not in drop]
+        if p.current in drop and p.battery_action == ACTION_CHARGE:
+            p.battery_action = ACTION_NORMAL         # solen lader – batteriet tager overskuddet selv
+
     def _plan_day_cycle(self, now: datetime) -> None:
         """Ekstra opladning midt på dagen: er der en billig dal før aftenens dyre top, og er forskellen
         (inkl. ca. 10 % tab) mindst "min. prisforskel", lades lige nok til at dække toppen – minus det,
@@ -1520,6 +1545,7 @@ class SmartHusController:
                                battery_full=self.__dict__.get("_battery_full", False))
         if "_temps" in self.__dict__:
             self._apply_temp_adjust()
+        self._drop_solar_charge(dt_util.utcnow())
         self.day_cycle = None
         try:
             self._plan_day_cycle(dt_util.utcnow())
