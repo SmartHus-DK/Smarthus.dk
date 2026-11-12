@@ -238,9 +238,12 @@ def _merge_night_charge(plan: Plan, slots: list[Slot], now: datetime, tz: tzinfo
     if "battery_charge_from" in st and "battery_charge_to" in st:   # kun inden for kundens ladetidsrum
         night = in_window(night, tz, float(st["battery_charge_from"]), float(st["battery_charge_to"]))
     chosen = [s for s in plan.battery_charge if start <= s.start < end]
-    if not chosen:
-        return
     midnight = (first + timedelta(days=1)).replace(hour=0)
+    # Natten lader til det døgn, den går forud for. Har det døgn ladetimer (også kun sidst på aftenen,
+    # fordi de var billigst – fx kl. 21–24 efter midnat), skal natten stadig have sine timer.
+    day_end = (midnight + timedelta(days=1)).astimezone(now.tzinfo or tz)
+    if not any(start <= s.start < day_end for s in plan.battery_charge):
+        return
     hrs = lambda xs: sum((x.end - x.start).total_seconds() for x in xs) / 3600  # noqa: E731
     quota = max(hrs([s for s in chosen if s.start < midnight]), hrs([s for s in chosen if s.start >= midnight]),
                 float((settings or {}).get("battery_charge_hours") or 0))

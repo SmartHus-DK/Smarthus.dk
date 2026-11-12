@@ -1360,3 +1360,26 @@ def test_apply_temp_adjust_heatpump_follows_plan():
     hrs = c.profile.hours_for(tm)
     assert abs(sum(hrs) - (24 * 1.0 + 12.0 - 24 * 0.5)) < 1e-6        # huset + varmepumpens døgnforbrug
     assert hrs[18] < hrs[12] < hrs[19]                                 # sparet kl. 18, hentet ind kl. 19–21
+
+
+def test_night_charge_kept_after_midnight_when_evening_is_cheaper():
+    """Karsten 12/11 kl. 00:25: døgnet valgte kun aftenen (21–24), og nattens opladning forsvandt."""
+    import datetime as _dt
+    from zoneinfo import ZoneInfo
+    planner = sys.modules["smarthus.planner"]
+    tz = ZoneInfo("Europe/Copenhagen")
+    c, _ = make({}, {})
+    now = _dt.datetime(2026, 11, 12, 0, 25, tzinfo=tz)
+    day0 = _dt.datetime(2026, 11, 12, tzinfo=tz)
+    p = {h: 3.5 for h in range(24)}
+    p.update({0: 2.3, 1: 2.2, 2: 2.05, 3: 2.0, 4: 2.05, 5: 2.1, 20: 1.9, 21: 1.8, 22: 1.8, 23: 1.85})
+    slots = []
+    for h in range(24):
+        t = day0 + _dt.timedelta(hours=h)
+        for q in range(4):
+            s = t + _dt.timedelta(minutes=15 * q)
+            slots.append(planner.Slot(s, s + _dt.timedelta(minutes=15), 0, p[h], 1.0))
+    st = {**c.settings, "battery_charge_hours": 3.0, "battery_discharge_hours": 3.0}
+    plan = planner.build_plan(slots, now, tz, st, cars=[])
+    night = sorted({s.start.astimezone(tz).hour for s in plan.battery_charge if s.start.astimezone(tz).hour < 8})
+    assert len([s for s in plan.battery_charge if s.start.astimezone(tz).hour < 8]) * 0.25 >= 3.0, night
