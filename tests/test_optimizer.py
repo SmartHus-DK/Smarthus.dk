@@ -74,3 +74,30 @@ def test_without_hold_support_and_buffer():
     before = sum(s.load for s in sl)
     opt.morning_buffer(sl, timezone.utc, 2.0)
     assert abs(sum(s.load for s in sl) - before - 2.0) < 1e-6
+
+
+def test_buffer_goes_to_next_whole_morning():
+    """Kl. 07 er morgenen i gang – bufferen lægges på næste morgen, ikke på de næste par timer."""
+    hourly = {h: 2.0 for h in range(7, 7 + 30)}
+    sl = slots(hourly, [0.4] * 24)
+    before = [s.load for s in sl]
+    opt.morning_buffer(sl, timezone.utc, 2.0)
+    changed = [s for s, b in zip(sl, before) if abs(s.load - b) > 1e-9]
+    assert changed and all(s.start.hour in (5, 6, 7, 8) and s.start.day == 14 for s in changed)
+
+
+def test_plan_stable_across_midnight_and_new_prices():
+    """Kl. 12.30 kendes kun dagens priser; kl. 13.30 kommer morgendagens. Planen for de næste timer må ikke
+    vende rundt, og hen over midnat regnes der videre uden spring."""
+    today = {h: p for h, p in zip(range(12, 24), [1.88, 1.86, 1.96, 2.14, 2.27, 2.39, 2.91, 2.77, 2.71, 2.62, 2.11, 2.04])}
+    tomorrow = {h: p for h, p in zip(range(24, 48), [2.11, 2.05, 2.01, 2.02, 2.00, 1.99, 2.17, 2.27, 2.29, 2.18, 2.02,
+                                                     1.88, 1.86, 1.96, 2.14, 2.27, 2.39, 2.91, 2.77, 2.71, 2.62, 2.11,
+                                                     2.04, 2.01])}
+    a = opt.optimize(slots(today, KP), 6.0, floor=0.69, full=13.8, charge_kw=3.8, min_spread=0.5)
+    b = opt.optimize(slots({**today, **tomorrow}, KP), 6.0, floor=0.69, full=13.8, charge_kw=3.8, min_spread=0.5)
+    # Aftenens top kl. 18–21 bruges i begge planer
+    for r in (a, b):
+        assert all(x == "use" for x in r.actions[6 * 4:9 * 4])
+    # Hen over midnat: ingen pludselig opladning i nattens flade priser
+    assert "charge" not in b.actions[12 * 4:18 * 4]
+    assert len(b.actions) == 36 * 4 and len(b.levels) == 36 * 4 + 1

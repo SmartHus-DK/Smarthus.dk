@@ -168,12 +168,18 @@ def morning_buffer(slots: list[OptSlot], tz: tzinfo, buffer_kwh: float, first: i
     if buffer_kwh <= 0:
         return
     morning = []
+    lt0 = slots[0].start.astimezone(tz) if slots else None
+    skipping = lt0 is not None and first <= lt0.hour < last and (lt0.hour, lt0.minute) != (first, 0)
     for s in slots:
         h = s.start.astimezone(tz).hour
         if first <= h < last:
+            if skipping:
+                continue                              # morgenen er allerede i gang: bufferen er til næste morgen
             morning.append(s)
-        elif morning:
-            break                                     # kun den første morgen
+        else:
+            skipping = False
+            if morning:
+                break                                 # kun den første hele morgen
     if not morning:
         return
     add = buffer_kwh / len(morning)
