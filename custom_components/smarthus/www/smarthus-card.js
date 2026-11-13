@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.67.1";
+const SMARTHUS_CARD_VERSION = "1.67.2";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -90,6 +90,8 @@ function batteryWhy(a) {
       ? `Strømmen i batteriet${h.usable_kwh != null ? ` (ca. ${k1(h.usable_kwh)} kWh)` : ""} gemmes til de dyre timer fra kl. ${hh(h.from)} (ca. ${kr(h.price)} kr/kWh). Lige nu koster strømmen ${kr(w.now_price)} kr/kWh, så det er billigst at købe fra nettet nu og bruge batteriet senere.`
       : `Strømmen i batteriet gemmes til dyrere timer senere. Lige nu koster strømmen ${kr(w.now_price)} kr/kWh.`;
     if (!w.planned_charge && priceTxt) items.push(priceTxt);
+    else if (w.planned_charge && c.code === "price" && w.charge_plan && w.charge_plan.kwh <= 3)
+      items.push(`Der lades kun lidt fra nettet (ca. ${k1(w.charge_plan.kwh)} kWh kl. ${hh(w.charge_plan.start)}–${hh(w.charge_plan.end)}) – i de timer, hvor forskellen er størst. Ellers kan det ikke betale sig: de billigste timer koster ca. ${kr(c.cheap_price)} kr/kWh – med ca. ${c.loss_pct} % tab ca. ${kr(c.cheap_price / (1 - c.loss_pct / 100))} kr/kWh – mod ca. ${kr(c.dear_price)} kr/kWh i de dyreste timer. Gevinsten på ${kr(Math.max(c.gain, 0))} kr/kWh er under din mindste prisforskel på ${kr(c.min_spread)} kr.`);
     return { title: "Hvorfor gemmes batteriet?", text, items };
   }
   if (!w.planned_charge && w.state !== "charge") {

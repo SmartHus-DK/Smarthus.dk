@@ -1026,6 +1026,9 @@ class SmartHusController:
         local = now.astimezone(self.tz)
         out: dict = {"state": {ACTION_HOLD: "hold", ACTION_CHARGE: "charge", ACTION_DISCHARGE: "sell"}.get(p.battery_action, "normal"),
                      "planned_charge": bool(self.planned_charge), "now_price": round(p.current.price, 2)}
+        pc = self.planned_charge or {}
+        if pc:
+            out["charge_plan"] = {"start": pc.get("start"), "end": pc.get("end"), "kwh": pc.get("kwh")}
         # Gemmes: til hvilke (dyre) timer?
         use = sorted((sl for sl in (p.battery_use or []) if sl.start > now), key=lambda sl: sl.start)
         if out["state"] == "hold" and use:
@@ -1556,15 +1559,18 @@ class SmartHusController:
         return {h: kwh * self.solar_cal.factor(h) * (f_today if h.date() == today else self.solar_caution)
                 for h, kwh in solar_by_hour(self._forecast_wh, self.tz, self._forecast_key_is_end).items()}
 
-    def _forecast_battery(self, now: datetime) -> None:
-        """Skøn over batteriet resten af i dag og i morgen: brug i huset, besparelse og salg."""
-        p = self.plan
-        self.planned_charge = self._plan_grid_charge(now)
+    def _update_battery_why(self, now: datetime) -> None:
         try:
             self.battery_why = self._battery_why(now)
         except Exception:  # noqa: BLE001 – kun forklaring; må aldrig stoppe styringen
             _LOGGER.debug("SmartHus: kunne ikke lave batteriets forklaring", exc_info=True)
             self.battery_why = None
+
+    def _forecast_battery(self, now: datetime) -> None:
+        """Skøn over batteriet resten af i dag og i morgen: brug i huset, besparelse og salg."""
+        p = self.plan
+        self.planned_charge = self._plan_grid_charge(now)
+        self._update_battery_why(now)          # foreløbig – regnes igen, når brug/gem-tidsrummene kendes
         soc = self._float_state(self.config.get(CONF_BATTERY_SOC))
         if soc is None or p.current is None:
             return
@@ -1587,6 +1593,7 @@ class SmartHusController:
         p.battery_discharge = [s for s in p.battery_discharge if s.start in will_sell or s is p.current]
         p.battery_solar = f["solar"]
         p.solar_cover = f["sun_cover"]
+        self._update_battery_why(now)          # nu med de tidsrum, batteriet bruges i (hvad det gemmes til)
         # Vis også gem-tidsrummene efter næste opladning (de nuværende styrer stadig inverteren)
         now_hold = {s.start for s in p.battery_hold}
         p.battery_hold = p.battery_hold + [s for s in f["hold"] if s.start not in now_hold]
