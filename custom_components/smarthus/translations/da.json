@@ -673,6 +673,9 @@
       "heating_off_in_reduce": {
         "name": "Varme: sluk i sparetimer (luft-til-luft)"
       },
+      "battery_optimizer": {
+        "name": "Batteri: samlet beregning (beta)"
+      },
       "battery_full_charge": {
         "name": "Lad batteriet helt op i de billigste timer"
       },

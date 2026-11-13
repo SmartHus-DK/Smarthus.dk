@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.66.29";
+const SMARTHUS_CARD_VERSION = "1.67.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -91,6 +91,8 @@ const MODULES = [
       { title: "Solstrøm: sælg eller gem", items: ["battery_solar_sell_margin"] },
       { title: "Batteri fra nettet", items: [{ sw: "battery_full_charge", label: "Lad batteriet helt op i de billigste timer",
       note: "Fra laveste til højeste niveau – også når der er sol på vej" }] },
+      { title: "Planlægning", items: [{ sw: "battery_optimizer", label: "Samlet beregning (beta)",
+      note: "Lad, gem og brug regnes samlet kvarter for kvarter" }] },
     ],
   },
   {
@@ -123,6 +125,8 @@ const MODULES = [
 ];
 
 // "Lad batteriet helt op" står både under Batteri og Solceller
+const HELP_OPTIMIZER = { k: ["battery_optimizer"], t: "Samlet beregning (beta)",
+  d: "Slået til regner SmartHus alle muligheder igennem for batteriet kvarter for kvarter frem til de sidste kendte priser: lade fra nettet, gemme eller bruge – ud fra pris, husets forventede forbrug, solprognosen, ladetab, min./maks. niveau, ladeeffekt, min. prisforskel og ekstra buffer – og vælger den billigste plan samlet set. Så lades der kun, når strømmen faktisk bruges i dyrere timer, og batteriet gemmes til de dyreste timer, når det ikke rækker til det hele. Slået fra bruges de hidtidige regler. 'Lad helt op' og salg fra batteriet virker som før." };
 const HELP_FULL_CHARGE = { k: ["battery_full_charge"], t: "Lad batteriet helt op",
   d: "Slået til lades batteriet fra nettet fra laveste til højeste niveau i nattens billigste timer – også når solen ventes at fylde det, og uanset prisforskellen. Antallet af timer regnes ud fra batteriets størrelse og den maks. ladeeffekt (0 kW = ikke sat, så sker der intet). Det giver mening, hvis du venter et større forbrug end normalt (gæster, byggeri, sauna), hvis vejrudsigten er usikker, eller hvis du vil have strøm i reserve ved strømsvigt. Men det kan koste på besparelsen: bliver strømmen ikke brugt i de dyre timer bagefter, har du betalt for den plus ca. 10 % tab, og kommer der sol, mens batteriet er fuldt, må solstrømmen sælges billigt i stedet for at blive gemt. Den pris vises for sig som 'Fuld opladning (dit valg)' og trækkes ikke fra SmartHus' besparelse. Til daglig er det som regel billigst at have den slået fra – så lader SmartHus kun det, huset forventes at bruge." };
 
@@ -137,6 +141,7 @@ const HELP = {
     { k: ["battery_charge_hours"], t: "Timer at lade",
       d: "Højst så mange af døgnets billigste timer må batteriet lade fra nettet. SmartHus vælger selv timerne ud fra elprisen, når morgendagens priser kommer ved 13-tiden. Nattens opladning (kl. 18–8) lægges samlet i nattens billigste timer, også hen over midnat. Er ladeeffekten sat, bruges kun de timer, der skal til." },
     HELP_FULL_CHARGE,
+    HELP_OPTIMIZER,
     { k: ["battery_charge_from"], t: "Tidsrum for opladning",
       d: "De billige timer søges kun inden for dette tidsrum. 00–24 betyder hele døgnet. Brug fx 00–06, hvis batteriet kun må lade om natten." },
     { k: ["battery_discharge_hours"], t: "Timer at sælge",
@@ -1740,7 +1745,11 @@ class SmartHusCard extends HTMLElement {
     if (planLine) solarLine = `<div class="res-solar">${planLine}</div>` + solarLine;
     const gc = a.grid_charge;
     if (gc) {
-      const txt = gc.sell_solar_better
+      const txt = gc.optimizer
+        ? (gc.target_soc != null
+          ? `<b>Samlet beregning</b> · næste opladning fra nettet til ${nf(gc.target_soc, 0)} % – kun det, der kan betale sig i dyrere timer.`
+          : `<b>Samlet beregning</b> · ingen opladning fra nettet kan betale sig lige nu.`)
+        : gc.sell_solar_better
         ? `<b>Lader fuldt fra nettet</b> · solstrømmen kan sælges dyrere midt på dagen (${nf(gc.sale_midday)} kr/kWh).`
         : gc.skipping
           ? `<b>Lader ikke fra nettet</b> · solen forventes at give ca. ${nf(gc.solar_surplus_kwh, 0)} kWh overskud, og batteriet har nok til huset, til solen tager over.`

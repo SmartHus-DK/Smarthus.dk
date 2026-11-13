@@ -661,6 +661,9 @@
       "heating_off_in_reduce": {
         "name": "Heating: off in saving hours (air-to-air)"
       },
+      "battery_optimizer": {
+        "name": "Battery: combined plan (beta)"
+      },
       "battery_full_charge": {
         "name": "Fully charge the battery in the cheapest hours"
       },

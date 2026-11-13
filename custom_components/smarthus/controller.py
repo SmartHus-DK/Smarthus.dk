@@ -109,6 +109,7 @@ from .const import (
     F_HEATING_AUTO,
     F_BATTERY_SELL,
     F_BATTERY_FULL_CHARGE,
+    F_BATTERY_OPTIMIZER,
     SURPLUS_STOP_IMPORT_KW,
     HOTWATER_HYSTERESIS,
     CONF_HOUSE_ENERGY,
@@ -143,6 +144,7 @@ from .coordinator import SmartHusPriceCoordinator
 from . import growatt as gw
 from .planner import CHARGE_EFFICIENCY, full_charge_hours, CarInput, Plan, build_plan, car_ready, car_settings, heating_outdoor_ok
 from .planner import BATTERY_MIN_BLOCK_H, BATTERY_MIN_GAP_H, BATTERY_ROUND_TRIP, cheapest_blocks, in_window
+from .optimizer import OptSlot, morning_buffer, optimize
 SOLAR_CHARGE_SURPLUS_KWH = 0.3   # forventet soloverskud i timen, hvor der ikke lades fra nettet
 DAY_CYCLE_FROM_H, DAY_CYCLE_PEAK_H = 8, 15   # ladning midt på dagen (fra kl. 8) til aftenens top (fra kl. 15)
 SELL_RESTART_KWH = 0.5   # kWh over reserven, før salg starter igen efter et stop
@@ -933,9 +935,12 @@ class SmartHusController:
         if self.plan.battery_action == ACTION_DISCHARGE and self.__dict__.get("_sell_stopped"):
             self.plan.battery_action = ACTION_NORMAL
             self.reserve_holds = True
-        self._decide_grid_charge(now)
-        self._decide_sell_solar(now)
-        self._decide_hold(now, until)
+        if not self._optimize_battery(now):
+            self._decide_grid_charge(now)
+            self._decide_sell_solar(now)
+            self._decide_hold(now, until)
+        else:
+            self._decide_sell_solar(now)
         self._forecast_battery(now)
 
     @property
@@ -1084,6 +1089,11 @@ class SmartHusController:
 
     def _charge_target(self, start: datetime, price: float) -> float:
         """Hvor mange kWh batteriet skal lades op til fra nettet i en ladeblok, der starter på `start`."""
+        opt = self.__dict__.get("_opt_targets")
+        if opt:
+            for (a, b), target in opt.items():
+                if a <= start < b:
+                    return target                       # den samlede beregning (optimize)
         dc = self.__dict__.get("day_cycle")
         if dc and any(sl.start <= start < sl.end for sl in dc["slots"]):
             return dc["target_kwh"]                     # dagens ekstra opladning til aftenens top
@@ -1328,6 +1338,89 @@ class SmartHusController:
         }
         if active:
             p.battery_action = ACTION_SELL_SOLAR
+
+    def _optimize_battery(self, now: datetime) -> bool:
+        """Samlet batteriplan (slået til med "Samlet beregning"): lad/gem/brug for hvert kvarter vælges samlet
+        ud fra pris, forbrug, sol, tab og indstillinger (optimizer.py). Returnerer True, hvis planen er sat."""
+        self._opt_targets = None
+        self.optimizer = None
+        p = self.plan
+        if not self.flags.get(F_BATTERY_OPTIMIZER) or self.full_charge_hours or p.current is None:
+            return False
+        soc = self._float_state(self.config.get(CONF_BATTERY_SOC))
+        cap = float(self.settings[S_BATTERY_CAPACITY])
+        if soc is None or cap <= 0 or not self.profile.ready:
+            return False
+        tz = self.tz
+        data = sorted((s for s in (self.coordinator.data or []) if s.end > now), key=lambda s: s.start)
+        run = []
+        for s in data:
+            if run and s.start != run[-1].end:
+                break
+            if s.start - now > timedelta(hours=48):
+                break
+            run.append(s)
+        if len(run) < 4:
+            return False
+        solar = self._solar_hours() or {}
+        win_from = float(self.settings.get("battery_charge_from", 0) or 0)
+        win_to = float(self.settings.get("battery_charge_to", 24) or 24)
+        allowed = {s.start for s in in_window(run, tz, win_from, win_to)}
+        opt_slots = []
+        for s in run:
+            lt = s.start.astimezone(tz)
+            hour = lt.replace(minute=0, second=0, microsecond=0)
+            hrs = (s.end - max(s.start, now)).total_seconds() / 3600
+            load = self.profile.hours_for(lt)[lt.hour] * hrs
+            sun = solar.get(hour, 0.0) * hrs
+            opt_slots.append(OptSlot(max(s.start, now), s.end, s.price, s.sale, load, sun, s.start in allowed))
+        morning_buffer(opt_slots, tz, self.grid_buffer_kwh)
+        mn, mx = float(self.settings[S_BATTERY_MIN_SOC]), float(self.settings[S_BATTERY_MAX_SOC])
+        floor, full = cap * mn / 100, cap * mx / 100
+        kw = float(self.settings.get(S_BATTERY_MAX_CHARGE_KW, 0) or 0)
+        prev = self.__dict__.get("_opt_prev")
+        try:
+            res = optimize(opt_slots, cap * soc / 100, floor=floor, full=full, charge_kw=kw,
+                           min_spread=float(self.settings.get(S_BATTERY_MIN_SPREAD, 0.0)),
+                           can_hold=self.has_hold, prev_action=prev)
+        except Exception:  # noqa: BLE001 – må aldrig stoppe styringen; de gamle regler tager over
+            _LOGGER.exception("SmartHus: samlet batteriberegning fejlede – bruger de hidtidige regler")
+            return False
+        if res is None:
+            return False
+        past = [s for s in p.battery_charge if s.end <= now]
+        charge = [s for s, a in zip(run, res.actions) if a == "charge"]
+        hold = [s for s, a in zip(run, res.actions) if a == "hold"]
+        p.battery_charge = past + charge
+        p.battery_hold = hold
+        p.battery_discharge = [s for s in p.battery_discharge if s not in charge and s not in hold]
+        self.day_cycle = None
+        # Lademål pr. ladeblok: batteriets niveau, når blokken slutter
+        targets, i = {}, 0
+        while i < len(run):
+            if res.actions[i] != "charge":
+                i += 1
+                continue
+            j = i
+            while j + 1 < len(run) and res.actions[j + 1] == "charge":
+                j += 1
+            targets[(run[i].start, run[j].end)] = res.levels[j + 1]
+            i = j + 1
+        self._opt_targets = targets
+        first = res.actions[0]
+        self._opt_prev = first
+        if p.battery_action != ACTION_DISCHARGE:            # salg fra batteriet styres som før
+            p.battery_action = {"charge": ACTION_CHARGE, "hold": ACTION_HOLD}.get(first, ACTION_NORMAL)
+        nxt = targets[next(iter(targets))] if targets else None
+        self.grid_charge = {"optimizer": True, "action": first, "skipping": False,
+                            "target_kwh": round(nxt, 2) if nxt is not None else None,
+                            "target_soc": round(nxt / cap * 100) if nxt is not None else None}
+        self.battery_hold = {"active": first == "hold", "usable_kwh": round(max(soc - mn, 0) / 100 * cap, 2),
+                             "covers_price_from": None, "optimizer": True}
+        self.optimizer = {"cost": round(res.cost, 2), "slots": len(run),
+                          "end_soc": round(res.levels[-1] / cap * 100, 1),
+                          "grid_kwh": round(sum(res.grid_kwh), 2)}
+        return True
 
     def _decide_hold(self, now: datetime, until: datetime) -> None:
         """Gem batteriet i billige timer, så strømmen rækker til de dyre timer før næste opladning."""

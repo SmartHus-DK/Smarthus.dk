@@ -2,7 +2,7 @@
 
 # SmartHus for Home Assistant
 
-**Version 1.66.29** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
+**Version 1.67.0** · Intelligent energistyring efter elprisen – fra [SmartHus.dk](https://smarthus.dk)
 
 SmartHus bruger strømmen, når den er billigst, og sparer, når den er dyrest. Den lader elbilen og batteriet i de billige timer, varmer vandet med billig strøm eller solcelleoverskud, skruer lidt op og ned for varmen og stopper salg af solstrøm, når prisen er for lav. Du ser det hele – og hvad du har sparet – på ét kort.
 
@@ -399,6 +399,7 @@ Har ladeboksens integration en **number**-entitet for ladestrøm (fx Zaptec "Ava
 - **Sælg fra batteriet til nettet:** slået fra sælger batteriet aldrig til nettet og bruges kun i huset.
 - **Elbil – Lad med sol:** knap ved siden af "Lad nu", der slår solcelleladning til og fra.
 - **Lad batteriet helt op i de billigste timer** (valgfri): batteriet lades fra nettet fra laveste til højeste niveau i døgnets billigste timer – også når solen ventes at fylde det, og uanset prisforskellen. Tast inverterens **maks. ladeeffekt** (kW) ind; antallet af timer regnes ud fra batteriets størrelse og grænser (inkl. ca. 5 % tab). Uden ladeeffekt (0 kW) sker der intet.
+- **Samlet beregning (beta):** slået til under Batteri → Planlægning regnes lad/gem/brug for hvert kvarter samlet frem til de sidste kendte priser – ud fra pris, husets forventede forbrug, solprognosen, ladetab (ca. 10 %), min./maks. niveau, ladeeffekt, min. prisforskel og ekstra buffer – og den billigste plan vælges. Så lades der kun, når strømmen faktisk bruges i dyrere timer, og batteriet gemmes til de dyreste timer, når det ikke rækker til det hele. Slået fra (standard) bruges de hidtidige regler. "Lad helt op" og salg fra batteriet virker som før.
 - **Elbil i hele timer:** opladningen lægges i de billigste klokketimer (gennemsnittet af timens kvarterer), der tilsammen dækker behovet – gerne med pauser, så der ventes på billigere timer senere (i dag, i morgen, billigste i sigte). Hele timer, så laderen ikke starter og stopper hvert kvarter, og en time, der er begyndt at lade, gøres færdig (medmindre målet nås).
 - **Ladefejl – begrænset ladestrøm:** lader bilen fra nettet i 5 minutter med under 80 % af ladeeffekten (fx en fase, der er faldet ud), vises en advarsel under bilen. Den forsvinder, når bilen tages ud af laderen. Kræver en effektmåler på laderen; gælder ikke solcelleladning eller over 90 %.
 - **Varme i hele timer:** ekstra varme og sparetimer vælges som hele klokketimer i højst to sammenhængende perioder pr. døgn, hver mindst 2 timer – så varmepumpens setpunkt ikke skifter hvert kvarter.

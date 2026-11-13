@@ -1572,3 +1572,32 @@ def test_day_cycle_skipped_when_actual_sun_covers_peak():
     c._decide_grid_charge(at)
     assert c.grid_charge["skipping"] is True and c.grid_charge["solar_covers"] is True
     assert c.plan.battery_action != "charge"
+
+
+def test_optimizer_switch_sets_plan_and_action():
+    """"Samlet beregning" slået til: planen for batteriet kommer fra den samlede beregning (lad/gem/brug),
+    lademålet pr. blok bruges af skønnet, og slået fra bruges de hidtidige regler."""
+    import datetime as _dt
+    st = {"sensor.soc": State("6")}
+    c, _ = make({"battery_mode_entity": "select.mode", "battery_soc_sensor": "sensor.soc"}, st)
+    now = _dt.datetime(2026, 11, 12, 8, 20, tzinfo=c.tz)
+    slots = _karsten_day(c, now)
+    c.flags[ctl_mod.F_BATTERY_OPTIMIZER] = False
+    assert c._optimize_battery(now) is False
+    c.flags[ctl_mod.F_BATTERY_OPTIMIZER] = True
+    c.plan.battery_action = "normal"
+    assert c._optimize_battery(now) is True
+    assert c.optimizer and c.optimizer["slots"] > 40
+    later = [s for s in c.plan.battery_charge if s.end > now]
+    assert all(s in slots for s in later)
+    assert c.plan.battery_action in ("charge", "hold", "normal")
+    if later:
+        t = c._charge_target(later[0].start, later[0].price)
+        assert 0 < t <= 13.8
+    c.savings = types.SimpleNamespace(data={}, trade=lambda k: {})
+    c.sun = None
+    c._forecast_battery(now)                                 # skønnet regner videre med planen
+    assert c.battery_forecast is not None
+    # Ingen SoC: hidtidige regler
+    st["sensor.soc"] = State("unavailable")
+    assert c._optimize_battery(now) is False
