@@ -282,6 +282,7 @@ def _reserve_attrs(c: SmartHusController) -> dict:
         "grid_charge": c.grid_charge,
         "optimizer": getattr(c, "optimizer", None),
         "planned_charge": c.planned_charge,
+        "battery_why": c.__dict__.get("battery_why"),
     })
     return attrs
 

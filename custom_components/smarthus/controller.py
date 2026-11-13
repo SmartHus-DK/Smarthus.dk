@@ -51,6 +51,8 @@ from .const import (
     S_BATTERY_MAX_CHARGE_KW,
     S_BATTERY_GRID_BUFFER,
     S_BATTERY_CHARGE_HOURS,
+    S_BATTERY_DISCHARGE_HOURS,
+    S_BATTERY_CHARGE_FROM,
     S_BATTERY_MAX_SOC,
     BATTERY_SCRIPTS,
     CONF_HUAWEI_DEVICE,
@@ -984,6 +986,72 @@ class SmartHusController:
         margin = float(self.settings.get(S_SOLAR_SELL_MARGIN, 0.10))
         return sale_mid, bool(self.has_sell_solar and sale_mid is not None and sale_mid - price / EFFICIENCY >= margin)
 
+    def _charge_economics(self, now: datetime) -> dict | None:
+        """Kan det betale sig at lade fra nettet? De billigste kommende ladetimer (inden for ladetidsrummet)
+        mod de dyreste kommende timer bagefter – med tabet regnet med og "min. prisforskel" som krav.
+
+        Koder: "power" (maks. ladeeffekt ikke sat), "price" (gevinsten er under min. prisforskel),
+        "ok" (det kan betale sig – så skyldes en manglende opladning, at batteriet og solen har nok)."""
+        if float(self.settings.get(S_BATTERY_MAX_CHARGE_KW, 0) or 0) <= 0:
+            return {"code": "power"}
+        tz = self.tz
+        data = [sl for sl in (self.coordinator.data or []) if sl.end > now]
+        if len(data) < 8:
+            return None
+        dear = cheapest_blocks(data, max(float(self.settings.get(S_BATTERY_DISCHARGE_HOURS, 3) or 3), 1.0),
+                               BATTERY_MIN_BLOCK_H, most_expensive=True)
+        if not dear:
+            return None
+        dear_start = min(sl.start for sl in dear)
+        before = in_window([sl for sl in data if sl.end <= dear_start], tz,
+                           float(self.settings.get(S_BATTERY_CHARGE_FROM, 0)), float(self.settings.get("battery_charge_to", 24)))
+        if len(before) < 4:
+            return None
+        hours = max(float(self.settings.get(S_BATTERY_CHARGE_HOURS, 1) or 1), 1.0)
+        cheap = cheapest_blocks(before, min(hours, len(before) / 4), BATTERY_MIN_BLOCK_H) or before
+        c = sum(sl.price for sl in cheap) / len(cheap)
+        d = sum(sl.price for sl in dear) / len(dear)
+        spread = float(self.settings.get(S_BATTERY_MIN_SPREAD, 0.0))
+        gain = d - c / BATTERY_ROUND_TRIP
+        return {"code": "price" if gain < spread else "ok", "cheap_price": round(c, 2), "dear_price": round(d, 2),
+                "gain": round(gain, 2), "min_spread": round(spread, 2), "loss_pct": round((1 - BATTERY_ROUND_TRIP) * 100),
+                "cheap_from": min(sl.start for sl in cheap).isoformat(), "dear_from": dear_start.isoformat()}
+
+    def _battery_why(self, now: datetime) -> dict | None:
+        """Forklaring til infoboksen under planen: hvorfor batteriet gemmes / ikke lades fra nettet,
+        og om forbruget eller solen i dag afviger fra det forventede."""
+        if not self.active(MODULE_BATTERY) or self.plan.current is None:
+            return None
+        p = self.plan
+        local = now.astimezone(self.tz)
+        out: dict = {"state": {ACTION_HOLD: "hold", ACTION_CHARGE: "charge", ACTION_DISCHARGE: "sell"}.get(p.battery_action, "normal"),
+                     "planned_charge": bool(self.planned_charge), "now_price": round(p.current.price, 2)}
+        # Gemmes: til hvilke (dyre) timer?
+        use = sorted((sl for sl in (p.battery_use or []) if sl.start > now), key=lambda sl: sl.start)
+        if out["state"] == "hold" and use:
+            first = use[0].start
+            dear = [sl for sl in use if sl.start < first + timedelta(hours=4)]
+            hold = self.__dict__.get("battery_hold") or {}
+            out["hold_for"] = {"from": first.isoformat(), "price": round(sum(sl.price for sl in dear) / len(dear), 2),
+                               "usable_kwh": hold.get("usable_kwh")}
+        # Forbruget i dag (hele timer) mod det forventede – uden elbilen
+        hrs = (getattr(self, "energy", None) and self.energy.data.get("hours")) or {}
+        if hrs.get("date") == local.date().isoformat() and self.profile.ready:
+            ev = [d["id"] for d in (self.energy.data.get("layout") or {}).get("devices") or [] if d.get("kind") == "ev"]
+            done = [(int(k), v) for k, v in hrs.items() if k != "date" and isinstance(v, dict) and "house" in v]
+            if done:
+                actual = sum(max(v.get("house", 0.0) - sum(v.get(i, 0.0) for i in ev), 0.0) for _, v in done)
+                expected = sum(self.profile.hours_for(local)[h] for h, _ in done)
+                out["usage"] = {"actual_kwh": round(actual, 1), "expected_kwh": round(expected, 1),
+                                "delta_kwh": round(actual - expected, 1)}
+        # Solen i dag mod prognosen
+        sun = getattr(self, "sun", None)
+        if sun is not None and sun.ratio is not None and (sun.forecast or 0) >= 1:
+            out["solar"] = {"ratio": round(sun.ratio, 2), "measured_kwh": round(sun.measured, 1),
+                            "forecast_kwh": round(sun.forecast, 1)}
+        out["charge"] = self._charge_economics(now)
+        return out
+
     def _drop_solar_charge(self, now: datetime) -> None:
         """Lad ikke fra nettet i timer, hvor solen forventes at give overskud – så fylder solen batteriet,
         og nettets strøm ville bare skubbe solstrømmen ud til salg til en lavere pris.
@@ -1492,6 +1560,11 @@ class SmartHusController:
         """Skøn over batteriet resten af i dag og i morgen: brug i huset, besparelse og salg."""
         p = self.plan
         self.planned_charge = self._plan_grid_charge(now)
+        try:
+            self.battery_why = self._battery_why(now)
+        except Exception:  # noqa: BLE001 – kun forklaring; må aldrig stoppe styringen
+            _LOGGER.debug("SmartHus: kunne ikke lave batteriets forklaring", exc_info=True)
+            self.battery_why = None
         soc = self._float_state(self.config.get(CONF_BATTERY_SOC))
         if soc is None or p.current is None:
             return

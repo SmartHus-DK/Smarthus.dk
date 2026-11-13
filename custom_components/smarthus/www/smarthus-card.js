@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.67.0";
+const SMARTHUS_CARD_VERSION = "1.67.1";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -63,6 +63,42 @@ const LANES = [
 ];
 
 // Indstillinger pr. modul, i grupper. ["a_from","a_to"] vises som ét tidsrum.
+/** Forklaring under planen: hvorfor batteriet gemmes / ikke lades fra nettet (tal fra integrationen).
+ *  Returnerer { title, text, items[] } som ren tekst – eller null. */
+function batteryWhy(a) {
+  const w = a && a.battery_why;
+  if (!w) return null;
+  const kr = (v) => Number(v).toFixed(2).replace(".", ",");
+  const k1 = (v) => Number(v).toFixed(1).replace(".", ",");
+  const hh = (iso) => new Date(iso).toLocaleTimeString("da-DK", { hour: "2-digit", minute: "2-digit" }).replace(".", ":");
+  const c = w.charge || {};
+  const priceTxt = c.code === "price"
+    ? `De billigste kommende timer (fra kl. ${hh(c.cheap_from)}) koster ca. ${kr(c.cheap_price)} kr/kWh – med ca. ${c.loss_pct} % tab i batteriet ca. ${kr(c.cheap_price / (1 - c.loss_pct / 100))} kr/kWh, når strømmen bruges. `
+      + `De dyreste timer (fra kl. ${hh(c.dear_from)}) koster ca. ${kr(c.dear_price)} kr/kWh, så gevinsten er kun ${kr(Math.max(c.gain, 0))} kr/kWh. `
+      + `Det er under din mindste prisforskel på ${kr(c.min_spread)} kr, som også skal dække slid på batteriet – derfor lades der ikke fra nettet.`
+    : c.code === "power" ? "Maks. ladeeffekt for batteriet er ikke sat (0 kW), så SmartHus lader ikke fra nettet. Sæt den under Batteri." : "";
+  const items = [];
+  const u = w.usage;
+  if (u && u.delta_kwh >= Math.max(1, 0.15 * u.expected_kwh))
+    items.push(`Huset har brugt ca. ${k1(u.delta_kwh)} kWh mere end forventet i dag (${k1(u.actual_kwh)} mod ${k1(u.expected_kwh)} kWh), så der er mindre strøm tilbage i batteriet.`);
+  const s = w.solar;
+  if (s && s.ratio <= 0.8)
+    items.push(`Solen har kun givet ca. ${Math.round(s.ratio * 100)} % af prognosen i dag (${k1(s.measured_kwh)} af ${k1(s.forecast_kwh)} kWh).`);
+  if (w.state === "hold") {
+    const h = w.hold_for;
+    const text = h
+      ? `Strømmen i batteriet${h.usable_kwh != null ? ` (ca. ${k1(h.usable_kwh)} kWh)` : ""} gemmes til de dyre timer fra kl. ${hh(h.from)} (ca. ${kr(h.price)} kr/kWh). Lige nu koster strømmen ${kr(w.now_price)} kr/kWh, så det er billigst at købe fra nettet nu og bruge batteriet senere.`
+      : `Strømmen i batteriet gemmes til dyrere timer senere. Lige nu koster strømmen ${kr(w.now_price)} kr/kWh.`;
+    if (!w.planned_charge && priceTxt) items.push(priceTxt);
+    return { title: "Hvorfor gemmes batteriet?", text, items };
+  }
+  if (!w.planned_charge && w.state !== "charge") {
+    const text = priceTxt || "Batteriet og solen forventes at dække huset, til strømmen igen er billig – så der er ikke brug for at lade fra nettet.";
+    return { title: "Hvorfor lader batteriet ikke fra nettet?", text, items };
+  }
+  return null;
+}
+
 /** Næste opladning fra nettet som tekst, fx "Lader i nat 03:00–04:00: ca. 2,5 kWh op til 64 %". */
 function chargePlanText(a) {
   if (!("planned_charge" in a) || a.battery_kwh == null) return "";
@@ -1742,6 +1778,8 @@ class SmartHusCard extends HTMLElement {
       solarLine = `<div class="res-solar ${ss.active ? "on" : ""}"><b>${ss.active ? "Sælger solstrømmen nu" : "Gemmer solstrømmen i batteriet"}</b> · ${why}</div>`;
     }
     const planLine = chargePlanText(a);
+    const why = batteryWhy(a);
+    if (why) solarLine = `<div class="res-info"><b>${why.title}</b> ${why.text}${why.items.length ? `<ul>${why.items.map((t) => `<li>${t}</li>`).join("")}</ul>` : ""}</div>` + solarLine;
     if (planLine) solarLine = `<div class="res-solar">${planLine}</div>` + solarLine;
     const gc = a.grid_charge;
     if (gc) {
@@ -2407,6 +2445,12 @@ class SmartHusCard extends HTMLElement {
       .res-solar { margin-top: 10px; padding: 8px 10px; border-radius: 8px; font-size: 12.5px; line-height: 1.45; color: var(--secondary-text-color);
                    background: color-mix(in srgb, ${COLORS.solar_sold || "#E0A21B"} 10%, transparent); }
       .res-solar b { color: var(--primary-text-color); }
+      .res-info { margin-top: 8px; padding: 8px 10px 8px 34px; border-radius: 8px; font-size: 12.5px; line-height: 1.45; position: relative;
+        color: var(--secondary-text-color); background: rgba(3,169,244,.08); }
+      .res-info::before { content: "i"; position: absolute; left: 10px; top: 8px; width: 16px; height: 16px; border-radius: 50%;
+        background: var(--primary-color, #03a9f4); color: #fff; font: 700 11px/16px serif; text-align: center; font-style: italic; }
+      .res-info b { color: var(--primary-text-color); }
+      .res-info ul { margin: 6px 0 0; padding-left: 16px; } .res-info li { margin-top: 3px; }
       .res-solar.on { box-shadow: inset 3px 0 0 ${COLORS.solar_sold || "#E0A21B"}; }
       .res-leg { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--secondary-text-color); margin-bottom: 6px; }
       .res-leg i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }

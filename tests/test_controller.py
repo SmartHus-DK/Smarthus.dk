@@ -1601,3 +1601,57 @@ def test_optimizer_switch_sets_plan_and_action():
     # Ingen SoC: hidtidige regler
     st["sensor.soc"] = State("unavailable")
     assert c._optimize_battery(now) is False
+
+
+def _night_and_day(c, now, night_price, dear_price):
+    import datetime as _dt
+    d0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    q = _dt.timedelta(minutes=15)
+    slots = []
+    for i in range(48 * 4):
+        t = d0 + i * q
+        h = t.hour
+        p = night_price if (h < 7 and t.date() > d0.date()) else (dear_price if 17 <= h < 20 else (night_price + 0.2))
+        slots.append(planner.Slot(t, t + q, 0, p, 1.0))
+    c.coordinator = types.SimpleNamespace(data=slots)
+    c.enabled = {ctl_mod.MODULE_MASTER: True, ctl_mod.MODULE_BATTERY: True}
+    c.settings.update(battery_capacity=13.8, battery_max_charge_kw=3.8, battery_min_spread=0.5,
+                      battery_charge_hours=3.0, battery_discharge_hours=3.0)
+
+
+def test_charge_economics_and_battery_why():
+    import datetime as _dt
+    c, _ = make({"battery_soc_sensor": "sensor.soc"}, {"sensor.soc": State("40")})
+    now = _dt.datetime(2026, 11, 13, 23, 29, tzinfo=c.tz)
+    _night_and_day(c, now, 2.2, 2.5)
+    r = c._charge_economics(now)
+    assert r["code"] == "price" and r["cheap_price"] == 2.2 and r["dear_price"] == 2.5
+    assert abs(r["gain"] - (2.5 - 2.2 / 0.9)) < 0.01 and r["min_spread"] == 0.5 and r["loss_pct"] == 10
+    _night_and_day(c, now, 1.5, 3.5)
+    assert c._charge_economics(now)["code"] == "ok"
+    c.settings["battery_max_charge_kw"] = 0
+    assert c._charge_economics(now)["code"] == "power"
+    c.settings["battery_max_charge_kw"] = 3.8
+    # Midt på dagen: dalen før aftentoppen bruges (ikke kun natten)
+    noon = _dt.datetime(2026, 11, 13, 11, 0, tzinfo=c.tz)
+    r = c._charge_economics(noon)
+    assert _dt.datetime.fromisoformat(r["dear_from"]).astimezone(c.tz).hour == 17
+    assert _dt.datetime.fromisoformat(r["cheap_from"]) < _dt.datetime.fromisoformat(r["dear_from"])
+    # Samlet forklaring: gemmes til aftenens dyre timer, forbrug og sol i dag
+    prof = sys.modules["smarthus.profile"]
+    c.profile = prof.Profile(weekday=[0.5] * 24, weekend=[0.5] * 24, days=9, weekday_days=7, weekend_days=2)
+    c.plan.current = next(s for s in c.coordinator.data if s.start <= noon < s.end)
+    c.plan.battery_action = ctl_mod.ACTION_HOLD
+    c.plan.battery_use = [s for s in c.coordinator.data if s.start.astimezone(c.tz).date() == noon.date()
+                          and 17 <= s.start.astimezone(c.tz).hour < 20]
+    c.battery_hold = {"usable_kwh": 3.2}
+    c.planned_charge = None
+    c.energy = types.SimpleNamespace(data={"hours": {"date": noon.date().isoformat(),
+                                                     **{f"{h:02d}": {"house": 1.0} for h in range(10)}},
+                                           "layout": {"devices": []}})
+    c.sun = types.SimpleNamespace(ratio=0.4, measured=1.2, forecast=3.0)
+    w = c._battery_why(noon)
+    assert w["state"] == "hold" and w["hold_for"]["usable_kwh"] == 3.2
+    assert _dt.datetime.fromisoformat(w["hold_for"]["from"]).astimezone(c.tz).hour == 17
+    assert w["usage"] == {"actual_kwh": 10.0, "expected_kwh": 5.0, "delta_kwh": 5.0}
+    assert w["solar"]["ratio"] == 0.4 and w["charge"]["code"] in ("ok", "price")
