@@ -1222,7 +1222,10 @@ class SmartHusController:
         price = sum(s.price for s in block) / len(block)
         floor, full = cap * self.settings[S_BATTERY_MIN_SOC] / 100, cap * self.settings[S_BATTERY_MAX_SOC] / 100
         e = cap * soc / 100
-        if start > now and self.profile.ready:      # batteriet dækker huset frem til ladeblokken
+        lv = (self.__dict__.get("_opt_levels") or {}).get(block[0].start)
+        if lv is not None and start > now:
+            e = lv                                  # den samlede beregning ved, hvor batteriet står (gem og sol medregnet)
+        elif start > now and self.profile.ready:    # batteriet dækker huset frem til ladeblokken
             solar = self._solar_hours() or {}
             _, e = simulate_battery(e, self.profile, solar, now.astimezone(self.tz), start.astimezone(self.tz),
                                     floor=floor, full=full)
@@ -1414,6 +1417,7 @@ class SmartHusController:
         """Samlet batteriplan (slået til med "Samlet beregning"): lad/gem/brug for hvert kvarter vælges samlet
         ud fra pris, forbrug, sol, tab og indstillinger (optimizer.py). Returnerer True, hvis planen er sat."""
         self._opt_targets = None
+        self._opt_levels = None
         self.optimizer = None
         p = self.plan
         if not self.flags.get(F_BATTERY_OPTIMIZER) or self.full_charge_hours or p.current is None:
@@ -1478,6 +1482,7 @@ class SmartHusController:
             targets[(run[i].start, run[j].end)] = res.levels[j + 1]
             i = j + 1
         self._opt_targets = targets
+        self._opt_levels = {sl.start: lv for sl, lv in zip(run, res.levels)}   # niveau ved starten af hvert kvarter
         first = res.actions[0]
         self._opt_prev = first
         if p.battery_action != ACTION_DISCHARGE:            # salg fra batteriet styres som før

@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.67.2";
+const SMARTHUS_CARD_VERSION = "1.67.3";
 
 const COLORS = {
   cheap: "#3FA88F",
