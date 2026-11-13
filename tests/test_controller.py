@@ -1543,3 +1543,32 @@ def test_grid_buffer_adds_to_night_charge_and_need_hours_do_not_flap():
         assert c._latched_need_hours(0.5) == 0.5 and c._need_h_memo is None
     finally:
         ctl_mod.dt_util.now = real
+
+
+def test_day_cycle_skipped_when_actual_sun_covers_peak():
+    """Ekstra opladning midt på dagen: lige før den starter, regnes der igen med dagens faktiske sol. Når
+    solen alene batteriet op på det, aftenens top kræver, købes der ikke fra nettet."""
+    import datetime as _dt
+    st = {"sensor.soc": State("6")}
+    c, _ = make({"battery_mode_entity": "select.mode", "battery_soc_sensor": "sensor.soc"}, st)
+    now = _dt.datetime(2026, 11, 12, 8, 20, tzinfo=c.tz)
+    _karsten_day(c, now)
+    c._plan_day_cycle(now)
+    dc = c.day_cycle
+    assert dc is not None and dc["need_at_peak"] > 0
+    first = min(dc["slots"], key=lambda s: s.start)
+    at = first.start.astimezone(c.tz) + _dt.timedelta(minutes=1)
+    c.plan.current = first
+    c.plan.battery_action = "charge"
+    st["sensor.soc"] = State("8")
+    # Uden sol: opladningen køres
+    c._solar_hours = lambda: {}
+    c._decide_grid_charge(at)
+    assert c.grid_charge["skipping"] is False and c.plan.battery_action == "charge", (c.grid_charge, dc["target_kwh"])
+    # Masser af sol resten af middagen: springes over
+    base = at.replace(minute=0)
+    c._solar_hours = lambda: {base + _dt.timedelta(hours=i): 6.0 for i in range(0, 4)}
+    c.plan.battery_action = "charge"
+    c._decide_grid_charge(at)
+    assert c.grid_charge["skipping"] is True and c.grid_charge["solar_covers"] is True
+    assert c.plan.battery_action != "charge"

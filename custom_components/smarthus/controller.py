@@ -1068,6 +1068,7 @@ class SmartHusController:
         p.battery_charge = sorted(set(p.battery_charge) | set(pick), key=lambda sl: sl.start)
         p.battery_discharge = [sl for sl in p.battery_discharge if sl not in pick]
         self.day_cycle = {"slots": set(pick), "target_kwh": target, "kwh": round(kwh, 1),
+                          "need_at_peak": min(e_peak + kwh, full),
                           "start": pick[0].start, "end": pick[-1].end, "peak_from": peak_start,
                           "charge_price": round(avg_c, 3), "peak_price": round(avg_p, 3)}
         if p.current in self.day_cycle["slots"] and soc < mx:
@@ -1231,9 +1232,23 @@ class SmartHusController:
             cap, mx = self.settings[S_BATTERY_CAPACITY], self.settings[S_BATTERY_MAX_SOC]
             target = dc["target_kwh"]
             skip = cap * soc / 100 >= target - 0.05
+            # Regn igen med den sol, der rent faktisk kommer i dag: når solen alene batteriet op på det,
+            # aftenens top kræver, inden toppen starter? Så købes der ikke fra nettet midt på dagen (det kan
+            # ellers fylde batteriet for tidligt, så solen bagefter sælges billigt).
+            solar_covers = False
+            solar = self._solar_hours()
+            need_peak = dc.get("need_at_peak")
+            peak_from = dc.get("peak_from")
+            if not skip and solar and need_peak is not None and peak_from is not None and peak_from > now:
+                mn = self.settings[S_BATTERY_MIN_SOC]
+                _, e_peak = simulate_battery(cap * soc / 100, self.profile, solar, now.astimezone(self.tz),
+                                             peak_from.astimezone(self.tz), floor=cap * mn / 100, full=cap * mx / 100)
+                solar_covers = e_peak >= need_peak - 0.05
+                skip = solar_covers
             self.grid_charge = {"target_kwh": round(target, 2),
                                 "target_soc": round(min(target / cap * 100, mx), 0) if cap else None,
-                                "charge_price": round(p.current.price, 3), "day_cycle": True, "skipping": skip}
+                                "charge_price": round(p.current.price, 3), "day_cycle": True, "skipping": skip,
+                                "solar_covers": solar_covers}
             if skip:
                 p.battery_action = ACTION_HOLD if self.has_hold else ACTION_NORMAL
             return
