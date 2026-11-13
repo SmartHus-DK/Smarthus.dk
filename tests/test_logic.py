@@ -1737,3 +1737,28 @@ def test_heatpump_model_needs_days():
     hours = [(t0 + timedelta(hours=i), 0.5) for i in range(48)]
     temps = {t: 5.0 for t, _ in hours}
     assert not profile.fit_heatpump(hours, temps, (t0 + timedelta(days=2)).date()).active
+
+
+def test_prune_charge_blocks_that_do_not_pay():
+    """Karsten 13/11: flad nat (ca. 2,0 kr) og formiddag 2,2–2,3 kr – opladning kl. 02 og 04.15 bruges kun
+    få timer senere til næsten samme pris og fjernes. Middagens opladning (1,86 kr) til aftenens top
+    (2,6–2,9 kr) beholdes."""
+    tz = TZ
+    hourly = {21: 1.80, 22: 2.18, 23: 2.04, 24: 2.11, 25: 2.05, 26: 2.01, 27: 2.02, 28: 2.00, 29: 1.99, 30: 2.17,
+              31: 2.27, 32: 2.29, 33: 2.18, 34: 2.02, 35: 1.88, 36: 1.86, 37: 1.96, 38: 2.14, 39: 2.27, 40: 2.39,
+              41: 2.91, 42: 2.77, 43: 2.71, 44: 2.62, 45: 2.11, 46: 2.04, 47: 2.01}
+    day0 = datetime(2026, 11, 13, 0, 0, tzinfo=tz)
+    q = timedelta(minutes=15)
+    slots = []
+    for h, p in hourly.items():
+        t = day0 + timedelta(hours=h)
+        slots += [planner.Slot(t + i * q, t + (i + 1) * q, p, p, p * 0.6) for i in range(4)]
+    def block(h0, h1):
+        return [s for s in slots if day0 + timedelta(hours=h0) <= s.start < day0 + timedelta(hours=h1)]
+    charge = block(21, 22) + block(26, 27) + block(28.25, 30) + block(35, 37.75)
+    now = day0 + timedelta(hours=22, minutes=16)
+    kept = planner.prune_charge(charge, slots, now, 0.5)
+    hours = sorted({(s.start - day0).total_seconds() / 3600 // 1 for s in kept})
+    assert hours == [35, 36, 37], hours
+    # Middagens opladning til aftenens top er med
+    assert any(s in kept for s in block(35, 36))

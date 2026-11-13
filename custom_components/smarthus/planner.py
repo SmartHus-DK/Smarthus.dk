@@ -253,6 +253,44 @@ def _merge_night_charge(plan: Plan, slots: list[Slot], now: datetime, tz: tzinfo
     plan.battery_discharge = [s for s in plan.battery_discharge if s not in pick]
 
 
+def prune_charge(charge: list[Slot], slots: list[Slot], now: datetime, min_spread: float) -> list[Slot]:
+    """Fjern ladeblokke, der ikke kan betale sig: strømmen fra en blok bruges i timerne frem til næste
+    ladeblok. Er de dyreste af de timer (lige så lang tid som blokken) ikke mindst "min. prisforskel" dyrere
+    end blokkens pris inkl. tab, købes der hellere direkte fra nettet, når strømmen skal bruges.
+
+    Ellers kan en flad nat give flere små opladninger til ca. 2,0 kr, der bare bruges en time senere til
+    2,0–2,2 kr – det koster mere i tab, end det sparer. Gennemgås bagfra, så en blok, der falder væk,
+    lægger sine timer til den forrige bloks."""
+    if not charge:
+        return charge
+    ordered = sorted(charge, key=lambda s: s.start)
+    blocks: list[list[Slot]] = []
+    for sl in ordered:
+        if blocks and sl.start == blocks[-1][-1].end:
+            blocks[-1].append(sl)
+        else:
+            blocks.append([sl])
+    future = sorted((s for s in slots if s.end > now), key=lambda s: s.start)
+    keep: list[list[Slot]] = []
+    next_start = None
+    for blk in reversed(blocks):
+        end = blk[-1].end
+        window = [s for s in future if s.start >= end and (next_start is None or s.start < next_start)
+                  and s not in charge]
+        if not window:
+            keep.append(blk)                         # ingen priser bagefter endnu: behold
+            next_start = blk[0].start
+            continue
+        n = len(blk)
+        top = sorted(window, key=lambda s: s.price, reverse=True)[:n]
+        value = sum(s.price for s in top) / len(top)
+        cost = sum(s.price for s in blk) / n / BATTERY_ROUND_TRIP
+        if value - cost >= min_spread:
+            keep.append(blk)
+            next_start = blk[0].start
+    return sorted((s for blk in keep for s in blk), key=lambda s: s.start)
+
+
 def local_days(slots: list[Slot], tz: tzinfo) -> dict[str, list[Slot]]:
     """Grupper tidsrum pr. lokal dato."""
     days: dict[str, list[Slot]] = {}
@@ -619,6 +657,8 @@ def build_plan(slots: list[Slot], now: datetime, tz: tzinfo, settings: dict,
         plan.heating_boost += boost
 
     _merge_night_charge(plan, slots, now, tz, settings)
+    if not settings.get("battery_full_charge"):
+        plan.battery_charge = prune_charge(plan.battery_charge, slots, now, float(settings["battery_min_spread"]))
     plan.evs = plan_cars(slots, now, tz, settings, cars)
 
     cur = plan.current
