@@ -166,16 +166,20 @@ class SunTracker:
     """Sammenligner solcellernes faktiske produktion i dag med prognosen for de samme timer.
 
     Giver solen f.eks. kun 15 % af prognosen indtil nu, regnes der også kun med 15 % resten af dagen.
-    Først når prognosen indtil nu er mindst `min_kwh`, bruges forholdet – før det er det for usikkert.
-    Nulstilles ved midnat (og ved genstart).
+    Først når prognosen indtil nu er mindst `min_kwh` OG mindst `min_share` af dagens samlede prognose
+    (`day_kwh`), bruges forholdet – før det er det for usikkert. Om morgenen, når solen står lavt, giver
+    panelerne ofte næsten intet (skygge, øst/vest), selv om prognosen siger lidt; det må ikke fjerne
+    resten af dagens sol fra planen. Nulstilles ved midnat (og ved genstart).
     """
 
-    def __init__(self, min_kwh: float = 0.3) -> None:
+    def __init__(self, min_kwh: float = 1.0, min_share: float = 0.15) -> None:
         self.day = None
         self.measured = 0.0
         self.forecast = 0.0
         self.last: datetime | None = None
         self.min_kwh = min_kwh
+        self.min_share = min_share
+        self.day_kwh = 0.0          # dagens samlede prognose (sættes udefra)
 
     def update(self, now: datetime, measured_kw: float | None, forecast_kw: float | None) -> None:
         if self.day != now.date():
@@ -189,7 +193,7 @@ class SunTracker:
     @property
     def ratio(self) -> float | None:
         """Faktisk ÷ prognose indtil nu i dag (None, hvis det endnu er for usikkert)."""
-        if self.forecast < self.min_kwh:
+        if self.forecast < max(self.min_kwh, self.min_share * self.day_kwh):
             return None
         return min(max(self.measured / self.forecast, 0.05), 1.5)
 

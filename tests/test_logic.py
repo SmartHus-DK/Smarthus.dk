@@ -1588,6 +1588,16 @@ def test_sun_tracker_scales_rest_of_day():
     t3 = W.SunTracker()
     t3.update(now, 1.0, 1.0); t3.update(now + timedelta(hours=2), 1.0, 1.0)
     assert abs(t3.forecast - 0.05) < 1e-9
+    # Morgen: prognosen indtil nu er lille i forhold til dagen (0,4 af 22 kWh) – solen giver næsten intet
+    # endnu (lav sol, skygge). Det må ikke fjerne resten af dagens sol fra planen.
+    t4 = W.SunTracker(); t4.day_kwh = 22.0
+    m = datetime(2026, 11, 13, 7, 0, tzinfo=tz)
+    for i in range(61):
+        t4.update(m + timedelta(minutes=i), 0.0, 0.4)
+    assert t4.ratio is None and t4.factor(1.0) == 1.0
+    for i in range(61, 61 + 600):          # stadig næsten ingen sol, og nu er 15 % af dagen gået
+        t4.update(m + timedelta(minutes=i), 0.05, 0.6)
+    assert t4.ratio is not None and t4.factor(1.0) < 0.2
 
 
 

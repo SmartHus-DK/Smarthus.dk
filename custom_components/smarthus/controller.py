@@ -1329,6 +1329,7 @@ class SmartHusController:
         now = dt_util.now().astimezone(self.tz)
         raw = solar_by_hour(self._forecast_wh, self.tz, self._forecast_key_is_end)
         hour = now.replace(minute=0, second=0, microsecond=0)
+        self.sun.day_kwh = sum(v * self.solar_cal.factor(h) for h, v in raw.items() if h.date() == now.date())
         self.sun.update(now, self.solar_kw, raw.get(hour, 0.0) * self.solar_cal.factor(hour))
 
     @property
