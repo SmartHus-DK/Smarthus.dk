@@ -876,6 +876,7 @@ def test_grid_charge_hours_follow_need_and_solar_forecast():
     k = 8.72 / sum(shape.values())
     solar = {tom.replace(hour=h): v * k * 0.7 for h, v in shape.items()}
     c, h = make({"battery_soc_sensor": "sensor.soc"}, {})
+    c.settings["battery_grid_buffer"] = 0.0          # uden buffer (testes for sig)
     c.tz, c.profile = tz, prof.Profile(weekday=wd, weekend=wd, days=14)
     c._solar_hours = lambda: solar
     c.settings.update(battery_capacity=5.6, battery_min_soc=10, battery_max_soc=100,
@@ -992,6 +993,7 @@ def test_planned_charge_can_be_read_in_advance():
     week = [0.38, 0.27, 0.52, 0.33, 0.3, 0.3, 0.42, 0.42, 0.27, 0.27, 0.45, 0.27, 0.42, 0.27, 0.3, 0.27, 0.32, 0.84, 1, 0.67, 0.62, 0.63, 0.4, 0.27]
     om = {7: .01025, 8: .27825, 9: .6235, 10: .97225, 11: 1.47425, 12: 1.6725, 13: 1.539, 14: 1.22625, 15: .7775, 16: .14325}
     c, _ = make({"battery_mode_entity": "select.mode", "battery_soc_sensor": "sensor.soc"}, {"sensor.soc": State("84")})
+    c.settings["battery_grid_buffer"] = 0.0          # uden buffer (testes for sig)
     c.settings.update(battery_capacity=5.6, battery_min_soc=10, battery_max_soc=100, battery_max_charge_kw=3)
     c.profile = prof.Profile(weekday=week, weekend=week, days=9, weekday_days=7, weekend_days=2)
     c._forecast_wh = {_dt.datetime(2026, 11, 4, h, tzinfo=tz).isoformat(): v * 1000 for h, v in om.items()}
@@ -1518,3 +1520,26 @@ def test_late_hotwater_skipped_when_tomorrow_cheaper():
     c.plan = planner.Plan(hotwater_slots=tonight + block(12, 13, 2.5))
     c._skip_late_hotwater(now, 45.5)
     assert len(c.plan.hotwater_slots) == 8
+
+
+def test_grid_buffer_adds_to_night_charge_and_need_hours_do_not_flap():
+    """Ekstra buffer lægges oven i nattens netopladning; ladetiden svinger ikke ned igen i løbet af natten."""
+    c, h = make({}, {})
+    c.settings["battery_grid_buffer"] = 2.0
+    assert c.grid_buffer_kwh == 2.0
+    c.settings["battery_grid_buffer"] = "x"
+    assert c.grid_buffer_kwh == 0.0
+    from datetime import datetime
+    tz = ZoneInfo("Europe/Copenhagen")
+    real = ctl_mod.dt_util.now
+    try:
+        ctl_mod.dt_util.now = lambda: datetime(2026, 11, 13, 3, 0, tzinfo=tz)
+        c._need_h_memo = None
+        assert c._latched_need_hours(1.0) == 1.0
+        assert c._latched_need_hours(0.75) == 1.0            # ikke ned igen samme nat
+        assert c._latched_need_hours(1.25) == 1.25
+        assert c._latched_need_hours(0.0) == 0.0             # målet nået: ingen opladning
+        ctl_mod.dt_util.now = lambda: datetime(2026, 11, 13, 12, 0, tzinfo=tz)
+        assert c._latched_need_hours(0.5) == 0.5 and c._need_h_memo is None
+    finally:
+        ctl_mod.dt_util.now = real

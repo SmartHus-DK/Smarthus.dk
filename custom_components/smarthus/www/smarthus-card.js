@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.66.26";
+const SMARTHUS_CARD_VERSION = "1.66.27";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -83,7 +83,7 @@ const MODULES = [
   {
     id: "battery", name: "Batteri", icon: "mdi:home-battery", sw: "control_battery",
     groups: [
-      { title: "Opladning fra nettet", items: ["battery_max_charge_kw", "battery_charge_hours", ["battery_charge_from", "battery_charge_to"]] },
+      { title: "Opladning fra nettet", items: ["battery_max_charge_kw", "battery_grid_buffer", "battery_charge_hours", ["battery_charge_from", "battery_charge_to"]] },
       { title: "Brug af batteriet", items: ["battery_discharge_hours", ["battery_discharge_from", "battery_discharge_to"],
         { sw: "battery_sell", label: "Sælg fra batteriet til nettet", note: "Slået fra bruges batteriet kun i huset" }] },
       { title: "Grænser", items: ["battery_min_spread", "battery_min_soc", "battery_max_soc", "battery_capacity"] },
@@ -132,6 +132,8 @@ const HELP = {
   battery: [
     { k: ["battery_max_charge_kw"], t: "Maks. ladeeffekt fra nettet",
       d: "Hvor hurtigt inverteren kan lade batteriet fra nettet, fx 3 kW. SmartHus regner time for time ud, hvad huset bruger, og hvad solen ventes at give i morgen, og lader kun det, der mangler – ladetiden er det, der mangler, delt med ladeeffekten. 0 = ikke sat, så bruges 'Timer at lade'." },
+    { k: ["battery_grid_buffer"], t: "Ekstra buffer ved netopladning",
+      d: "Så mange kWh ekstra lades fra nettet oven i det, SmartHus selv regner ud – til morgener med højere forbrug end normalt (fx når varmepumpen varmer vand). Lades kun op til maks. niveau. Standard 1 kWh, 0 = ingen buffer." },
     { k: ["battery_charge_hours"], t: "Timer at lade",
       d: "Højst så mange af døgnets billigste timer må batteriet lade fra nettet. SmartHus vælger selv timerne ud fra elprisen, når morgendagens priser kommer ved 13-tiden. Nattens opladning (kl. 18–8) lægges samlet i nattens billigste timer, også hen over midnat. Er ladeeffekten sat, bruges kun de timer, der skal til." },
     HELP_FULL_CHARGE,
@@ -275,6 +277,7 @@ const NUMBER_LABELS = {
   battery_solar_sell_margin: "Sælg når gevinsten er mindst",
   battery_solar_forecast_pct: "Regn med af solprognosen",
   battery_max_charge_kw: "Maks. ladeeffekt fra nettet",
+  battery_grid_buffer: "Ekstra buffer ved netopladning",
   hotwater_hours: "Timer at opvarme",
   hotwater_boost_temp: "Opvarm til",
   hotwater_normal_temp: "Normal temperatur",

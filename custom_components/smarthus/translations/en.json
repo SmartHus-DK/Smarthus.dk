@@ -798,6 +798,9 @@
       "heating_min_indoor": {
         "name": "Heating: minimum indoor temperature"
       },
+      "battery_grid_buffer": {
+        "name": "Battery: extra buffer when charging from the grid"
+      },
       "battery_max_charge_kw": {
         "name": "Battery: max charging power from the grid"
       }

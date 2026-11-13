@@ -15,7 +15,7 @@ EDS_DAYAHEAD_FROM: Final = date(2025, 10, 1)
 
 STATIC_URL: Final = "/smarthus_static"
 CARD_URL: Final = f"{STATIC_URL}/smarthus-card.js"
-CARD_VERSION: Final = "1.66.26"
+CARD_VERSION: Final = "1.66.27"
 
 PLATFORMS: Final = ["sensor", "binary_sensor", "switch", "number", "select"]
 
@@ -270,6 +270,7 @@ S_BATTERY_CAPACITY: Final = "battery_capacity"
 S_SOLAR_SELL_MARGIN: Final = "battery_solar_sell_margin"
 # Batteriet planlægges ud fra denne andel af solprognosen, så der hellere lades lidt for meget om natten end købes dyr strøm om aftenen
 S_SOLAR_FORECAST_PCT: Final = "battery_solar_forecast_pct"
+S_BATTERY_GRID_BUFFER: Final = "battery_grid_buffer"   # ekstra kWh oven i nattens beregnede netopladning
 S_BATTERY_MAX_CHARGE_KW: Final = "battery_max_charge_kw"   # maks. ladeeffekt fra nettet (til "lad helt op")
 S_EV_HOURS: Final = "ev_hours"
 S_EV_READY_HOUR: Final = "ev_ready_hour"
@@ -311,6 +312,7 @@ DEFAULT_SETTINGS: Final = {
     S_SOLAR_SELL_MARGIN: 0.10,
     S_SOLAR_FORECAST_PCT: 70.0,
     S_BATTERY_MAX_CHARGE_KW: 0.0,
+    S_BATTERY_GRID_BUFFER: 1.0,
     S_EV_HOURS: 4.0,
     S_EV_READY_HOUR: 7.0,
     S_EV_TARGET_SOC: 80.0,

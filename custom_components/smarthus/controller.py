@@ -49,6 +49,7 @@ from .const import (
     CONF_BATTERY_OPT_HOLD,
     S_SOLAR_SELL_MARGIN,
     S_BATTERY_MAX_CHARGE_KW,
+    S_BATTERY_GRID_BUFFER,
     S_BATTERY_CHARGE_HOURS,
     S_BATTERY_MAX_SOC,
     BATTERY_SCRIPTS,
@@ -1072,6 +1073,14 @@ class SmartHusController:
         if p.current in self.day_cycle["slots"] and soc < mx:
             p.battery_action = ACTION_CHARGE
 
+    @property
+    def grid_buffer_kwh(self) -> float:
+        """Ekstra kWh oven i nattens beregnede netopladning (indstilling, standard 1 kWh)."""
+        try:
+            return max(float(self.settings.get(S_BATTERY_GRID_BUFFER, 1.0) or 0.0), 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
     def _charge_target(self, start: datetime, price: float) -> float:
         """Hvor mange kWh batteriet skal lades op til fra nettet i en ladeblok, der starter på `start`."""
         dc = self.__dict__.get("day_cycle")
@@ -1086,7 +1095,7 @@ class SmartHusController:
         day = local if local.hour < SUN_END - 3 else local + timedelta(days=1)
         if self._sell_solar_better(day, price)[1]:
             return full
-        return min(n["need_at_sun"] + self._load_until_sun(start, n["sun"]) / EFFICIENCY, full)
+        return min(n["need_at_sun"] + self._load_until_sun(start, n["sun"]) / EFFICIENCY + self.grid_buffer_kwh, full)
 
     def _charge_end(self, t: datetime) -> datetime:
         """Slut på den sammenhængende ladeblok, som `t` ligger i (eller `t`, hvis der ikke lades)."""
@@ -1157,6 +1166,23 @@ class SmartHusController:
                 "soc_at_start": round(e / cap * 100), "target_soc": round((e + kwh) / cap * 100),
                 "avg_price": round(price, 2), "cost": round(kwh * price, 2)}
 
+    def _latched_need_hours(self, need_h: float | None) -> float | None:
+        """Ladetiden må ikke svinge frem og tilbage i løbet af natten (fx 0,75 ↔ 1 time hvert halve minut, så
+        ladeblokken skifter og batteriet slår lad/normal til og fra). Natten over bruges den største værdi,
+        der er regnet ud; styringen stopper alligevel, når målet er nået. Nulstilles ved solopgang."""
+        local = dt_util.now().astimezone(self.tz)
+        night = (local if local.hour < SUN_START else local + timedelta(days=1)).date()
+        memo = self.__dict__.get("_need_h_memo")
+        if need_h is None:
+            return None
+        if local.hour >= SUN_START and local.hour < SUN_END - 3:
+            self._need_h_memo = None                    # om dagen: ingen låsning
+            return need_h
+        if memo and memo[0] == night and need_h > 0:
+            need_h = max(need_h, memo[1])
+        self._need_h_memo = (night, need_h)
+        return need_h
+
     def _grid_charge_hours(self, now: datetime, soc: float | None) -> float | None:
         """Timer der skal lades fra nettet i nat ved den indtastede maks. ladeeffekt. None = ingen ladeeffekt/data."""
         kw = float(self.settings.get(S_BATTERY_MAX_CHARGE_KW, 0) or 0)
@@ -1177,7 +1203,8 @@ class SmartHusController:
         else:
             start = local
         # Samme mål som planen og styringen (_charge_target / _decide_grid_charge): inkl. ladetab, højst fuldt
-        target = min(n["need_at_sun"] + self._load_until_sun(start, n["sun"]) / EFFICIENCY, n["full"])
+        target = min(n["need_at_sun"] + self._load_until_sun(start, n["sun"]) / EFFICIENCY + self.grid_buffer_kwh,
+                     n["full"])
         need_kwh = target - e
         if need_kwh <= 0.05:
             return 0.0
@@ -1230,7 +1257,8 @@ class SmartHusController:
         n = self._night_need(now)
         if n is not None and local < n["sun"]:
             # Time for time: det batteriet skal have ved solopgang + husets forbrug indtil da
-            target = min(n["need_at_sun"] + self._load_until_sun(now, n["sun"]) / EFFICIENCY, cap * mx / 100)
+            target = min(n["need_at_sun"] + self._load_until_sun(now, n["sun"]) / EFFICIENCY + self.grid_buffer_kwh,
+                         cap * mx / 100)
         # Er salg af solstrøm midt på dagen bedre end at bruge den selv? Så lades der fuldt fra nettet.
         sale_mid, sell_better = self._sell_solar_better(day, p.current.price)
         if sell_better or self.full_charge_hours:
@@ -1532,7 +1560,7 @@ class SmartHusController:
             settings[S_BATTERY_CHARGE_HOURS] = full_h      # lad helt op: timerne regnes ud fra ladeeffekten
             settings["battery_full_charge"] = True
         else:
-            need_h = self._grid_charge_hours(dt_util.utcnow(), soc)
+            need_h = self._latched_need_hours(self._grid_charge_hours(dt_util.utcnow(), soc))
             if need_h is not None:
                 # Kun de timer, der skal til for at nå målet ved den indtastede ladeeffekt ("Timer at lade" er loftet)
                 settings[S_BATTERY_CHARGE_HOURS] = min(settings[S_BATTERY_CHARGE_HOURS], need_h)

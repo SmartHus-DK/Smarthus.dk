@@ -810,6 +810,9 @@
       "heating_min_indoor": {
         "name": "Varme: mindste indetemperatur"
       },
+      "battery_grid_buffer": {
+        "name": "Batteri: ekstra buffer ved netopladning"
+      },
       "battery_max_charge_kw": {
         "name": "Batteri: maks. ladeeffekt fra nettet"
       }
