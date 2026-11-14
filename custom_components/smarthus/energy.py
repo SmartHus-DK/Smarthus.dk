@@ -130,7 +130,7 @@ def layout_signature(layout: dict | None) -> str:
     # "v" ændres, når regnskabet får nye felter: så genberegnes historikken én gang
     if not layout:
         return ""
-    parts = ["v5"] + [",".join(sorted(layout.get(k) or [])) for k in ("import", "export", "solar", "battery_in", "battery_out")]
+    parts = ["v6"] + [",".join(sorted(layout.get(k) or [])) for k in ("import", "export", "solar", "battery_in", "battery_out")]
     parts += [d["stat"] for d in layout.get("devices") or []]
     return "|".join(parts)
 
@@ -150,7 +150,12 @@ def hour_fields(layout: dict, kwh: dict[str, float], price: float | None, sale: 
         f.update(solar=sol, solar_self=own, solar_export=sol_exp, solar_self_kr=own * p, solar_export_kr=sol_exp * sp,
                  solar_kr=own * p + sol_exp * sp)
     if layout.get("battery_in") or layout.get("battery_out"):
-        f.update(bat_in=b_in, bat_in_kr=b_in * p, bat_out=b_out, bat_out_kr=b_out * p)
+        # Det, der sælges ud over solens produktion i timen, kom fra batteriet (solen regnes som solgt først).
+        # Den del er værd, hvad den blev solgt for – resten sparede købsprisen i huset.
+        b_exp = min(max(exp - min(exp, sol), 0.0), b_out) if layout.get("export") else 0.0
+        f.update(bat_in=b_in, bat_in_kr=b_in * p, bat_out=b_out, bat_out_kr=(b_out - b_exp) * p + b_exp * sp,
+                 bat_out_house=b_out - b_exp, bat_out_house_kr=(b_out - b_exp) * p,
+                 bat_out_export=b_exp, bat_out_export_kr=b_exp * sp)
     dev_sum = 0.0
     for d in layout.get("devices") or []:
         v = max(kwh.get(d["stat"]) or 0.0, 0.0)

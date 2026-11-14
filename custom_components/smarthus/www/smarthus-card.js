@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.67.6";
+const SMARTHUS_CARD_VERSION = "1.67.7";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -3159,7 +3159,10 @@ class SmartHusEnergyCard extends SmartHusCard {
         const part = (name, v, k, sign) => src.push(row(`battery_${name}`, COLORS.battery_discharge, "mdi:circle-small", name, avg(v, k), sKwh(sign * v), sKr(sign * k), `${sign > 0 ? "plus " : ""}sub`));
         part("Opladet fra nettet", p.bat_in_grid, p.bat_in_grid_kr, -1);
         part("Opladet fra sol", p.bat_in_solar, p.bat_in_solar_kr, -1);
-        part("Afladet", p.bat_out, p.bat_out_kr, 1);
+        if (p.bat_out_export != null && has.export) {
+          part("Afladet til huset", p.bat_out_house, p.bat_out_house_kr, 1);
+          part("Solgt til nettet", p.bat_out_export, p.bat_out_export_kr, 1);
+        } else part("Afladet", p.bat_out, p.bat_out_kr, 1);
       }
     }
     // Nettet øverst: forbrug (minus), solceller (plus) og batteri (netto) giver tilsammen nettet – solgt minus købt

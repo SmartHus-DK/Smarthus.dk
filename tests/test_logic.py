@@ -1258,6 +1258,22 @@ def test_battery_charge_split_between_grid_and_solar():
     assert round(f["bill"] + f["solar_kr"] + f["bat_out_kr"] - f["bat_in_kr"], 3) == round(f["house_kr"], 3)
 
 
+def test_battery_export_split():
+    lay = {"import": ["i"], "export": ["e"], "solar": ["s"], "battery_in": ["bi"], "battery_out": ["bo"], "devices": []}
+    # Aften uden sol: batteriet giver 2 kWh, huset bruger 1,6, 0,4 sælges
+    f = energy.hour_fields(lay, {"i": 0, "e": 0.4, "s": 0, "bi": 0, "bo": 2}, 2.0, 1.0)
+    assert round(f["bat_out_export"], 3) == 0.4 and round(f["bat_out_house"], 3) == 1.6
+    assert round(f["bat_out_kr"], 3) == round(1.6 * 2 + 0.4 * 1, 3) and round(f["house"], 3) == 1.6
+    assert round(f["bill"] + f["bat_out_kr"] - f["bat_in_kr"], 3) == round(f["house_kr"], 3)
+    # Middag: salget dækkes af solen – intet fra batteriet
+    f = energy.hour_fields(lay, {"i": 0, "e": 1, "s": 3, "bi": 0, "bo": 0.5}, 2.0, 1.0)
+    assert f["bat_out_export"] == 0 and f["bat_out_house"] == 0.5
+    # Mere solgt end solen gav: resten fra batteriet, og regnskabet går stadig op
+    f = energy.hour_fields(lay, {"i": 0, "e": 2, "s": 1, "bi": 0, "bo": 1.5}, 2.0, 1.0)
+    assert round(f["bat_out_export"], 3) == 1.0
+    assert round(f["bill"] + f["solar_kr"] + f["bat_out_kr"] - f["bat_in_kr"], 3) == round(f["house_kr"], 3)
+
+
 tariffs = _load("tariffs")
 
 
