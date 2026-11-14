@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.67.4";
+const SMARTHUS_CARD_VERSION = "1.67.5";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -131,10 +131,16 @@ function batteryWhy(a, ctx = {}) {
   if (s && s.ratio <= 0.8)
     items.push(`Solen har kun givet ca. ${Math.round(s.ratio * 100)} % af prognosen i dag (${k1(s.measured_kwh)} af ${k1(s.forecast_kwh)} kWh).`);
   const nm = nightMorning(c, a.planned_charge, ctx.prices, ctx.done);
+  // Dækker solen huset lige nu? Så købes der ikke fra nettet – teksten skal ikke sige det
+  const fl = ctx.flow || {};
+  const sunNow = fl.has_solar && fl.solar_kw != null && fl.house_kw != null && fl.solar_kw >= fl.house_kw - 0.05 && fl.solar_kw > 0.1
+    ? { extra: fl.solar_kw - fl.house_kw > 0.1 } : null;
   if (w.state === "hold") {
     if (nm) items.push(nm.text);
     const h = w.hold_for;
-    const text = h
+    const text = sunNow
+      ? `Solen dækker huset lige nu${sunNow.extra ? ", og overskuddet lader batteriet" : ""}. ${h ? `Strømmen i batteriet${h.usable_kwh != null ? ` (ca. ${k1(h.usable_kwh)} kWh)` : ""} gemmes til de dyre timer fra kl. ${hh(h.from)} (ca. ${kr(h.price)} kr/kWh)` : "Strømmen i batteriet gemmes til dyrere timer senere"} – hvis solen ikke dækker huset inden da, købes der fra nettet (nu ${kr(w.now_price)} kr/kWh) i stedet for at bruge batteriet.`
+      : h
       ? `Strømmen i batteriet${h.usable_kwh != null ? ` (ca. ${k1(h.usable_kwh)} kWh)` : ""} gemmes til de dyre timer fra kl. ${hh(h.from)} (ca. ${kr(h.price)} kr/kWh). Lige nu koster strømmen ${kr(w.now_price)} kr/kWh, så det er billigst at købe fra nettet nu og bruge batteriet senere.`
       : `Strømmen i batteriet gemmes til dyrere timer senere. Lige nu koster strømmen ${kr(w.now_price)} kr/kWh.`;
     if (!w.planned_charge && priceTxt) items.push(priceTxt);
@@ -500,6 +506,7 @@ class SmartHusCard extends HTMLElement {
       prices: hourPrices(this._st("sensor", "current_price")?.attributes),
       solarRemaining: f && f.available ? f.remaining_kwh : null,
       done: this._st("binary_sensor", "battery_charge_now")?.attributes?.slots,
+      flow: this._st("sensor", "energy_flow")?.attributes,
     });
     return why ? `<div class="res-info"><b>${esc(why.title)}</b> ${esc(why.text)}${why.items.length ? `<ul>${why.items.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : ""}</div>` : "";
   }
