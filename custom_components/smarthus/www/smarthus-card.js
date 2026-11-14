@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.67.3";
+const SMARTHUS_CARD_VERSION = "1.67.4";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -63,9 +63,55 @@ const LANES = [
 ];
 
 // Indstillinger pr. modul, i grupper. ["a_from","a_to"] vises som ét tidsrum.
+/** Timepriser (gennemsnit af kvartererne) fra elpris-sensoren: [{ start: Date, price }]. */
+function hourPrices(attr) {
+  const map = new Map();
+  for (const p of [...(attr?.today || []), ...(attr?.tomorrow || [])]) {
+    const k = Math.floor(new Date(p.start).getTime() / 3600e3) * 3600e3;
+    if (!map.has(k)) map.set(k, []);
+    if (typeof p.price === "number") map.get(k).push(p.price);
+  }
+  return [...map.entries()].filter(([, v]) => v.length).sort((x, y) => x[0] - y[0])
+    .map(([k, v]) => ({ start: new Date(k), price: v.reduce((x, y) => x + y, 0) / v.length }));
+}
+
+/** Kan det betale sig at lade i nattens billigste time til morgenens dyre timer (kl. 6–9)? Tekst, hvis ikke.
+ *  Om formiddagen (kl. 4–12) forklares natten, der lige er gået; ellers den kommende nat.
+ *  hs: timepriser, done: overståede ladekvarterer (ISO), planned: planlagt opladning. */
+function nightMorning(c, planned, hs0, done) {
+  if (!c || c.min_spread == null || c.loss_pct == null || !hs0 || !hs0.length) return null;
+  const now = new Date(), hr = (x) => x.start.getHours();
+  const clock = (d) => d.toLocaleTimeString("da-DK", { hour: "2-digit", minute: "2-digit" }).replace(".", ":");
+  const past = now.getHours() >= 4 && now.getHours() < 12;
+  let night, morning;
+  if (past) {
+    const day0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime(), day1 = day0 + 24 * 3600e3;
+    const hs = hs0.filter((x) => x.start.getTime() >= day0 && x.start.getTime() < day1);
+    night = hs.filter((x) => hr(x) < 6); morning = hs.filter((x) => hr(x) >= 6 && hr(x) < 9);
+    // Blev der faktisk ladet fra nettet i nat? Så er der intet at forklare
+    if ((done || []).map((t) => +new Date(t)).some((t) => t >= day0 && t < day0 + 9 * 3600e3)) return null;
+  } else {
+    const hs = hs0.filter((x) => x.start.getTime() + 3600e3 > now.getTime());
+    const i0 = hs.findIndex((x, i) => hr(x) >= 6 && hr(x) < 9 && hs.slice(0, i).some((y) => hr(y) < 6));
+    if (i0 < 0) return null;
+    night = []; for (let i = i0 - 1; i >= 0 && hr(hs[i]) < 6; i--) night.unshift(hs[i]);
+    morning = hs.slice(i0).filter((x, k) => k < 3 && hr(x) >= 6 && hr(x) < 9);
+    if (planned && morning.length && new Date(planned.start) < morning[0].start) return null;   // der lades allerede i nat
+  }
+  if (!night.length || !morning.length) return null;
+  const n = night.reduce((b, x) => (x.price < b.price ? x : b));
+  const m = Math.max(...morning.map((x) => x.price));
+  const eff = n.price / (1 - c.loss_pct / 100), gain = m - eff;
+  if (gain >= c.min_spread) return null;
+  const kr = (v) => Number(v).toFixed(2).replace(".", ",");
+  const er = past ? "var" : "er";
+  return { past, text: `Nattens billigste strøm (kl. ${clock(n.start)}, ca. ${kr(n.price)} kr/kWh – med ca. ${c.loss_pct} % tab ca. ${kr(eff)} kr/kWh) ${er} ${gain <= 0 ? "ikke billigere end" : "næsten lige så dyr som"} morgenens dyreste (ca. ${kr(m)} kr/kWh)${gain > 0 ? ` – gevinsten ${er} kun ${kr(gain)} kr/kWh mod din mindste prisforskel på ${kr(c.min_spread)} kr` : ""}. Derfor ${past ? "blev der ikke ladet i nat" : "lades der ikke i nat"} til morgenen.` };
+}
+
 /** Forklaring under planen: hvorfor batteriet gemmes / ikke lades fra nettet (tal fra integrationen).
+ *  ctx (valgfri): { prices: timepriser, solarRemaining: kWh sol resten af dagen, done: overståede ladekvarterer }.
  *  Returnerer { title, text, items[] } som ren tekst – eller null. */
-function batteryWhy(a) {
+function batteryWhy(a, ctx = {}) {
   const w = a && a.battery_why;
   if (!w) return null;
   const kr = (v) => Number(v).toFixed(2).replace(".", ",");
@@ -84,7 +130,9 @@ function batteryWhy(a) {
   const s = w.solar;
   if (s && s.ratio <= 0.8)
     items.push(`Solen har kun givet ca. ${Math.round(s.ratio * 100)} % af prognosen i dag (${k1(s.measured_kwh)} af ${k1(s.forecast_kwh)} kWh).`);
+  const nm = nightMorning(c, a.planned_charge, ctx.prices, ctx.done);
   if (w.state === "hold") {
+    if (nm) items.push(nm.text);
     const h = w.hold_for;
     const text = h
       ? `Strømmen i batteriet${h.usable_kwh != null ? ` (ca. ${k1(h.usable_kwh)} kWh)` : ""} gemmes til de dyre timer fra kl. ${hh(h.from)} (ca. ${kr(h.price)} kr/kWh). Lige nu koster strømmen ${kr(w.now_price)} kr/kWh, så det er billigst at købe fra nettet nu og bruge batteriet senere.`
@@ -92,12 +140,31 @@ function batteryWhy(a) {
     if (!w.planned_charge && priceTxt) items.push(priceTxt);
     else if (w.planned_charge && c.code === "price" && w.charge_plan && w.charge_plan.kwh <= 3)
       items.push(`Der lades kun lidt fra nettet (ca. ${k1(w.charge_plan.kwh)} kWh kl. ${hh(w.charge_plan.start)}–${hh(w.charge_plan.end)}) – i de timer, hvor forskellen er størst. Ellers kan det ikke betale sig: de billigste timer koster ca. ${kr(c.cheap_price)} kr/kWh – med ca. ${c.loss_pct} % tab ca. ${kr(c.cheap_price / (1 - c.loss_pct / 100))} kr/kWh – mod ca. ${kr(c.dear_price)} kr/kWh i de dyreste timer. Gevinsten på ${kr(Math.max(c.gain, 0))} kr/kWh er under din mindste prisforskel på ${kr(c.min_spread)} kr.`);
+    else if (w.planned_charge) {
+      const pc = a.planned_charge || w.charge_plan;
+      if (pc && pc.kwh > 0.05) {
+        const s0 = new Date(pc.start), now = new Date();
+        const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+        const word = s0 <= now ? "nu" : s0 >= tomorrow ? "i morgen " : s0.getHours() < 6 ? "i nat " : "i dag ";
+        const when = word === "nu" ? "nu" : `${word}kl. ${hh(pc.start)}–${hh(pc.end)}`;
+        if (c.code === "ok" && c.cheap_price != null)
+          items.push(`Der lades ca. ${k1(pc.kwh)} kWh fra nettet ${when}. De billigste timer (fra kl. ${hh(c.cheap_from)}) koster ca. ${kr(c.cheap_price)} kr/kWh – med ca. ${c.loss_pct} % tab ca. ${kr(c.cheap_price / (1 - c.loss_pct / 100))} kr/kWh – mod ca. ${kr(c.dear_price)} kr/kWh i de dyre timer fra kl. ${hh(c.dear_from)}. Gevinsten på ${kr(c.gain)} kr/kWh er over din mindste prisforskel på ${kr(c.min_spread)} kr, så det kan betale sig.`);
+        else {
+          const per = pc.cost != null && pc.kwh ? ` (ca. ${kr(pc.cost / pc.kwh)} kr/kWh)` : "";
+          items.push(`Der lades ca. ${k1(pc.kwh)} kWh fra nettet ${when}${per}, hvor strømmen er billigst før de dyre timer${h ? ` fra kl. ${hh(h.from)}` : ""}.`);
+        }
+      }
+    }
+    if (ctx.solarRemaining >= 1)
+      items.push(`Solen forventes at give ca. ${k1(ctx.solarRemaining)} kWh resten af dagen, som også lader batteriet op til de dyre timer.`);
     return { title: "Hvorfor gemmes batteriet?", text, items };
   }
   if (!w.planned_charge && w.state !== "charge") {
     const text = priceTxt || "Batteriet og solen forventes at dække huset, til strømmen igen er billig – så der er ikke brug for at lade fra nettet.";
+    if (nm && !priceTxt) items.push(nm.text);
     return { title: "Hvorfor lader batteriet ikke fra nettet?", text, items };
   }
+  if (nm && nm.past) return { title: "Hvorfor blev der ikke ladet i nat?", text: nm.text, items };
   return null;
 }
 
@@ -423,6 +490,20 @@ class SmartHusCard extends HTMLElement {
   _id(domain, key) {
     return `${domain}.${this._config.prefix}_${key}`;
   }
+  /** Infoboksen "Hvorfor gemmes batteriet?" som HTML (tom, hvis der ikke er noget at forklare). */
+  _whyHtml() {
+    if (this._st("switch", "control_battery")?.state !== "on") return "";
+    const a = this._st("sensor", "battery_reserve")?.attributes;
+    if (!a) return "";
+    const f = this._st("sensor", "solar_forecast")?.attributes;
+    const why = batteryWhy(a, {
+      prices: hourPrices(this._st("sensor", "current_price")?.attributes),
+      solarRemaining: f && f.available ? f.remaining_kwh : null,
+      done: this._st("binary_sensor", "battery_charge_now")?.attributes?.slots,
+    });
+    return why ? `<div class="res-info"><b>${esc(why.title)}</b> ${esc(why.text)}${why.items.length ? `<ul>${why.items.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : ""}</div>` : "";
+  }
+
   _st(domain, key) {
     return this._hass?.states[this._id(domain, key)];
   }
@@ -1780,8 +1861,7 @@ class SmartHusCard extends HTMLElement {
       solarLine = `<div class="res-solar ${ss.active ? "on" : ""}"><b>${ss.active ? "Sælger solstrømmen nu" : "Gemmer solstrømmen i batteriet"}</b> · ${why}</div>`;
     }
     const planLine = chargePlanText(a);
-    const why = batteryWhy(a);
-    if (why) solarLine = `<div class="res-info"><b>${why.title}</b> ${why.text}${why.items.length ? `<ul>${why.items.map((t) => `<li>${t}</li>`).join("")}</ul>` : ""}</div>` + solarLine;
+    solarLine = this._whyHtml() + solarLine;
     if (planLine) solarLine = `<div class="res-solar">${planLine}</div>` + solarLine;
     const gc = a.grid_charge;
     if (gc) {
@@ -2839,6 +2919,7 @@ class SmartHusPlanCard extends SmartHusCard {
         <div class="ps-row" aria-label="Lige nu">${this._logoImg("pc-logo")}${masterSt ? this._modeBtn(masterSt.entity_id, master, "Smart styring") : ""}${story}</div>
         ${this._renderStrip()}
         ${this._legendMode() === "compact" ? this._compactKeys() : ""}
+        ${this._whyHtml()}
       </div>`;
     this._update(html, this._hass.themes?.darkMode ? "dark" : "");
   }
