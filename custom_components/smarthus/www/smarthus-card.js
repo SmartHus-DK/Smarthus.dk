@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.67.5";
+const SMARTHUS_CARD_VERSION = "1.67.6";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -63,6 +63,34 @@ const LANES = [
 ];
 
 // Indstillinger pr. modul, i grupper. ["a_from","a_to"] vises som ét tidsrum.
+// --- Vejrikoner over solprognosen (WMO-kode fra Open-Meteo via integrationen) ---
+const SUN = "#F2B01E", CLOUD = "#9AA6B2", RAIN = "#3B8FE0", SNOW = "#8FC8F5", BOLT = "#F2B01E";
+const sun = (cx = 12, cy = 12, r = 4.2) => `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${SUN}"/>` +
+  [0, 45, 90, 135, 180, 225, 270, 315].map((a) => { const t = a * Math.PI / 180, r1 = r + 2.2, r2 = r + 4.4;
+    return `<path d="M${(cx + r1 * Math.cos(t)).toFixed(1)} ${(cy + r1 * Math.sin(t)).toFixed(1)}L${(cx + r2 * Math.cos(t)).toFixed(1)} ${(cy + r2 * Math.sin(t)).toFixed(1)}" stroke="${SUN}" stroke-width="1.8" stroke-linecap="round"/>`; }).join("");
+const cloud = (dy = 0, fill = CLOUD) => `<path d="M7 ${18 + dy}h10.5a3.5 3.5 0 0 0 .4-7 5 5 0 0 0-9.6-1.2A4 4 0 0 0 7 ${18 + dy}Z" fill="${fill}"/>`;
+const moon = `<path d="M15.5 4.5a7.5 7.5 0 1 0 4 13.6 6 6 0 0 1-4-13.6Z" fill="#C9B458"/>`;
+const drops = (c) => [7.5, 11.5, 15.5].map((x) => `<path d="M${x} 19.5l-1 2.6" stroke="${c}" stroke-width="1.8" stroke-linecap="round"/>`).join("");
+const flakes = [7.5, 12, 16.5].map((x) => `<circle cx="${x}" cy="21" r="1.2" fill="${SNOW}"/>`).join("");
+const W = {
+  clear: sun(),
+  night: moon,
+  partly: sun(9, 9, 3.4) + cloud(1.5),
+  cloudy: cloud(-1),
+  fog: [9, 13, 17].map((y, i) => `<path d="M${4 + i} ${y}h${16 - 2 * i}" stroke="${CLOUD}" stroke-width="2" stroke-linecap="round"/>`).join(""),
+  drizzle: cloud(-3) + [9, 15].map((x) => `<path d="M${x} 18.5l-.7 2" stroke="${RAIN}" stroke-width="1.6" stroke-linecap="round"/>`).join(""),
+  rain: cloud(-3) + drops(RAIN),
+  snow: cloud(-3) + flakes,
+  thunder: cloud(-3) + `<path d="M12.5 15.5 10 19.5h2.6l-1.4 3.5 3.6-4.6h-2.6l1.3-2.9Z" fill="${BOLT}"/>`,
+};
+const wxIcon = (k) => `<svg viewBox="0 0 24 24" aria-hidden="true">${W[k] || ""}</svg>`;
+// WMO-vejrkode (Open-Meteo) → ikon
+const wxKind = (code, day = true) => code == null ? null : code === 0 || code === 1 ? (day ? "clear" : "night")
+  : code === 2 ? (day ? "partly" : "cloudy") : code === 3 ? "cloudy" : code === 45 || code === 48 ? "fog"
+  : code >= 51 && code <= 57 ? "drizzle" : (code >= 61 && code <= 67) || (code >= 80 && code <= 82) ? "rain"
+  : (code >= 71 && code <= 77) || code === 85 || code === 86 ? "snow" : code >= 95 ? "thunder" : "cloudy";
+const WX_TXT = { clear: "Sol", night: "Klart", partly: "Delvis sol", cloudy: "Overskyet", fog: "Tåge", drizzle: "Støvregn", rain: "Regn", snow: "Sne", thunder: "Torden" };
+
 /** Timepriser (gennemsnit af kvartererne) fra elpris-sensoren: [{ start: Date, price }]. */
 function hourPrices(attr) {
   const map = new Map();
@@ -824,7 +852,10 @@ class SmartHusCard extends HTMLElement {
         const d = new Date(r.start);
         return d.getHours() % 3 === 0 ? `<span style="left:${((i * 10 + 5) / W) * 100}%">${String(d.getHours()).padStart(2, "0")}</span>` : "";
       }).join("");
-      chart = `<div class="fc-chart">
+      const wx = rows.some((r) => r.wx != null) ? `<div class="fc-wx" aria-hidden="true">${rows.map((r, i) => {
+        const k = wxKind(r.wx, r.day !== false);
+        return k ? `<span style="left:${((i * 10 + 5) / W) * 100}%" title="${hh(new Date(r.start))}: ${WX_TXT[k]}">${wxIcon(k)}</span>` : ""; }).join("")}</div>` : "";
+      chart = `<div class="fc-chart">${wx}
           <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Forventet solproduktion time for time i dag">${bars}
             ${nowX != null ? `<line x1="${nowX}" x2="${nowX}" y1="0" y2="${H}" class="fc-now"/>` : ""}</svg>
           <div class="ticks c">${ticks}</div></div>`;
@@ -2316,7 +2347,10 @@ class SmartHusCard extends HTMLElement {
       .fc-title { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--secondary-text-color); }
       .fc-kpis { margin-top: 6px; }
       .fc-chart { margin-top: 10px; }
-      .fc-chart svg { display: block; width: 100%; height: 56px; }
+      .fc-chart > svg { display: block; width: 100%; height: 56px; }
+      .fc-wx { position: relative; height: 18px; margin-bottom: 4px; }
+      .fc-wx span { position: absolute; top: 0; transform: translateX(-50%); width: 18px; height: 18px; }
+      .fc-wx svg { display: block; width: 18px; height: 18px; }
       .fc-now { stroke: var(--primary-text-color); stroke-width: 1; stroke-dasharray: 2 2; vector-effect: non-scaling-stroke; opacity: .6; }
       .schart svg { display: block; width: 100%; height: 80px; }
       .sbar { cursor: pointer; }

@@ -248,6 +248,7 @@ class SmartHusController:
         self._unsub_temps = None
         self.temp_model = TempModel(reason="ikke lært endnu")
         self._temps: dict[datetime, float] = {}      # udetemperatur pr. lokal time (historik + vejrudsigt)
+        self._wx: dict[datetime, tuple[int, bool]] = {}   # vejrtype (WMO-kode, dag) pr. time – til ikonerne over solprognosen
         self._temps_at: datetime | None = None
         self._house_hours: list = []
         self._hp_hours: list = []                     # varmepumpens egen måler pr. time (planlægges for sig)
@@ -757,21 +758,27 @@ class SmartHusController:
         self.recalculate()
 
     async def _async_fetch_temps(self) -> dict[datetime, float]:
-        """Udetemperatur pr. time fra Open-Meteo: de seneste 28 dage og 3 dage frem (kun husets omtrentlige position)."""
+        """Udetemperatur pr. time fra Open-Meteo: de seneste 28 dage og 3 dage frem (kun husets omtrentlige position).
+        Vejrtypen pr. time (WMO-kode) hentes i samme opslag og gemmes i self._wx."""
         import asyncio
 
         lat, lon = getattr(self.hass.config, "latitude", None), getattr(self.hass.config, "longitude", None)
         if lat is None or lon is None:
             return {}
-        params = {"latitude": f"{lat:.2f}", "longitude": f"{lon:.2f}", "hourly": "temperature_2m",
+        params = {"latitude": f"{lat:.2f}", "longitude": f"{lon:.2f}", "hourly": "temperature_2m,weather_code,is_day",
                   "past_days": str(TEMP_LEARN_DAYS + 1), "forecast_days": "3", "timeformat": "unixtime", "timezone": "GMT"}
         async with asyncio.timeout(30):
             async with self.coordinator._session.get(OPEN_METEO_URL, params=params) as resp:  # noqa: SLF001
                 resp.raise_for_status()
                 data = await resp.json()
         h = data.get("hourly") or {}
+        times = h.get("time") or []
+        wx = {datetime.fromtimestamp(t, self.tz): (int(c), bool(d))
+              for t, c, d in zip(times, h.get("weather_code") or [], h.get("is_day") or [1] * len(times)) if c is not None}
+        if wx:
+            self._wx = wx
         return {datetime.fromtimestamp(t, self.tz): float(v)
-                for t, v in zip(h.get("time") or [], h.get("temperature_2m") or []) if v is not None}
+                for t, v in zip(times, h.get("temperature_2m") or []) if v is not None}
 
     async def _async_update_temps(self, force: bool = False) -> None:
         """Hent udetemperaturen, lær husets varmebehov og justér forbrugsmønsteret efter vejrudsigten."""
@@ -3110,6 +3117,16 @@ class SmartHusController:
                 out[f"unadjusted_{out_key}"] = round(val, 2)
             else:
                 out[out_key] = round(val, 2)
+        wx = getattr(self, "_wx", None)
+        if wx and out.get("hours"):           # vejrtypen pr. time til ikonerne over søjlerne
+            out["hours"] = [dict(h) for h in out["hours"]]
+            for h in out["hours"]:
+                try:
+                    w = wx.get(datetime.fromisoformat(h["start"]))
+                except (KeyError, TypeError, ValueError):
+                    w = None
+                if w is not None:
+                    h["wx"], h["day"] = w
         power = self._power_kw(ids.get("power_now"))
         if power is not None:
             out["power_now_kw"] = round(power * (cal.factor(dt_util.utcnow()) if learned else 1.0), 2)
