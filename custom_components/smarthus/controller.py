@@ -2925,10 +2925,27 @@ class SmartHusController:
             return None
         return -kw if self.config.get(CONF_BATTERY_POWER_SIGN) == SIGN_CHARGE_POSITIVE else kw
 
+    def _ev_power_by_car(self) -> dict[str, float | None]:
+        """Effekt pr. elbil i kW. Deler flere biler samme effektsensor (én lader til flere
+        biler), tæller effekten kun med for én bil – den tilsluttede – så laderens effekt
+        ikke trækkes fra husets forbrug flere gange."""
+        ev: dict[str, float | None] = {}
+        claimed: set[str] = set()
+        # Tilsluttede biler først, så det er dem, der får laderens effekt
+        for car in sorted(self.cars, key=lambda c: not self.connected.get(c["id"], True)):
+            entity_id = car.get("power")
+            if entity_id and entity_id in claimed:
+                ev[car["id"]] = 0.0
+                continue
+            if entity_id:
+                claimed.add(entity_id)
+            ev[car["id"]] = self._power_kw(entity_id)
+        return ev
+
     @property
     def flow(self) -> dict:
         """Energiflowet lige nu – bruges af kortets 3D-visning."""
-        ev = {car["id"]: self._power_kw(car.get("power")) for car in self.cars}
+        ev = self._ev_power_by_car()
         f = energy_flow(self.solar_kw, self.export_kw, self.battery_kw, ev)
         f["battery_soc"] = self._float_state(self.config.get(CONF_BATTERY_SOC))
         f["has_battery"] = self.has_battery_control or bool(self.config.get(CONF_BATTERY_POWER)

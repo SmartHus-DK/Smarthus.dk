@@ -674,6 +674,22 @@ def test_split_power_sensors_give_energy_flow():
     assert abs(c3.export_kw - (-0.3)) < 1e-9
 
 
+def test_shared_charger_counted_once_in_house_flow():
+    """To biler på samme lader (samme effektsensor): laderen trækkes kun fra husets forbrug én gang."""
+    states = {"sensor.grid": State("-10290", unit_of_measurement="W"),     # køb fra nettet
+              "sensor.pv": State("2.07", unit_of_measurement="kW"),
+              "sensor.easee": State("10.0", unit_of_measurement="kW")}
+    c, h = make({"grid_power_sensor": "sensor.grid", "solar_power_sensor": "sensor.pv"}, states)
+    c.cars = [{"id": "ev", "name": "Audi", "power": "sensor.easee"},
+              {"id": "ev_vw", "name": "VW", "power": "sensor.easee"}]
+    c.connected = {"ev": True, "ev_vw": False}
+    f = c.flow
+    assert f["ev_kw"] == {"ev": 10.0, "ev_vw": 0.0}
+    assert abs(f["house_kw"] - (c.flow["solar_kw"] + c.flow["grid_kw"] - 10.0)) < 0.02 and f["house_kw"] > 0
+    c.connected = {"ev": False, "ev_vw": True}                       # den anden bil i laderen
+    assert c.flow["ev_kw"] == {"ev": 0.0, "ev_vw": 10.0}
+
+
 def test_growatt_hold_blocks_discharge_without_grid_charge():
     from datetime import datetime, timedelta
     tz = ZoneInfo("Europe/Copenhagen")
