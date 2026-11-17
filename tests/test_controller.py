@@ -1619,6 +1619,36 @@ def test_optimizer_switch_sets_plan_and_action():
     assert c._optimize_battery(now) is False
 
 
+def test_optimizer_charge_runs_split_by_hold_share_target():
+    """Natten lades i to omgange med en lidt dyrere time imellem (gem): lademålet og den planlagte opladning
+    er niveauet efter den sidste omgang – ikke "op til 50 %" efter den første."""
+    import datetime as _dt
+    st = {"sensor.soc": State("6")}
+    c, _ = make({"battery_mode_entity": "select.mode", "battery_soc_sensor": "sensor.soc"}, st)
+    now = _dt.datetime(2026, 11, 12, 8, 20, tzinfo=c.tz)
+    _karsten_day(c, now)
+    c.flags[ctl_mod.F_BATTERY_OPTIMIZER] = True
+    real = ctl_mod.optimize
+
+    def fake(slots, e0, **kw):
+        n = len(slots)
+        acts = ["use"] * 4 + ["charge"] * 3 + ["hold"] * 4 + ["charge"] * 4 + ["use"] * (n - 15)
+        lv, e = [e0], e0
+        for a in acts:
+            e = e + 1.0 if a == "charge" else e
+            lv.append(e)
+        return sys.modules["smarthus.optimizer"].OptResult(acts, lv, 0.0, [1.0 if a == "charge" else 0.0 for a in acts])
+    ctl_mod.optimize = fake
+    try:
+        assert c._optimize_battery(now) is True
+    finally:
+        ctl_mod.optimize = real
+    assert len(c._opt_targets) == 1
+    (a, b), target = next(iter(c._opt_targets.items()))
+    assert round(target - c._opt_levels[a], 3) == 7.0                 # begge omgange med
+    assert c.grid_charge["target_kwh"] == round(target, 2)
+
+
 def _night_and_day(c, now, night_price, dear_price):
     import datetime as _dt
     d0 = now.replace(hour=0, minute=0, second=0, microsecond=0)

@@ -1477,15 +1477,24 @@ class SmartHusController:
         p.battery_hold = hold
         p.battery_discharge = [s for s in p.battery_discharge if s not in charge and s not in hold]
         self.day_cycle = None
-        # Lademål pr. ladeblok: batteriets niveau, når blokken slutter
+        # Lademål pr. ladeblok: batteriets niveau, når blokken slutter. Ladeperioder, der kun er adskilt af "gem"
+        # (fx en lidt dyrere time midt i natten), er samme opladning – målet er niveauet efter den sidste
         targets, i = {}, 0
         while i < len(run):
             if res.actions[i] != "charge":
                 i += 1
                 continue
             j = i
-            while j + 1 < len(run) and res.actions[j + 1] == "charge":
-                j += 1
+            while True:
+                while j + 1 < len(run) and res.actions[j + 1] == "charge":
+                    j += 1
+                k = j + 1
+                while k < len(run) and res.actions[k] == "hold":
+                    k += 1
+                if k < len(run) and k > j + 1 and res.actions[k] == "charge":
+                    j = k
+                    continue
+                break
             targets[(run[i].start, run[j].end)] = res.levels[j + 1]
             i = j + 1
         self._opt_targets = targets
