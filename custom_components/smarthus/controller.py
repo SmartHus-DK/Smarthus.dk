@@ -358,6 +358,7 @@ class SmartHusController:
             self._unsub_sl = async_track_state_change_event(
                 self.hass, [*self.coordinator.sl_entities, self.coordinator.sl_spot], self._on_stromligning
             )
+            self.coordinator.async_retry_external()   # Strømligning kan være klar, før vi begynder at lytte
         if self.has(CONF_HOUSE_ENERGY):
             # Lær forbrugsmønsteret hver nat og kort efter opstart (når historikken er klar)
             self._unsub_learn = async_track_time_change(self.hass, self.async_learn, hour=0, minute=20, second=30)
@@ -1805,6 +1806,9 @@ class SmartHusController:
         async_dispatcher_send(self.hass, SIGNAL_TICK.format(entry_id=self.entry.entry_id))
 
     async def _async_tick(self, now: datetime) -> None:
+        # Efter en genstart: skift til Strømlignings priser, så snart de er klar (ikke først ved næste prisskift)
+        if (retry := getattr(self.coordinator, "async_retry_external", None)) is not None:
+            retry()
         if time.monotonic() - self._forecast_fetched > 900 or not self._forecast_fetched:
             self._forecast_fetched = time.monotonic()
             await self._async_refresh_forecast()

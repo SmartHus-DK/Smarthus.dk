@@ -66,6 +66,7 @@ class SmartHusPriceCoordinator(DataUpdateCoordinator[list[Slot]]):
                             config.get(CONF_SL_TOMORROW) or DEFAULT_SL_TOMORROW]
         self.sl_spot = config.get(CONF_SL_SPOT) or DEFAULT_SL_SPOT
         self.external_hits = 0
+        self._external_warned = False
         self._raw: list[Slot] = []
         company = config.get(CONF_GRID_COMPANY) or GRID_MANUAL
         self.grid_company = tf.GRID_COMPANIES.get(company)          # (navn, GLN, kode) eller None
@@ -98,9 +99,25 @@ class SmartHusPriceCoordinator(DataUpdateCoordinator[list[Slot]]):
             spot_vat = has_vat(self.config.get(CONF_SL_SPOT_VAT), self.sl_spot)
             out, _ = apply_external_spot(out, spot, spot_vat, fee)
         if not self.external_hits:
-            _LOGGER.warning("Ingen priser fra Strømligning (%s) – bruger SmartHus' egen beregning",
-                            ", ".join(self.sl_entities))
+            if not self._external_warned:
+                _LOGGER.warning("Ingen priser fra Strømligning (%s) – bruger SmartHus' egen beregning, til de kommer",
+                                ", ".join(self.sl_entities))
+            self._external_warned = True
+        elif self._external_warned:
+            _LOGGER.info("Priserne fra Strømligning er kommet – bruger dem igen")
+            self._external_warned = False
         return out
+
+    def async_retry_external(self) -> bool:
+        """Strømligning var ikke klar (fx lige efter en genstart): prøv igen, så snart den har priser –
+        uden at vente på næste prisopdatering eller på, at prisen skifter. True = prøvet igen."""
+        if not self.uses_stromligning or self.external_hits or not self._raw:
+            return False
+        st = self.hass.states.get(self.sl_entities[0])
+        if st is None or not parse_price_list(st.attributes.get("prices")):
+            return False
+        self.async_refresh_external()
+        return True
 
     def async_refresh_external(self) -> None:
         """Strømligning har opdateret – genberegn uden at hente spotpriser igen."""

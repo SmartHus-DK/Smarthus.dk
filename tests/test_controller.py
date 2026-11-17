@@ -1701,3 +1701,26 @@ def test_charge_economics_and_battery_why():
     assert _dt.datetime.fromisoformat(w["hold_for"]["from"]).astimezone(c.tz).hour == 17
     assert w["usage"] == {"actual_kwh": 10.0, "expected_kwh": 5.0, "delta_kwh": 5.0}
     assert w["solar"]["ratio"] == 0.4 and w["charge"]["code"] in ("ok", "price")
+
+
+def test_stromligning_retry_after_restart():
+    """Strømligning var ikke klar ved opstart: SmartHus skifter til dens priser, så snart de findes –
+    ikke først når prisen skifter eller ved næste prisopdatering."""
+    co_mod = sys.modules["smarthus.coordinator"]
+    co = object.__new__(co_mod.SmartHusPriceCoordinator)
+    states = {}
+    co.hass = types.SimpleNamespace(states=types.SimpleNamespace(get=lambda e: states.get(e)))
+    co.source = co_mod.SOURCE_STROMLIGNING
+    co.sl_entities = ["sensor.sl", "binary_sensor.sl_tomorrow"]
+    co.external_hits = 0
+    co._raw = [object()]
+    calls = []
+    co.async_refresh_external = lambda: calls.append(1)
+    assert co.async_retry_external() is False and not calls        # ingen Strømligning endnu
+    states["sensor.sl"] = types.SimpleNamespace(state="unknown", attributes={})
+    assert co.async_retry_external() is False and not calls        # findes, men uden priser
+    states["sensor.sl"] = types.SimpleNamespace(state="2.4", attributes={"prices": [
+        {"start": "2026-11-17T16:00:00+01:00", "price": 2.4}]})
+    assert co.async_retry_external() is True and calls == [1]      # klar: skift med det samme
+    co.external_hits = 96
+    assert co.async_retry_external() is False and calls == [1]     # bruger allerede Strømligning
