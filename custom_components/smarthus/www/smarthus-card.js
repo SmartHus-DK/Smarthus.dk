@@ -292,7 +292,7 @@ const HELP = {
     { k: ["battery_max_charge_kw"], t: "Maks. ladeeffekt fra nettet",
       d: "Hvor hurtigt inverteren kan lade batteriet fra nettet, fx 3 kW. SmartHus regner time for time ud, hvad huset bruger, og hvad solen ventes at give i morgen, og lader kun det, der mangler – ladetiden er det, der mangler, delt med ladeeffekten. 0 = ikke sat, så bruges 'Timer at lade'." },
     { k: ["battery_grid_buffer"], t: "Ekstra buffer ved netopladning",
-      d: "Så mange kWh ekstra lades fra nettet oven i det, SmartHus selv regner ud – til morgener med højere forbrug end normalt (fx når varmepumpen varmer vand). Lades kun op til maks. niveau. Standard 1 kWh, 0 = ingen buffer." },
+      d: "Når SmartHus alligevel lader fra nettet, lades så mange kWh ekstra oven i det, den selv regner ud – uanset prisforskellen, i de billigste kvarterer inden opladningen slutter. Til morgener med højere forbrug end normalt (fx når varmepumpen varmer vand). Lades kun op til maks. niveau. Standard 1 kWh, 0 = ingen buffer." },
     { k: ["battery_charge_hours"], t: "Timer at lade",
       d: "Højst så mange af døgnets billigste timer må batteriet lade fra nettet. SmartHus vælger selv timerne ud fra elprisen, når morgendagens priser kommer ved 13-tiden. Nattens opladning (kl. 18–8) lægges samlet i nattens billigste timer, også hen over midnat. Er ladeeffekten sat, bruges kun de timer, der skal til." },
     HELP_FULL_CHARGE,

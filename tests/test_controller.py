@@ -1629,6 +1629,7 @@ def test_optimizer_charge_runs_split_by_hold_share_target():
     now = _dt.datetime(2026, 11, 12, 8, 20, tzinfo=c.tz)
     _karsten_day(c, now)
     c.flags[ctl_mod.F_BATTERY_OPTIMIZER] = True
+    c.settings[sys.modules["smarthus.const"].S_BATTERY_GRID_BUFFER] = 0.0
     real = ctl_mod.optimize
 
     def fake(slots, e0, **kw):
@@ -1646,7 +1647,7 @@ def test_optimizer_charge_runs_split_by_hold_share_target():
         ctl_mod.optimize = real
     assert len(c._opt_targets) == 1
     (a, b), target = next(iter(c._opt_targets.items()))
-    assert round(target - c._opt_levels[a], 3) == 7.0                 # begge omgange med
+    assert round(target - c._opt_levels[a], 3) == 7.0, (target, c._opt_levels[a], c.grid_buffer_kwh)  # begge omgange med
     assert c.grid_charge["target_kwh"] == round(target, 2)
 
 

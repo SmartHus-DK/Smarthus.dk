@@ -14,7 +14,7 @@ Den billigste plan samlet set vælges (dynamisk programmering over batteriets ni
 * ladetab (ind og ud – ca. 10 % samlet)
 * min./maks. niveau og ladeeffekt
 * "min. prisforskel": hver kWh fra nettet skal mindst tjene så meget – ellers købes der hellere direkte
-* "ekstra buffer": ekstra forventet forbrug næste morgen, så nattens opladning tager lidt mere med
+* "ekstra buffer" (add_buffer): bufferens kWh lades altid oven i næste opladning fra nettet
 * en lille pris for at skifte, så batteriet ikke slår til og fra for småbeløb
 * strøm, der er tilbage til sidst, er højst værd, hvad den koster at lade op igen (den skal ikke hamstres)
 """
@@ -185,3 +185,74 @@ def morning_buffer(slots: list[OptSlot], tz: tzinfo, buffer_kwh: float, first: i
     add = buffer_kwh / len(morning)
     for s in morning:
         s.load += add
+
+
+def add_buffer(slots: list[OptSlot], res: OptResult, e0: float, *, floor: float, full: float, charge_kw: float,
+               buffer_kwh: float, keep: tuple[datetime, float] | None = None,
+               window_h: float = 8.0) -> tuple[OptResult, tuple[datetime, float] | None]:
+    """"Ekstra buffer ved netopladning": lad bufferens kWh ekstra oven i den næste planlagte opladning fra
+    nettet – uanset prisforskellen – i de billigste ekstra kvarterer op til opladningens slutning (højst fuldt).
+
+    `keep` er sidste beregnings løfte (slutning, niveau), så bufferen også bliver ladet, når beregningen undervejs
+    selv mener, den er færdig. Returnerer den nye plan og løftet (eller None)."""
+    if buffer_kwh <= 0 or not slots or charge_kw <= 0:
+        return res, None
+    now = slots[0].start
+    acts = list(res.actions)
+    lv = res.levels
+    span = full - floor
+    j = desired = end = None
+    i = 0
+    while i < len(acts):                                   # første opladning (perioder adskilt kun af "gem" er én)
+        if acts[i] != "charge":
+            i += 1
+            continue
+        j = i
+        while True:
+            while j + 1 < len(acts) and acts[j + 1] == "charge":
+                j += 1
+            k = j + 1
+            while k < len(acts) and acts[k] == "hold":
+                k += 1
+            if k < len(acts) and k > j + 1 and acts[k] == "charge":
+                j = k
+                continue
+            break
+        end = slots[j].end
+        desired = min(lv[j + 1] + buffer_kwh, full)
+        break
+    if keep is not None and keep[0] > now:
+        if end is None or keep[0] >= end:
+            jj = max((n for n, s in enumerate(slots) if s.end <= keep[0]), default=None)
+            if jj is not None:
+                j, end = jj, slots[jj].end
+                desired = max(desired or 0.0, min(keep[1], full))
+        else:
+            desired = max(desired, min(keep[1], full))
+    if j is None or desired is None:
+        return res, None
+
+    def simulate(actions):
+        e, out, g = e0, [e0], []
+        for s, a in zip(slots, actions):
+            max_c, max_d = _limits(s, charge_kw, span)
+            e, _, _, gi = _step(a, e, s, floor, full, max_c, max_d)
+            out.append(e)
+            g.append(gi)
+        return out, g
+
+    levels, grid = simulate(acts)
+    lo = next((n for n, s in enumerate(slots) if (end - s.start).total_seconds() <= window_h * 3600), 0)
+    first = next((n for n in range(j + 1) if acts[n] == "charge"), j)
+    last_use = max((n for n in range(lo, first) if acts[n] == "use"), default=lo - 1)
+    lo = max(lo, last_use + 1)                       # ikke før batteriet bruges igen – så går det ekstra tabt
+    cand = sorted((n for n in range(lo, j + 1) if acts[n] != "charge" and slots[n].can_charge),
+                  key=lambda n: (slots[n].price, n))
+    for n in cand:
+        if levels[j + 1] >= desired - 0.02:
+            break
+        acts[n] = "charge"
+        levels, grid = simulate(acts)
+    if acts == res.actions:
+        return res, (end, desired)
+    return OptResult(acts, levels, res.cost, grid), (end, desired)

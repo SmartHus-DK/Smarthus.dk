@@ -101,3 +101,51 @@ def test_plan_stable_across_midnight_and_new_prices():
     # Hen over midnat: ingen pludselig opladning i nattens flade priser
     assert "charge" not in b.actions[12 * 4:18 * 4]
     assert len(b.actions) == 36 * 4 and len(b.levels) == 36 * 4 + 1
+
+
+def _night(prices, load=0.1):
+    """Kvarterer fra kl. 20 med timepriser `prices` (én pr. time)."""
+    out = []
+    for h, p in enumerate(prices):
+        for i in range(4):
+            t = D0 + timedelta(hours=20 + h) + i * Q
+            out.append(opt.OptSlot(t, t + Q, p, p * 0.6, load, 0.0))
+    return out
+
+
+def test_buffer_adds_on_top_of_planned_charge():
+    """Planen lader 45 min kl. 04:15–05:00; med 3 kWh buffer lades der 3 kWh mere – i de billigste kvarterer."""
+    prices = [2.0, 1.9, 1.8, 1.5, 1.4, 1.35, 1.3, 1.25, 1.2, 1.4, 2.2, 2.5]     # kl. 20 … 07
+    sl = _night(prices, load=0.0)
+    acts = ["hold"] * len(sl)
+    for n in range(33, 36):                                   # kl. 04:15–05:00
+        acts[n] = "charge"
+    e0, kw = 1.0, 3.8
+    lv, e = [e0], e0
+    for a in acts:
+        e = min(e + kw / 4, 15.0) if a == "charge" else e
+        lv.append(e)
+    res = opt.OptResult(acts, lv, 0.0, [kw / 4 / opt.ETA if a == "charge" else 0 for a in acts])
+    new, keep = opt.add_buffer(sl, res, e0, floor=0.5, full=15.0, charge_kw=kw, buffer_kwh=3.0)
+    planned_end = lv[36]
+    assert new.levels[36] >= planned_end + 3.0 - 0.02            # mindst 3 kWh mere ved 05:00
+    assert new.levels[36] <= planned_end + 3.0 + kw / 4 + 0.01   # højst ét kvarter for meget
+    extra = [n for n, a in enumerate(new.actions) if a == "charge" and acts[n] != "charge"]
+    assert extra and all(sl[n].price <= 1.3 for n in extra)      # de billigste kvarterer i natten
+    assert keep[0] == sl[35].end and abs(keep[1] - min(planned_end + 3.0, 15.0)) < 1e-9
+
+
+def test_buffer_kept_when_plan_thinks_it_is_done():
+    """Undervejs: batteriet har nået planens eget mål, og beregningen vil ikke lade mere – løftet holdes."""
+    sl = _night([1.3, 1.25, 1.2, 1.4])                          # kl. 20–23 (for enkelhedens skyld)
+    res = opt.OptResult(["hold"] * len(sl), [5.0] * (len(sl) + 1), 0.0, [0.0] * len(sl))
+    keep = (sl[11].end, 8.0)                                     # 3 kWh mere end de 5 kWh, inden kl. 23
+    new, keep2 = opt.add_buffer(sl, res, 5.0, floor=0.5, full=15.0, charge_kw=3.8, buffer_kwh=3.0, keep=keep)
+    assert new.levels[12] >= 8.0 - 0.02 and keep2 == keep
+
+
+def test_buffer_does_nothing_without_grid_charge():
+    sl = _night([1.3, 1.25])
+    res = opt.OptResult(["use"] * len(sl), [5.0] * (len(sl) + 1), 0.0, [0.0] * len(sl))
+    new, keep = opt.add_buffer(sl, res, 5.0, floor=0.5, full=15.0, charge_kw=3.8, buffer_kwh=3.0)
+    assert new is res and keep is None

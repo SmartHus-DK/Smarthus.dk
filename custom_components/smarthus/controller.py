@@ -146,7 +146,7 @@ from .coordinator import SmartHusPriceCoordinator
 from . import growatt as gw
 from .planner import CHARGE_EFFICIENCY, full_charge_hours, CarInput, Plan, build_plan, car_ready, car_settings, heating_outdoor_ok
 from .planner import BATTERY_MIN_BLOCK_H, BATTERY_MIN_GAP_H, BATTERY_ROUND_TRIP, cheapest_blocks, in_window
-from .optimizer import OptSlot, morning_buffer, optimize
+from .optimizer import OptSlot, add_buffer, optimize
 SOLAR_CHARGE_SURPLUS_KWH = 0.3   # forventet soloverskud i timen, hvor der ikke lades fra nettet
 DAY_CYCLE_FROM_H, DAY_CYCLE_PEAK_H = 8, 15   # ladning midt på dagen (fra kl. 8) til aftenens top (fra kl. 15)
 SELL_RESTART_KWH = 0.5   # kWh over reserven, før salg starter igen efter et stop
@@ -1473,7 +1473,6 @@ class SmartHusController:
             load = self.profile.hours_for(lt)[lt.hour] * hrs
             sun = solar.get(hour, 0.0) * hrs
             opt_slots.append(OptSlot(max(s.start, now), s.end, s.price, s.sale, load, sun, s.start in allowed))
-        morning_buffer(opt_slots, tz, self.grid_buffer_kwh)
         mn, mx = float(self.settings[S_BATTERY_MIN_SOC]), float(self.settings[S_BATTERY_MAX_SOC])
         floor, full = cap * mn / 100, cap * mx / 100
         kw = float(self.settings.get(S_BATTERY_MAX_CHARGE_KW, 0) or 0)
@@ -1482,6 +1481,11 @@ class SmartHusController:
             res = optimize(opt_slots, cap * soc / 100, floor=floor, full=full, charge_kw=kw,
                            min_spread=float(self.settings.get(S_BATTERY_MIN_SPREAD, 0.0)),
                            can_hold=self.has_hold, prev_action=prev)
+            if res is not None:
+                # "Ekstra buffer ved netopladning": altid bufferens kWh oven i den næste opladning fra nettet
+                res, self._buffer_keep = add_buffer(opt_slots, res, cap * soc / 100, floor=floor, full=full,
+                                                    charge_kw=kw, buffer_kwh=self.grid_buffer_kwh,
+                                                    keep=self.__dict__.get("_buffer_keep"))
         except Exception:  # noqa: BLE001 – må aldrig stoppe styringen; de gamle regler tager over
             _LOGGER.exception("SmartHus: samlet batteriberegning fejlede – bruger de hidtidige regler")
             return False
