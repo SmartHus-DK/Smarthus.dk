@@ -91,6 +91,20 @@ const wxKind = (code, day = true) => code == null ? null : code === 0 || code ==
   : (code >= 71 && code <= 77) || code === 85 || code === 86 ? "snow" : code >= 95 ? "thunder" : "cloudy";
 const WX_TXT = { clear: "Sol", night: "Klart", partly: "Delvis sol", cloudy: "Overskyet", fog: "Tåge", drizzle: "Støvregn", rain: "Regn", snow: "Sne", thunder: "Torden" };
 
+/** Sne eller rim på solcellerne (fra integrationens solprognose) som én sætning – eller "". */
+function coverText(pc) {
+  if (!pc || !pc.state) return "";
+  const clock = (t) => new Date(t).toLocaleTimeString("da-DK", { hour: "2-digit", minute: "2-digit" }).replace(".", ":");
+  const day = (t) => { const d = new Date(t), n = new Date(); const d0 = new Date(n.getFullYear(), n.getMonth(), n.getDate());
+    const diff = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - d0) / 864e5);
+    return diff <= 0 ? "i dag" : diff === 1 ? "i morgen" : d.toLocaleDateString("da-DK", { weekday: "long" }); };
+  if (pc.state === "snow")
+    return pc.now ? "Der ligger formentlig sne på solcellerne – der regnes næsten ikke med sol, før de producerer igen."
+      : `Der ventes sne på solcellerne ${day(pc.from)} fra kl. ${clock(pc.from)} – der regnes næsten ikke med sol derefter, før de producerer igen.`;
+  const pct = Math.round((pc.frost_ratio ?? 0.6) * 100);
+  return `Frost: der kan sidde rim på solcellerne ${day(pc.from)} kl. ${clock(pc.from)}–${clock(pc.until)}, så der regnes kun med ca. ${pct} % af solprognosen i de timer${pc.frost_days ? ` (lært af ${pc.frost_days} frostmorgen${pc.frost_days === 1 ? "" : "er"})` : ""}.`;
+}
+
 /** Timepriser (gennemsnit af kvartererne) fra elpris-sensoren: [{ start: Date, price }]. */
 function hourPrices(attr) {
   const map = new Map();
@@ -158,6 +172,8 @@ function batteryWhy(a, ctx = {}) {
   const s = w.solar;
   if (s && s.ratio <= 0.8)
     items.push(`Solen har kun givet ca. ${Math.round(s.ratio * 100)} % af prognosen i dag (${k1(s.measured_kwh)} af ${k1(s.forecast_kwh)} kWh).`);
+  const ct = coverText(ctx.cover);
+  if (ct) items.push(ct);
   const nm = nightMorning(c, a.planned_charge, ctx.prices, ctx.done);
   // Dækker solen huset lige nu? Så købes der ikke fra nettet – teksten skal ikke sige det
   const fl = ctx.flow || {};
@@ -533,6 +549,7 @@ class SmartHusCard extends HTMLElement {
     const why = batteryWhy(a, {
       prices: hourPrices(this._st("sensor", "current_price")?.attributes),
       solarRemaining: f && f.available ? f.remaining_kwh : null,
+      cover: f?.panel_cover,
       done: this._st("binary_sensor", "battery_charge_now")?.attributes?.slots,
       flow: this._st("sensor", "energy_flow")?.attributes,
     });
@@ -869,7 +886,8 @@ class SmartHusCard extends HTMLElement {
           ${this._kpi("I morgen", kwh(a.tomorrow_kwh), null, "solar_forecast")}
         </div>
         ${chart}
-        ${a.adjusted ? `<div class="cmp-sub" style="margin-left:0">Justeret efter anlæggets faktiske produktion de seneste ${a.learned_days} dage.</div>` : ""}
+        ${a.panel_cover ? `<div class="cmp-sub" style="margin-left:0">${esc(coverText(a.panel_cover))}</div>` : ""}
+        ${a.adjusted && a.learned_factor != null ? `<div class="cmp-sub" style="margin-left:0">Justeret efter anlæggets faktiske produktion de seneste ${a.learned_days} dage.</div>` : ""}
       </div>`;
   }
 

@@ -163,6 +163,7 @@ from .pricing import has_vat, vat_factor
 from .plug import pick_connected, plug_state
 from .solar import EvSolarState, regulate_ev
 from .suncal import SolarCalibration, hour_key
+from .cover import PanelCover
 from .weather import SunTracker, forecast_sensor_ids, merge_wh, pick_weather_entity, solar_by_hour, summarize_forecast
 
 _LOGGER = logging.getLogger(__name__)
@@ -289,6 +290,7 @@ class SmartHusController:
         self._forecast_domain: str | None = None
         self._forecast_fetched = 0.0
         self.solar_cal = SolarCalibration()   # den indlærte forskel mellem solprognosen og anlægget
+        self.cover = PanelCover(self.solar_cal.data.setdefault("cover", {}))   # sne eller rim på panelerne
         self._solar_cal_store: Store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}.solar_calibration")
         self._fc_ids: dict[str, str] = {}
         # Opvarmning med solcelleoverskud
@@ -343,6 +345,9 @@ class SmartHusController:
             _LOGGER.warning("SmartHus: kunne ikke hente energioverblikket: %s", err)
         try:
             self.solar_cal = SolarCalibration(await self._solar_cal_store.async_load())
+            wx = self.cover.wx
+            self.cover = PanelCover(self.solar_cal.data.setdefault("cover", {}))
+            self.cover.set_weather(wx)
         except Exception as err:  # noqa: BLE001
             _LOGGER.warning("SmartHus: kunne ikke hente solprognosens læring: %s", err)
         self._savings_loaded = True
@@ -365,6 +370,10 @@ class SmartHusController:
             self._unsub_learn_first = async_call_later(self.hass, 60, self.async_learn)
             # Vejrudsigten (udetemperatur) hentes igen hver 3. time, så forbruget følger med, når det bliver koldere
             self._unsub_temps = async_track_time_change(self.hass, self._async_temps_tick, minute=7, second=40)
+        if (self.has(CONF_SOLAR_ENERGY) or self.has(CONF_SOLAR_POWER)) and not self.has(CONF_HOUSE_ENERGY):
+            # Vejret (sne og frost på panelerne) hentes også uden husets forbrug
+            self._unsub_temps = async_track_time_change(self.hass, self._async_temps_tick, minute=7, second=40)
+            self._unsub_temps_first = async_call_later(self.hass, 80, self._async_temps_tick)
         if self.has(CONF_SOLAR_ENERGY) or self.has(CONF_SOLAR_POWER):
             # Sammenlign solprognosen med den faktiske produktion hver nat og kort efter opstart
             self._unsub_sun_learn = async_track_time_change(self.hass, self.async_learn_solar, hour=0, minute=25, second=30)
@@ -766,7 +775,7 @@ class SmartHusController:
         lat, lon = getattr(self.hass.config, "latitude", None), getattr(self.hass.config, "longitude", None)
         if lat is None or lon is None:
             return {}
-        params = {"latitude": f"{lat:.2f}", "longitude": f"{lon:.2f}", "hourly": "temperature_2m,weather_code,is_day",
+        params = {"latitude": f"{lat:.2f}", "longitude": f"{lon:.2f}", "hourly": "temperature_2m,weather_code,is_day,snowfall,snow_depth",
                   "past_days": str(TEMP_LEARN_DAYS + 1), "forecast_days": "3", "timeformat": "unixtime", "timezone": "GMT"}
         async with asyncio.timeout(30):
             async with self.coordinator._session.get(OPEN_METEO_URL, params=params) as resp:  # noqa: SLF001
@@ -778,6 +787,12 @@ class SmartHusController:
               for t, c, d in zip(times, h.get("weather_code") or [], h.get("is_day") or [1] * len(times)) if c is not None}
         if wx:
             self._wx = wx
+        temps = h.get("temperature_2m") or []
+        snow = {datetime.fromtimestamp(t, self.tz): (tc, float(f or 0.0), float(d or 0.0))
+                for t, tc, f, d in zip(times, temps or [None] * len(times), h.get("snowfall") or [0.0] * len(times),
+                                       h.get("snow_depth") or [0.0] * len(times))}
+        if snow and getattr(self, "cover", None) is not None:
+            self.cover.set_weather(snow)
         return {datetime.fromtimestamp(t, self.tz): float(v)
                 for t, v in zip(times, h.get("temperature_2m") or []) if v is not None}
 
@@ -909,6 +924,7 @@ class SmartHusController:
                 past[key] = past.get(key, 0.0) + kw
         self.solar_cal.backfill(past)
         self.solar_cal.learn(series(meter, "change") if meter else series(power, "mean"), now)
+        self.cover.learn(now)
         await self._solar_cal_store.async_save(self.solar_cal.data)
         self.recalculate()
 
@@ -1558,8 +1574,20 @@ class SmartHusController:
         now = dt_util.now().astimezone(self.tz)
         raw = solar_by_hour(self._forecast_wh, self.tz, self._forecast_key_is_end)
         hour = now.replace(minute=0, second=0, microsecond=0)
-        self.sun.day_kwh = sum(v * self.solar_cal.factor(h) for h, v in raw.items() if h.date() == now.date())
-        self.sun.update(now, self.solar_kw, raw.get(hour, 0.0) * self.solar_cal.factor(hour))
+        self.sun.day_kwh = sum(v * self.solar_factor(h) for h, v in raw.items() if h.date() == now.date())
+        self.sun.update(now, self.solar_kw, raw.get(hour, 0.0) * self.solar_factor(hour))
+        # Sne/rim: producerer panelerne (i forhold til prognosen uden sne/rim)? Og læring af rim
+        last = getattr(self, "_cover_seen", None)
+        seconds = (now - last).total_seconds() if last else 0.0
+        self._cover_seen = now
+        proof = self.cover.data.get("proof")
+        self.cover.observe(now, self.solar_kw, raw.get(hour, 0.0) * self.solar_cal.factor(hour), seconds)
+        if self.cover.data.get("proof") != proof or self.cover.data.get("frost_day"):
+            self._solar_cal_store.async_delay_save(lambda: self.solar_cal.data, 300)
+
+    def solar_factor(self, h: datetime) -> float:
+        """Den indlærte forskel til anlægget × sne/rim på panelerne for timen."""
+        return self.solar_cal.factor(h) * self.cover.factor(h.astimezone(self.tz))
 
     @property
     def solar_factor_today(self) -> float:
@@ -1578,7 +1606,7 @@ class SmartHusController:
             return None
         today = dt_util.now().astimezone(self.tz).date()
         f_today = self.solar_factor_today
-        return {h: kwh * self.solar_cal.factor(h) * (f_today if h.date() == today else self.solar_caution)
+        return {h: kwh * self.solar_factor(h) * (f_today if h.date() == today else self.solar_caution)
                 for h, kwh in solar_by_hour(self._forecast_wh, self.tz, self._forecast_key_is_end).items()}
 
     def _update_battery_why(self, now: datetime) -> None:
@@ -1649,7 +1677,7 @@ class SmartHusController:
         }
 
     async def async_stop(self) -> None:
-        for name in ("_unsub_learn", "_unsub_learn_first", "_unsub_temps", "_unsub_sun_learn", "_unsub_sun_learn_first", "_unsub_energy", "_unsub_energy_first"):
+        for name in ("_unsub_learn", "_unsub_learn_first", "_unsub_temps", "_unsub_temps_first", "_unsub_sun_learn", "_unsub_sun_learn_first", "_unsub_energy", "_unsub_energy_first"):
             unsub = getattr(self, name, None)
             if unsub:
                 unsub()
@@ -1820,6 +1848,9 @@ class SmartHusController:
         self._track_fault()
         self._track_sun()
         if getattr(self.plan, "solar_curtail", False):
+            self.solar_cal.mark_curtailed(dt_util.now().astimezone(self.tz))
+        elif self.cover.state(dt_util.now().astimezone(self.tz)):
+            # Sne eller rim: timen siger ikke noget om anlæggets evne og skal ikke læres
             self.solar_cal.mark_curtailed(dt_util.now().astimezone(self.tz))
         self.recalculate()
         await self.async_apply()
@@ -3133,9 +3164,13 @@ class SmartHusController:
     def solar_forecast(self) -> dict:
         """Solprognose for i dag, resten af dagen og i morgen + timekurve for i dag."""
         cal = self.solar_cal
-        learned = cal.active and bool(self._forecast_wh)
+        now_l = dt_util.now().astimezone(self.tz)
+        sun_hours = sorted(h for h, v in solar_by_hour(self._forecast_wh, self.tz, self._forecast_key_is_end).items()
+                           if v >= 0.05) if self._forecast_wh else []
+        covered = self.cover.summary([h for h in sun_hours if h.date() <= now_l.date() + timedelta(days=1)], now_l)
+        learned = (cal.active or covered is not None) and bool(self._forecast_wh)
         out = summarize_forecast(self._forecast_wh, dt_util.utcnow(), self.tz, self._forecast_key_is_end,
-                                 scale=cal.factor if learned else None) if self._forecast_wh else {}
+                                 scale=self.solar_factor if learned else None) if self._forecast_wh else {}
         ids = self._forecast_ids()
         # Sensorerne er det, brugeren kender – de vinder over vores egen sum.
         # Når prognosen er justeret efter anlægget, er det den justerede sum, der gælder.
@@ -3159,10 +3194,11 @@ class SmartHusController:
                     h["wx"], h["day"] = w
         power = self._power_kw(ids.get("power_now"))
         if power is not None:
-            out["power_now_kw"] = round(power * (cal.factor(dt_util.utcnow()) if learned else 1.0), 2)
+            out["power_now_kw"] = round(power * (self.solar_factor(dt_util.utcnow()) if learned else 1.0), 2)
         out["learned_days"] = cal.days
         out["learned_factor"] = cal.data.get("day_factor")
         out["adjusted"] = learned
+        out["panel_cover"] = covered
         out["source"] = self._forecast_domain
         out["available"] = any(out.get(k) is not None for k in ("today_kwh", "remaining_kwh", "tomorrow_kwh"))
         return out

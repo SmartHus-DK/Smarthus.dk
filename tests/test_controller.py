@@ -32,7 +32,7 @@ pkg = types.ModuleType("smarthus"); pkg.__path__ = [str(PKG)]; sys.modules["smar
 def load(n):
     spec = importlib.util.spec_from_file_location(f"smarthus.{n}", PKG / f"{n}.py")
     m = importlib.util.module_from_spec(spec); sys.modules[f"smarthus.{n}"] = m; spec.loader.exec_module(m); return m
-for n in ("const", "planner", "pricing", "savings", "profile", "solar", "plug", "flow", "weather", "suncal", "coordinator", "controller"):
+for n in ("const", "planner", "pricing", "savings", "profile", "solar", "plug", "flow", "weather", "suncal", "cover", "coordinator", "controller"):
     load(n)
 ctl_mod = sys.modules["smarthus.controller"]; planner = sys.modules["smarthus.planner"]
 
@@ -70,6 +70,7 @@ def make(config, states):
     c.plan = planner.Plan()
     c.sun = sys.modules["smarthus.weather"].SunTracker()
     c.solar_cal = sys.modules["smarthus.suncal"].SolarCalibration()
+    c.cover = sys.modules["smarthus.cover"].PanelCover()
     c._forecast_domain = None
     return c, hass
 
@@ -1724,3 +1725,22 @@ def test_stromligning_retry_after_restart():
     assert co.async_retry_external() is True and calls == [1]      # klar: skift med det samme
     co.external_hits = 96
     assert co.async_retry_external() is False and calls == [1]     # bruger allerede Strømligning
+
+
+def test_snow_on_panels_lowers_solar_plan():
+    """Sne på panelerne i morgen: solen regnes næsten ikke med i planen, og prognosen fortæller hvorfor."""
+    cover = sys.modules["smarthus.cover"]
+    c, _ = make({}, {})
+    now = _dt.datetime.now(c.tz)
+    tomorrow = (now + _dt.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    c._forecast_wh = {(tomorrow + _dt.timedelta(hours=h)).isoformat(): 2000.0 for h in range(10, 14)}
+    base = c._solar_hours()
+    h10 = tomorrow + _dt.timedelta(hours=10)
+    assert abs(base[h10] - 2.0 * c.solar_caution) < 1e-6
+    start = now.replace(minute=0, second=0, microsecond=0) - _dt.timedelta(hours=12)
+    wx = {start + _dt.timedelta(hours=i): (-2.0, 1.0 if i == 14 else 0.0, 0.05) for i in range(72)}
+    c.cover.set_weather(wx)
+    covered = c._solar_hours()
+    assert abs(covered[h10] - 2.0 * cover.SNOW_FACTOR * c.solar_caution) < 1e-6
+    f = c.solar_forecast
+    assert f["panel_cover"] and f["panel_cover"]["state"] == "snow" and f["adjusted"] is True
