@@ -103,3 +103,23 @@ def test_summary():
     hours = [at(h) for h in range(8, 16)]
     s = pc.summary(hours, at(6))
     assert s and s["state"] == "frost" and s["from"] == at(8).isoformat() and s["until"] == at(10).isoformat()
+
+
+def test_measured_temperature_extends_frost():
+    """Open-Meteo siger, det bliver varmere kl. 9, men huset måler −2,4 °C nu: rimen regnes med længere."""
+    pc = cover.PanelCover()
+    temps = [-3.0] * 20 + [-0.5, 1.0, 1.5, 2.0, 2.5, 3.0] + [4.0] * 10   # kl. 08: −0,5 · kl. 09: 1,0 …
+    pc.set_weather(weather(temps))
+    now = at(8, 3)
+    assert pc.state(at(9)) is None                          # uden måling: kun kl. 8
+    pc.set_measured(now, -2.4)
+    assert pc.state(at(9)) == "frost" and pc.state(at(10)) == "frost"
+    assert pc.state(at(12)) is None                         # rettelsen aftager over 6 timer
+    assert pc.summary([at(h) for h in range(8, 16)], now)["temp_offset"] == -1.9
+
+
+def test_no_measurement_uses_open_meteo():
+    pc = cover.PanelCover()
+    pc.set_weather(weather([-3.0] * 20 + [-0.5, 1.0] + [4.0] * 10))
+    pc.set_measured(at(8), None)                            # ingen føler og ingen vejr-entitet
+    assert pc.state(at(8)) == "frost" and pc.state(at(9)) is None

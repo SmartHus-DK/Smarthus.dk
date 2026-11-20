@@ -1850,6 +1850,8 @@ class SmartHusController:
         self._log_ev_charging()
         self._track_soc()
         self._track_fault()
+        # Rim: Open-Meteos temperatur rettes med den målte udetemperatur (egen føler, ellers vejr-entiteten)
+        self.cover.set_measured(dt_util.now().astimezone(self.tz), self.outdoor_temp)
         self._track_sun()
         if getattr(self.plan, "solar_curtail", False):
             self.solar_cal.mark_curtailed(dt_util.now().astimezone(self.tz))

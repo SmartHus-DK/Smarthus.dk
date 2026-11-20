@@ -8,6 +8,9 @@ Vejrdata (Open-Meteo) time for time: temperatur, snefald og snedybde.
 
 * Sne: ligger der sne (snedybde ≥ 1 cm), eller er der faldet sne inden for 12 timer, regnes der næsten ikke med
   sol – til panelerne beviseligt producerer igen (mindst 40 % af det forventede i 10 minutter efter sidste snefald).
+* Temperaturen: Open-Meteos temperatur gælder et større område og kan ramme flere grader ved siden af en kold,
+  klar morgen. Husets egen udeføler (ellers vejr-entiteten i Home Assistant) retter den: forskellen nu lægges på
+  de nærmeste timer og aftager over 6 timer.
 * Rim: en time med frost (højst 0,5 °C) efter en nat med frost regnes med den andel af solen, anlægget plejer at
   give i sådanne timer. Den andel læres: hver frostmorgen sammenlignes målingen med prognosen (start 60 %).
   Producerer panelerne fuldt, mens det er frost, er de rene resten af dagen.
@@ -29,6 +32,8 @@ FROST_MIN_KWH = 0.5        # så meget forventet sol i frosttimer, før en morge
 PROOF_SHARE = 0.4          # panelerne producerer: mindst 40 % af det forventede …
 PROOF_MIN_KW = 0.3         # … når der forventes mindst 0,3 kW …
 PROOF_SECONDS = 600        # … i 10 minutter
+OFFSET_HOURS = 6.0         # målt udetemperatur retter Open-Meteo – fuldt nu, aftagende til 0 efter 6 timer
+OFFSET_MAX_AGE = 3600      # en måling ældre end en time bruges ikke
 
 
 class PanelCover:
@@ -39,6 +44,37 @@ class PanelCover:
         self.data.setdefault("frost_ratio", FROST_START)
         self.wx: dict[datetime, tuple[float | None, float, float]] = {}   # time → (temp, snefald cm, snedybde m)
         self._ok_since: datetime | None = None
+        self._measured: tuple[datetime, float] | None = None
+
+    def set_measured(self, now: datetime, temp: float | None) -> None:
+        """Udetemperaturen målt nu (egen føler eller vejr-entitet) – retter Open-Meteos temperatur."""
+        if temp is not None:
+            self._measured = (now, float(temp))
+
+    def _offset(self, h: datetime) -> float:
+        m = self._measured
+        if m is None:
+            return 0.0
+        t0, temp = m
+        base = self.wx.get(t0.replace(minute=0, second=0, microsecond=0))
+        if base is None or base[0] is None or abs((h - t0).total_seconds()) > OFFSET_HOURS * 3600:
+            return 0.0
+        hours = abs((h.replace(minute=0, second=0, microsecond=0)
+                     - t0.replace(minute=0, second=0, microsecond=0)).total_seconds()) / 3600
+        return (temp - base[0]) * max(1.0 - hours / OFFSET_HOURS, 0.0)
+
+    def temp(self, h: datetime) -> float | None:
+        """Temperaturen for timen: Open-Meteo, rettet med den målte temperatur."""
+        cur = self._at(h)
+        if cur is None or cur[0] is None:
+            return None
+        return cur[0] + self._offset(h)
+
+    def offset_now(self, now: datetime) -> float | None:
+        m = self._measured
+        if m is None or (now - m[0]).total_seconds() > OFFSET_MAX_AGE:
+            return None
+        return round(self._offset(m[0]), 1)
 
     # --- vejr -------------------------------------------------------------------------------------------
     def set_weather(self, wx: dict[datetime, tuple[float | None, float, float]]) -> None:
@@ -67,7 +103,8 @@ class PanelCover:
         cur = self._at(h)
         if cur is None:
             return None
-        temp, _, depth = cur
+        _, _, depth = cur
+        temp = self.temp(h)
         proof = self._proof()
         hh = h.replace(minute=0, second=0, microsecond=0)
         window = [self.wx.get(hh - timedelta(hours=i)) for i in range(SNOW_WINDOW_H + 1)]
@@ -77,7 +114,7 @@ class PanelCover:
             if proof is None or (last is not None and proof < last + timedelta(hours=1)):
                 return "snow"
         if temp is not None and temp <= FROST_T:
-            night = [w[0] for w in window if w and w[0] is not None]
+            night = [t for t in (self.temp(hh - timedelta(hours=i)) for i in range(SNOW_WINDOW_H + 1)) if t is not None]
             if night and min(night) <= NIGHT_FROST_T:
                 if proof is not None and proof.date() == h.date() and proof <= h:
                     return None                       # rimen er væk i dag
@@ -139,4 +176,5 @@ class PanelCover:
         rel = [h for h, s in hit if s == kind]
         return {"state": kind, "from": min(rel).isoformat(), "until": (max(rel) + timedelta(hours=1)).isoformat(),
                 "now": self.state(now) == kind, "frost_ratio": self.data.get("frost_ratio"),
+                "temp_offset": self.offset_now(now),
                 "frost_days": int(self.data.get("frost_days") or 0)}
