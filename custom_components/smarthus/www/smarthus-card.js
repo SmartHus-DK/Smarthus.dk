@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.68.2";
+const SMARTHUS_CARD_VERSION = "1.68.3";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -176,6 +176,37 @@ function batteryWhy(a, ctx = {}) {
   if (ct) items.push(ct);
   const nm = nightMorning(c, a.planned_charge, ctx.prices, ctx.done);
   // Dækker solen huset lige nu? Så købes der ikke fra nettet – teksten skal ikke sige det
+  if (w.empty) {
+    // Batteriet står på den nedre grænse: planlagt – eller mere forbrug/mindre sol end ventet? Og hvorfor lades der ikke?
+    const e = w.empty, why = [];
+    if (u && u.delta_kwh >= Math.max(1, 0.15 * u.expected_kwh))
+      why.push(`huset har brugt ca. ${k1(u.delta_kwh)} kWh mere end forventet i dag (${k1(u.actual_kwh)} mod ${k1(u.expected_kwh)} kWh)`);
+    if (s && s.ratio <= 0.8)
+      why.push(`solen kun har givet ca. ${Math.round(s.ratio * 100)} % af prognosen (${k1(s.measured_kwh)} af ${k1(s.forecast_kwh)} kWh)`);
+    const cause = why.length
+      ? `Batteriet nåede den nedre grænse på ${e.min_soc} % tidligere end planlagt, fordi ${why.join(", og ")}.`
+      : `Batteriet er brugt ned til den nedre grænse på ${e.min_soc} % som planlagt – strømmen er brugt i de dyreste timer, hvor den sparede mest.`;
+    const pc = a.planned_charge || w.charge_plan;
+    let next;
+    if (w.planned_charge && pc && pc.start) {
+      const s0 = new Date(pc.start), now = new Date();
+      const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+      const word = s0 <= now ? "nu" : s0 >= tomorrow ? (s0.getHours() < 6 && s0 < new Date(+tomorrow + 864e5) && now.getHours() >= 18 ? "i nat" : "i morgen") : s0.getHours() < 6 ? "i nat" : "i dag";
+      next = `Der lades fra nettet igen ${word === "nu" ? "nu" : `${word} kl. ${hh(pc.start)}–${hh(pc.end)}`} (ca. ${k1(pc.kwh)} kWh${pc.avg_price != null ? `, ca. ${kr(pc.avg_price)} kr/kWh` : ""}).`;
+    } else if (c.code === "price") {
+      next = `Det kan ikke betale sig at lade fra nettet nu: den billigste kommende strøm (fra kl. ${hh(c.cheap_from)}) koster ca. ${kr(c.cheap_price)} kr/kWh – med ca. ${c.loss_pct} % tab ca. ${kr(c.cheap_price / (1 - c.loss_pct / 100))} kr/kWh – mod ca. ${kr(c.dear_price)} kr/kWh i de dyre timer (fra kl. ${hh(c.dear_from)}). Gevinsten på ${kr(Math.max(c.gain, 0))} kr/kWh er under din mindste prisforskel på ${kr(c.min_spread)} kr.`;
+    } else if (c.code === "power") {
+      next = priceTxt;
+    } else if (e.sun_next_kwh >= 1) {
+      next = `Der lades ikke fra nettet, fordi solen forventes at lade batteriet op (ca. ${k1(e.sun_next_kwh)} kWh det næste døgn).`;
+    } else {
+      next = "Der er ikke planlagt opladning fra nettet – strømmen bliver ikke dyr nok igen til, at det kan betale sig.";
+    }
+    const its = [];
+    if (ct) its.push(ct);
+    if (nm) its.push(nm.text);
+    return { title: "Hvorfor er batteriet tomt?", text: `${cause} ${next}`, items: its };
+  }
   const fl = ctx.flow || {};
   const sunNow = fl.has_solar && fl.solar_kw != null && fl.house_kw != null && fl.solar_kw >= fl.house_kw - 0.05 && fl.solar_kw > 0.1
     ? { extra: fl.solar_kw - fl.house_kw > 0.1 } : null;

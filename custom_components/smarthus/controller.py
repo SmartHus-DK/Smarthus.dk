@@ -203,6 +203,9 @@ def _water_temp(val) -> float | None:
 _UNITS = {"wh": 0.001, "kwh": 1.0, "mwh": 1000.0}
 
 
+EMPTY_MARGIN_KWH = 0.15      # så tæt på den nedre grænse regnes batteriet som tomt i forklaringen
+
+
 class SmartHusController:
     """Binder priser, planer, enheder og besparelser sammen."""
 
@@ -1077,6 +1080,12 @@ class SmartHusController:
             out["solar"] = {"ratio": round(sun.ratio, 2), "measured_kwh": round(sun.measured, 1),
                             "forecast_kwh": round(sun.forecast, 1)}
         out["charge"] = self._charge_economics(now)
+        # Batteriet står på den nedre grænse: til forklaringen (planlagt eller mere forbrug/mindre sol end ventet)
+        soc = self._float_state(self.config.get(CONF_BATTERY_SOC))
+        cap, mn = float(self.settings[S_BATTERY_CAPACITY]), float(self.settings[S_BATTERY_MIN_SOC])
+        if soc is not None and cap > 0 and cap * (soc - mn) / 100 <= EMPTY_MARGIN_KWH:
+            sun_next = sum(v for h, v in (self._solar_hours() or {}).items() if now - timedelta(hours=1) < h <= now + timedelta(days=1))
+            out["empty"] = {"min_soc": round(mn), "soc": round(soc), "sun_next_kwh": round(sun_next, 1)}
         return out
 
     def _drop_solar_charge(self, now: datetime) -> None:

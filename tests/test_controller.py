@@ -1669,7 +1669,8 @@ def _night_and_day(c, now, night_price, dear_price):
 
 def test_charge_economics_and_battery_why():
     import datetime as _dt
-    c, _ = make({"battery_soc_sensor": "sensor.soc"}, {"sensor.soc": State("40")})
+    states = {"sensor.soc": State("40")}
+    c, _ = make({"battery_soc_sensor": "sensor.soc"}, states)
     now = _dt.datetime(2026, 11, 13, 23, 29, tzinfo=c.tz)
     _night_and_day(c, now, 2.2, 2.5)
     r = c._charge_economics(now)
@@ -1703,6 +1704,11 @@ def test_charge_economics_and_battery_why():
     assert _dt.datetime.fromisoformat(w["hold_for"]["from"]).astimezone(c.tz).hour == 17
     assert w["usage"] == {"actual_kwh": 10.0, "expected_kwh": 5.0, "delta_kwh": 5.0}
     assert w["solar"]["ratio"] == 0.4 and w["charge"]["code"] in ("ok", "price")
+    assert "empty" not in w                                   # 40 % – ikke tomt
+    # Batteriet står på den nedre grænse (10 %): forklaringen får det med
+    states["sensor.soc"] = State(str(c.settings["battery_min_soc"]))
+    w = c._battery_why(noon)
+    assert w["empty"]["min_soc"] == round(c.settings["battery_min_soc"]) and "sun_next_kwh" in w["empty"]
 
 
 def test_stromligning_retry_after_restart():
