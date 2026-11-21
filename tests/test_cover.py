@@ -123,3 +123,25 @@ def test_no_measurement_uses_open_meteo():
     pc.set_weather(weather([-3.0] * 20 + [-0.5, 1.0] + [4.0] * 10))
     pc.set_measured(at(8), None)                            # ingen føler og ingen vejr-entitet
     assert pc.state(at(8)) == "frost" and pc.state(at(9)) is None
+
+
+def test_low_all_day_is_not_frost():
+    """Frostmorgen, men produktionen bliver ved med at være lav efter frosten: skygge/skyer, ikke rim."""
+    pc = cover.PanelCover()
+    temps = [-2.0] * 22 + [3.0] * 12                     # frost til kl. 10, derefter 3 °C
+    pc.set_weather(weather(temps))
+    ratio0 = pc.data["frost_ratio"]
+    for m in range(0, 120):                               # kl. 8–10: frost, lav produktion
+        pc.observe(at(8) + timedelta(minutes=m), 0.3, 1.0, 60)
+    for m in range(0, 180):                               # kl. 10–13: ingen frost, stadig lav (skygge)
+        pc.observe(at(10) + timedelta(minutes=m), 0.4, 1.5, 60)
+    keys = pc.learn(at(0, 25, day=1))
+    assert keys and len(keys) == 2                        # kl. 8 og 9 skal tælle med i den almindelige læring
+    assert pc.data["frost_ratio"] == ratio0 and not pc.data.get("frost_days")
+
+
+def test_old_frost_learning_is_reset():
+    pc = cover.PanelCover({"frost_ratio": 0.499, "frost_days": 1})
+    assert pc.data["frost_ratio"] == cover.FROST_START and pc.data["frost_days"] == 0 and pc.data["v"] == 2
+    pc2 = cover.PanelCover({"frost_ratio": 0.4, "frost_days": 3, "v": 2})
+    assert pc2.data["frost_ratio"] == 0.4                 # lært efter rettelsen: beholdes

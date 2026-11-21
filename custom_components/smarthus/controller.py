@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import math
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_ON, STATE_UNAVAILABLE, STATE_UNKNOWN
@@ -778,7 +778,7 @@ class SmartHusController:
         lat, lon = getattr(self.hass.config, "latitude", None), getattr(self.hass.config, "longitude", None)
         if lat is None or lon is None:
             return {}
-        params = {"latitude": f"{lat:.2f}", "longitude": f"{lon:.2f}", "hourly": "temperature_2m,weather_code,is_day,snowfall,snow_depth",
+        params = {"latitude": f"{lat:.2f}", "longitude": f"{lon:.2f}", "hourly": "temperature_2m,weather_code,is_day,snowfall,snow_depth,direct_radiation,diffuse_radiation",
                   "past_days": str(TEMP_LEARN_DAYS + 1), "forecast_days": "3", "timeformat": "unixtime", "timezone": "GMT"}
         async with asyncio.timeout(30):
             async with self.coordinator._session.get(OPEN_METEO_URL, params=params) as resp:  # noqa: SLF001
@@ -796,6 +796,13 @@ class SmartHusController:
                                        h.get("snow_depth") or [0.0] * len(times))}
         if snow and getattr(self, "cover", None) is not None:
             self.cover.set_weather(snow)
+        # Hvor klar hver time var (andelen af direkte stråling) – til læringen af solprognosen og loftet (skygge)
+        sky = {}
+        for t, dr, df in zip(times, h.get("direct_radiation") or [], h.get("diffuse_radiation") or []):
+            if dr is not None and df is not None and dr + df >= 20:
+                sky[hour_key(datetime.fromtimestamp(t, timezone.utc))] = round(dr / (dr + df), 3)
+        if sky:
+            self._sky = sky
         return {datetime.fromtimestamp(t, self.tz): float(v)
                 for t, v in zip(times, h.get("temperature_2m") or []) if v is not None}
 
@@ -926,8 +933,10 @@ class SmartHusController:
             for key, kw in series(entity_id, "mean").items():
                 past[key] = past.get(key, 0.0) + kw
         self.solar_cal.backfill(past)
-        self.solar_cal.learn(series(meter, "change") if meter else series(power, "mean"), now)
-        self.cover.learn(now)
+        self.solar_cal.location = self._location()
+        self.solar_cal.uncurtail(self.cover.learn(now))     # "rim", der viste sig at være skygge, tæller med
+        self.solar_cal.learn(series(meter, "change") if meter else series(power, "mean"), now,
+                             sky=self.__dict__.get("_sky"))
         await self._solar_cal_store.async_save(self.solar_cal.data)
         self.recalculate()
 
@@ -1606,13 +1615,38 @@ class SmartHusController:
         seconds = (now - last).total_seconds() if last else 0.0
         self._cover_seen = now
         proof = self.cover.data.get("proof")
-        self.cover.observe(now, self.solar_kw, raw.get(hour, 0.0) * self.solar_cal.factor(hour), seconds)
+        self.cover.observe(now, self.solar_kw, raw.get(hour, 0.0) * self.solar_factor(hour, cover=False), seconds)
         if self.cover.data.get("proof") != proof or self.cover.data.get("frost_day"):
             self._solar_cal_store.async_delay_save(lambda: self.solar_cal.data, 300)
 
-    def solar_factor(self, h: datetime) -> float:
-        """Den indlærte forskel til anlægget × sne/rim på panelerne for timen."""
-        return self.solar_cal.factor(h) * self.cover.factor(h.astimezone(self.tz))
+    def _location(self) -> tuple[float, float] | None:
+        cfg = getattr(self.hass, "config", None)
+        lat, lon = getattr(cfg, "latitude", None), getattr(cfg, "longitude", None)
+        return (float(lat), float(lon)) if lat is not None and lon is not None else None
+
+    def solar_factor(self, h: datetime, cover: bool = True) -> float:
+        """Den indlærte forskel til anlægget × sne/rim på panelerne for timen – og højst det, anlægget har
+        givet i samme time på en klar dag for nylig (skygge fra fx træer, når solen står lavt)."""
+        f = self.solar_cal.factor(h) * (self.cover.factor(h.astimezone(self.tz)) if cover else 1.0)
+        if self.solar_cal.location is None:
+            self.solar_cal.location = self._location()
+        cap = self.solar_cal.cap(h)
+        if cap is not None and self._forecast_wh:
+            hour = h.astimezone(self.tz).replace(minute=0, second=0, microsecond=0)
+            raw = self._raw_solar_hours().get(hour)
+            if raw and raw * f > cap:
+                f = cap / raw
+        return f
+
+    def _raw_solar_hours(self) -> dict:
+        """Prognosen pr. time (kWh) uden justeringer – genbruges, til prognosen ændrer sig."""
+        src = self._forecast_wh
+        cached = self.__dict__.get("_raw_hours_cache")
+        key = (id(src), len(src) if src else 0, next(iter(src.values()), None) if src else None)
+        if cached is None or cached[0] != key:
+            cached = (key, solar_by_hour(src, self.tz, self._forecast_key_is_end) if src else {})
+            self._raw_hours_cache = cached
+        return cached[1]
 
     @property
     def solar_factor_today(self) -> float:

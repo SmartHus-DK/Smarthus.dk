@@ -173,3 +173,40 @@ def test_justering_gaelder_baade_i_dag_og_i_morgen():
     assert raw["today_kwh"] == raw["tomorrow_kwh"] == 2.0
     assert abs(adj["today_kwh"] - expect) < 0.01 and abs(adj["tomorrow_kwh"] - expect) < 0.01
     assert adj["hours"][1]["kw"] > 1.0 > adj["hours"][0]["kw"]
+
+
+def test_clear_day_cap_follows_shade_quickly():
+    """Skygge (træer om vinteren): én klar dag sætter et loft for timen – og loftet stiger igen, så snart en
+    klar dag giver mere (foråret). Ældre end 6 dage tæller ikke."""
+    cal = suncal.SolarCalibration()
+    cal.location = (56.16, 10.12)
+    noon = datetime(2026, 11, 20, 11, 0, tzinfo=timezone.utc)   # kl. 12 dansk tid
+    assert cal.cap(noon) is None
+    cal.data["clear_obs"] = {suncal.hour_key(noon - timedelta(days=1)): [1.2, suncal.clear_sky(noon - timedelta(days=1), 56.16, 10.12)]}
+    cap = cal.cap(noon)
+    assert cap is not None and abs(cap - 1.2 * suncal.CAP_MARGIN) < 0.05
+    # En ældre, højere måling (før skyggen) for 8 dage siden tæller ikke
+    cal.data["clear_obs"][suncal.hour_key(noon - timedelta(days=8))] = [5.0, 300.0]
+    assert abs(cal.cap(noon) - cap) < 1e-9
+    # Foråret: en ny klar dag giver mere – loftet følger med det samme
+    cal.data["clear_obs"][suncal.hour_key(noon - timedelta(days=2))] = [3.0, suncal.clear_sky(noon - timedelta(days=2), 56.16, 10.12)]
+    assert cal.cap(noon) > 3.0
+
+
+def test_learn_records_clear_hours_only():
+    cal = suncal.SolarCalibration()
+    cal.location = (56.16, 10.12)
+    now = datetime(2026, 11, 21, 0, 25, tzinfo=timezone.utc)
+    day = "2026-11-20"
+    cal.data["forecast"] = {f"{day}T{h:02d}": 2.0 for h in range(8, 14)}
+    actual = {f"{day}T{h:02d}": 1.0 for h in range(8, 14)}
+    sky = {f"{day}T{h:02d}": (0.8 if h in (10, 11) else 0.1) for h in range(8, 14)}
+    cal.learn(actual, now, sky=sky)
+    assert set(cal.data["clear_obs"]) == {f"{day}T10", f"{day}T11"}
+
+
+def test_uncurtail():
+    cal = suncal.SolarCalibration()
+    cal.data["curtailed"] = ["2026-11-20T08", "2026-11-20T09", "2026-11-20T13"]
+    cal.uncurtail(["2026-11-20T08", "2026-11-20T09"])
+    assert cal.data["curtailed"] == ["2026-11-20T13"]

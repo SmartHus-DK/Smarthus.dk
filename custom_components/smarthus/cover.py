@@ -14,11 +14,14 @@ Vejrdata (Open-Meteo) time for time: temperatur, snefald og snedybde.
 * Rim: en time med frost (højst 0,5 °C) efter en nat med frost regnes med den andel af solen, anlægget plejer at
   give i sådanne timer. Den andel læres: hver frostmorgen sammenlignes målingen med prognosen (start 60 %).
   Producerer panelerne fuldt, mens det er frost, er de rene resten af dagen.
+  En frostmorgen tæller kun som rim, hvis produktionen kommer op, når frosten er væk. Bliver den ved med at være
+  lav resten af dagen, var det ikke rim (men fx skygge eller skyer) – så læres der ikke rim af den dag, og timerne
+  tæller med i den almindelige læring af solprognosen.
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 SNOW_DEPTH_M = 0.01        # 1 cm sne på jorden: regn med sne på panelerne
 SNOWFALL_CM = 0.5          # så meget nyt sne inden for SNOW_WINDOW_H dækker også panelerne
@@ -32,6 +35,9 @@ FROST_MIN_KWH = 0.5        # så meget forventet sol i frosttimer, før en morge
 PROOF_SHARE = 0.4          # panelerne producerer: mindst 40 % af det forventede …
 PROOF_MIN_KW = 0.3         # … når der forventes mindst 0,3 kW …
 PROOF_SECONDS = 600        # … i 10 minutter
+AFTER_MIN_KWH = 0.5        # så meget forventet sol efter frosten, før dagen kan afgøre, om det var rim
+AFTER_SHARE = 0.7          # giver anlægget mindre end 70 % af det forventede efter frosten, var det ikke rim
+DATA_VERSION = 2           # 2: rim og skygge holdes adskilt – tidligere lært rim nulstilles
 OFFSET_HOURS = 6.0         # målt udetemperatur retter Open-Meteo – fuldt nu, aftagende til 0 efter 6 timer
 OFFSET_MAX_AGE = 3600      # en måling ældre end en time bruges ikke
 
@@ -41,6 +47,10 @@ class PanelCover:
 
     def __init__(self, data: dict | None = None) -> None:
         self.data = data if isinstance(data, dict) else {}
+        if int(self.data.get("v") or 1) < DATA_VERSION:
+            # Rim lært før version 2 kan være skygge – start forfra
+            self.data.update(frost_ratio=FROST_START, frost_days=0, v=DATA_VERSION)
+            self.data.pop("frost_day", None)
         self.data.setdefault("frost_ratio", FROST_START)
         self.wx: dict[datetime, tuple[float | None, float, float]] = {}   # time → (temp, snefald cm, snedybde m)
         self._ok_since: datetime | None = None
@@ -137,14 +147,22 @@ class PanelCover:
             self._ok_since = None
             return
         st = self.state(now)
+        hours = min(max(seconds, 0.0), 180.0) / 3600
+        day = now.date().isoformat()
+        acc = self.data.get("frost_day")
         if st == "frost" and expected_kw > 0:
-            day = now.date().isoformat()
-            acc = self.data.get("frost_day")
             if not acc or acc.get("day") != day:
-                acc = self.data["frost_day"] = {"day": day, "measured": 0.0, "expected": 0.0}
-            hours = min(max(seconds, 0.0), 180.0) / 3600
+                acc = self.data["frost_day"] = {"day": day, "measured": 0.0, "expected": 0.0, "hours": [],
+                                                "after_m": 0.0, "after_e": 0.0}
             acc["measured"] += max(measured_kw, 0.0) * hours
             acc["expected"] += expected_kw * hours
+            key = now.astimezone(timezone.utc).strftime("%Y-%m-%dT%H")
+            if key not in acc.setdefault("hours", []):
+                acc["hours"].append(key)
+        elif st is None and acc and acc.get("day") == day and expected_kw >= PROOF_MIN_KW:
+            # Efter frosten samme dag: kommer produktionen op? (ellers var det ikke rim)
+            acc["after_m"] = acc.get("after_m", 0.0) + max(measured_kw, 0.0) * hours
+            acc["after_e"] = acc.get("after_e", 0.0) + expected_kw * hours
         if expected_kw >= PROOF_MIN_KW and measured_kw >= PROOF_SHARE * expected_kw:
             if self._ok_since is None:
                 self._ok_since = now
@@ -153,18 +171,23 @@ class PanelCover:
         else:
             self._ok_since = None
 
-    def learn(self, now: datetime) -> None:
-        """Om natten: læg gårsdagens frosttimer ind i andelen af sol, anlægget giver med rim."""
+    def learn(self, now: datetime) -> list[str]:
+        """Om natten: læg gårsdagens frosttimer ind i andelen af sol, anlægget giver med rim.
+        Returnerer frosttimerne (UTC-nøgler), hvis dagen viste, at det ikke var rim – de skal tælle med i den
+        almindelige læring af solprognosen."""
         acc = self.data.get("frost_day")
         if not acc or acc.get("day") == now.date().isoformat():
-            return
+            return []
         self.data.pop("frost_day", None)
+        if acc.get("after_e", 0.0) >= AFTER_MIN_KWH and acc.get("after_m", 0.0) < AFTER_SHARE * acc["after_e"]:
+            return list(acc.get("hours") or [])          # lavt hele dagen: skygge eller skyer, ikke rim
         if acc.get("expected", 0.0) < FROST_MIN_KWH:
-            return
+            return []
         ratio = min(max(acc["measured"] / acc["expected"], 0.05), 1.0)
         old = float(self.data.get("frost_ratio") or FROST_START)
         self.data["frost_ratio"] = round(old + FROST_ALPHA * (ratio - old), 3)
         self.data["frost_days"] = int(self.data.get("frost_days") or 0) + 1
+        return []
 
     def summary(self, hours: list[datetime], now: datetime) -> dict | None:
         """Til forklaringen: hvad der gælder nu og de kommende timer med sol."""
