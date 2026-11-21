@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from datetime import datetime, tzinfo
+from datetime import datetime, timedelta, tzinfo
 
 ROUND_TRIP = 0.90
 ETA = math.sqrt(ROUND_TRIP)          # tab hver vej (ind og ud)
@@ -42,6 +42,7 @@ class OptSlot:
     load: float         # husets forventede forbrug i kvarteret (kWh)
     solar: float        # solens forventede produktion i kvarteret (kWh)
     can_charge: bool = True
+    force_charge: bool = False   # skal lade fra nettet (ekstra buffer) – resten af planen regnes om omkring det
 
 
 @dataclass
@@ -114,6 +115,9 @@ def optimize(slots: list[OptSlot], e0: float, *, floor: float, full: float, char
         out = []
         for ai, a in enumerate(acts):
             if a == "charge" and (not s.can_charge or e >= full - 1e-6):
+                out.append(None)
+                continue
+            if a != "charge" and s.force_charge and s.can_charge and e < full - 1e-6:
                 out.append(None)
                 continue
             e2, imp, exp, g = _step(a, e, s, floor, full, max_c, max_d)
@@ -202,6 +206,7 @@ def add_buffer(slots: list[OptSlot], res: OptResult, e0: float, *, floor: float,
     lv = res.levels
     span = full - floor
     j = desired = end = None
+    promised = False                                      # slutningen er givet af sidste beregnings løfte
     i = 0
     while i < len(acts):                                   # første opladning (perioder adskilt kun af "gem" er én)
         if acts[i] != "charge":
@@ -227,6 +232,7 @@ def add_buffer(slots: list[OptSlot], res: OptResult, e0: float, *, floor: float,
             if jj is not None:
                 j, end = jj, slots[jj].end
                 desired = max(desired or 0.0, min(keep[1], full))
+                promised = True
         else:
             desired = max(desired, min(keep[1], full))
     if j is None or desired is None:
@@ -242,9 +248,17 @@ def add_buffer(slots: list[OptSlot], res: OptResult, e0: float, *, floor: float,
         return out, g
 
     levels, grid = simulate(acts)
+    # Bufferen må også lades lige efter opladningen (fx en lidt billigere time kl. 4–5), så længe batteriet
+    # ikke bruges imellem – højst `window_h` / 2 timer efter
+    j2 = j
+    while (not promised and j2 + 1 < len(acts) and slots[j2 + 1].start < end + timedelta(hours=window_h / 2)
+           and not (acts[j2 + 1] == "use" and levels[j2 + 2] < levels[j2 + 1] - 1e-6)):
+        j2 += 1
+    if j2 != j:
+        j, end = j2, slots[j2].end
     lo = next((n for n, s in enumerate(slots) if (end - s.start).total_seconds() <= window_h * 3600), 0)
     first = next((n for n in range(j + 1) if acts[n] == "charge"), j)
-    last_use = max((n for n in range(lo, first) if acts[n] == "use"), default=lo - 1)
+    last_use = max((n for n in range(lo, first) if acts[n] == "use" and lv[n + 1] < lv[n] - 1e-6), default=lo - 1)
     lo = max(lo, last_use + 1)                       # ikke før batteriet bruges igen – så går det ekstra tabt
     cand = sorted((n for n in range(lo, j + 1) if acts[n] != "charge" and slots[n].can_charge),
                   key=lambda n: (slots[n].price, n))

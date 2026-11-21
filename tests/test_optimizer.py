@@ -132,7 +132,9 @@ def test_buffer_adds_on_top_of_planned_charge():
     assert new.levels[36] <= planned_end + 3.0 + kw / 4 + 0.01   # højst ét kvarter for meget
     extra = [n for n, a in enumerate(new.actions) if a == "charge" and acts[n] != "charge"]
     assert extra and all(sl[n].price <= 1.3 for n in extra)      # de billigste kvarterer i natten
-    assert keep[0] == sl[35].end and abs(keep[1] - min(planned_end + 3.0, 15.0)) < 1e-9
+    assert keep[0] >= sl[35].end and abs(keep[1] - min(planned_end + 3.0, 15.0)) < 1e-9
+    jk = max(n for n, s in enumerate(sl) if s.end <= keep[0])
+    assert new.levels[jk + 1] >= keep[1] - 0.02
 
 
 def test_buffer_kept_when_plan_thinks_it_is_done():
@@ -149,3 +151,47 @@ def test_buffer_does_nothing_without_grid_charge():
     res = opt.OptResult(["use"] * len(sl), [5.0] * (len(sl) + 1), 0.0, [0.0] * len(sl))
     new, keep = opt.add_buffer(sl, res, 5.0, floor=0.5, full=15.0, charge_kw=3.8, buffer_kwh=3.0)
     assert new is res and keep is None
+
+
+def test_buffer_energy_is_used_after_replanning():
+    """Bufferens ekstra strøm skal også bruges (i de næstdyreste timer) – ikke stå tilbage til sidst,
+    fordi resten af planen var lagt uden den. Controlleren regner planen om med bufferens opladning fastlagt."""
+    prices = [1.0, 1.0, 1.3, 1.3, 1.3, 3.0, 3.0, 3.0]          # nat · eftermiddag · aften
+    sl = []
+    for h, p in enumerate(prices):
+        for i in range(4):
+            t = D0 + timedelta(hours=h) + i * Q
+            sl.append(opt.OptSlot(t, t + Q, p, 0.5, 0.25, 0.0))   # 1 kWh i timen
+    kw = dict(floor=0.5, full=10.0, charge_kw=4.0, min_spread=0.3)
+    r = opt.optimize(sl, 0.5, **kw)
+    mid_r = r.levels[8] - r.levels[20]                       # så meget bruges om eftermiddagen uden buffer
+    b, keep = opt.add_buffer(sl, r, 0.5, floor=0.5, full=10.0, charge_kw=4.0, buffer_kwh=3.0)
+    assert b.levels[-1] > 2.5                                 # efterbehandlingen alene: bufferen står tilbage
+    for s, a in zip(sl, b.actions):
+        s.force_charge = a == "charge" and s.end <= keep[0]
+    r2 = opt.optimize(sl, 0.5, **kw)
+    assert r2.levels[8] >= b.levels[8] - 0.01                  # bufferen er stadig ladet
+    assert r2.levels[8] - r2.levels[20] > mid_r + 1.0          # … og bruges om eftermiddagen
+    assert r2.levels[-1] < b.levels[-1] - 1.0
+
+
+def test_buffer_may_use_cheap_hour_right_after_charge():
+    """Karsten 22.11: planen lader kl. 02–04; bufferen skal tage den lidt billigere kl. 04–05 (2,084) frem for
+    kl. 01 (2,105) – også selv om den ligger efter planens egen opladning, når batteriet ikke bruges imellem."""
+    hourly = {0: 2.128, 1: 2.105, 2: 2.084, 3: 2.069, 4: 2.084, 5: 2.099, 6: 2.25, 7: 2.27, 8: 2.29}
+    sl = []
+    for h in range(0, 9):
+        for i in range(4):
+            t = D0 + timedelta(hours=h) + i * Q
+            sl.append(opt.OptSlot(t, t + Q, hourly[h], 1.3, 0.2, 0.0))
+    acts = ["hold"] * len(sl)
+    for n in range(8, 16):                                   # kl. 02–04
+        acts[n] = "charge"
+    lv, e = [3.0], 3.0
+    for a in acts:
+        e = min(e + 0.95, 13.8) if a == "charge" else e
+        lv.append(e)
+    res = opt.OptResult(acts, lv, 0.0, [0.0] * len(sl))
+    new, keep = opt.add_buffer(sl, res, 3.0, floor=0.7, full=13.8, charge_kw=3.8, buffer_kwh=3.0)
+    extra = [sl[n].start.hour for n, a in enumerate(new.actions) if a == "charge" and acts[n] != "charge"]
+    assert extra and set(extra) == {4} and 1 not in extra

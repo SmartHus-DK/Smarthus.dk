@@ -1492,9 +1492,21 @@ class SmartHusController:
                            can_hold=self.has_hold, prev_action=prev)
             if res is not None:
                 # "Ekstra buffer ved netopladning": altid bufferens kWh oven i den næste opladning fra nettet
-                res, self._buffer_keep = add_buffer(opt_slots, res, cap * soc / 100, floor=floor, full=full,
-                                                    charge_kw=kw, buffer_kwh=self.grid_buffer_kwh,
-                                                    keep=self.__dict__.get("_buffer_keep"))
+                buffered, self._buffer_keep = add_buffer(opt_slots, res, cap * soc / 100, floor=floor, full=full,
+                                                         charge_kw=kw, buffer_kwh=self.grid_buffer_kwh,
+                                                         keep=self.__dict__.get("_buffer_keep"))
+                if buffered is not res and self._buffer_keep is not None:
+                    # Regn resten af planen om med bufferens opladning fastlagt – så den ekstra strøm også
+                    # bruges i de dyreste timer (og ikke bare står tilbage, fordi planen var lagt uden den)
+                    end = self._buffer_keep[0]
+                    for sl, a in zip(opt_slots, buffered.actions):
+                        sl.force_charge = a == "charge" and sl.end <= end
+                    again = optimize(opt_slots, cap * soc / 100, floor=floor, full=full, charge_kw=kw,
+                                     min_spread=float(self.settings.get(S_BATTERY_MIN_SPREAD, 0.0)),
+                                     can_hold=self.has_hold, prev_action=prev)
+                    res = again if again is not None else buffered
+                else:
+                    res = buffered
         except Exception:  # noqa: BLE001 – må aldrig stoppe styringen; de gamle regler tager over
             _LOGGER.exception("SmartHus: samlet batteriberegning fejlede – bruger de hidtidige regler")
             return False
