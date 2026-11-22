@@ -195,3 +195,20 @@ def test_buffer_may_use_cheap_hour_right_after_charge():
     new, keep = opt.add_buffer(sl, res, 3.0, floor=0.7, full=13.8, charge_kw=3.8, buffer_kwh=3.0)
     extra = [sl[n].start.hour for n, a in enumerate(new.actions) if a == "charge" and acts[n] != "charge"]
     assert extra and set(extra) == {4} and 1 not in extra
+
+
+def test_battery_below_floor_still_charges_in_cheapest_hours():
+    """Karsten 22/11: batteriet var 4,5 % med nedre grænse 5 % (lidt eget forbrug om natten). Et batteri under
+    grænsen blev regnet som stående på grænsen, så "lad senere" så altid lidt bedre ud – opladningen blev
+    udskudt fra nattens billigste timer (2,07 kr) til morgenen (2,28 kr) eller helt væk."""
+    hourly = {2: 2.0842, 3: 2.0691, 4: 2.0836, 5: 2.0988, 6: 2.248, 7: 2.2684, 8: 2.2872, 9: 2.3174, 10: 2.3044,
+              11: 2.3264, 12: 2.3323, 13: 2.3228, 14: 2.406, 15: 2.5252, 16: 2.5511, 17: 3.1058, 18: 3.0904,
+              19: 3.0765, 20: 2.9588, 21: 2.4134, 22: 2.3618, 23: 2.2639}
+    prof = [0.94, 0.91, 0.85, 0.8, 0.82, 0.76, 1, 0.97, 0.96, 1.16, 1.22, 1.25, 1.64, 1.85, 1.7, 1.4, 1.21, 1.17,
+            1.78, 1.54, 1.33, 1.45, 1.02, 0.96]
+    sun = {8: 0.09, 9: 0.24, 10: 0.67, 11: 0.71, 12: 0.47, 13: 0.51, 14: 0.16}
+    for e0 in (0.69, 0.63, 0.5, 0.2):
+        sl = slots(hourly, prof, sun, start_h=2)
+        r = opt.optimize(sl, e0, floor=0.69, full=13.8, charge_kw=3.8, min_spread=0.3)
+        hours = {int((s.start - D0).total_seconds() // 3600) for s, a in zip(sl, r.actions) if a == "charge"}
+        assert hours and max(hours) < 6, (e0, sorted(hours))            # lades om natten, ikke om morgenen

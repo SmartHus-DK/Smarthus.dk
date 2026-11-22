@@ -104,7 +104,12 @@ def optimize(slots: list[OptSlot], e0: float, *, floor: float, full: float, char
         end_value = min(s.price for s in slots) * ETA
 
     def interp(Vt, e, ai):
-        x = (min(max(e, floor), full) - floor) / step
+        if e < floor:
+            # Under den nedre grænse (fx lidt eget forbrug om natten): det, der mangler op til grænsen, koster
+            # det samme som den første kWh over den. Uden det regnes et batteri under grænsen som stående på
+            # grænsen, og så ser "lad senere" altid lidt bedre ud end "lad nu" – opladningen udskydes igen og igen
+            return Vt[0][ai] + (Vt[0][ai] - Vt[1][ai]) * (floor - e) / step
+        x = (min(e, full) - floor) / step
         k = min(int(x), n - 1)
         f = x - k
         return Vt[k][ai] * (1 - f) + Vt[k + 1][ai] * f
