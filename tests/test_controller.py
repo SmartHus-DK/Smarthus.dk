@@ -1751,3 +1751,20 @@ def test_snow_on_panels_lowers_solar_plan():
     assert abs(covered[h10] - 2.0 * cover.SNOW_FACTOR * c.solar_caution) < 1e-6
     f = c.solar_forecast
     assert f["panel_cover"] and f["panel_cover"]["state"] == "snow" and f["adjusted"] is True
+
+
+def test_charge_economics_follows_planned_charge():
+    """Karsten 23/11 kl. 14:25: opladningen er planlagt i nat, men forklaringen sammenlignede eftermiddagen i dag
+    (kl. 14:15, 3,30 kr) med aftenen i dag. Er der planlagt opladning, er det den, der forklares."""
+    import datetime as _dt
+    states = {"sensor.soc": State("40")}
+    c, _ = make({"battery_soc_sensor": "sensor.soc"}, states)
+    now = _dt.datetime(2026, 11, 13, 14, 25, tzinfo=c.tz)
+    _night_and_day(c, now, 1.5, 3.5)
+    night = [s for s in c.coordinator.data if s.start.astimezone(c.tz).date() > now.date()
+             and 2 <= s.start.astimezone(c.tz).hour < 5]
+    c.plan.battery_charge = night
+    r = c._charge_economics(now)
+    assert _dt.datetime.fromisoformat(r["cheap_from"]) == night[0].start and r["cheap_price"] == 1.5
+    assert _dt.datetime.fromisoformat(r["dear_from"]) > night[-1].end and r["dear_price"] == 3.5
+    assert r["code"] == "ok"

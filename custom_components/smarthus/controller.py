@@ -1034,6 +1034,23 @@ class SmartHusController:
         data = [sl for sl in (self.coordinator.data or []) if sl.end > now]
         if len(data) < 8:
             return None
+        spread = float(self.settings.get(S_BATTERY_MIN_SPREAD, 0.0))
+        dear_h = max(float(self.settings.get(S_BATTERY_DISCHARGE_HOURS, 3) or 3), 1.0)
+        planned = sorted((sl for sl in self.plan.battery_charge if sl.end > now), key=lambda sl: sl.start)
+        if planned:
+            # Der er planlagt opladning: forklar netop den – mod de dyre timer bagefter (ikke fx eftermiddagen i
+            # dag mod aftenen i dag, når opladningen først er i nat)
+            run = [sl for sl in planned if sl.start < planned[0].start + timedelta(hours=12)]
+            after = [sl for sl in data if sl.start >= run[-1].end]
+            dear = cheapest_blocks(after, dear_h, BATTERY_MIN_BLOCK_H, most_expensive=True) if len(after) >= 4 else None
+            if dear:
+                c = sum(sl.price for sl in run) / len(run)
+                d = sum(sl.price for sl in dear) / len(dear)
+                gain = d - c / BATTERY_ROUND_TRIP
+                return {"code": "price" if gain < spread else "ok", "cheap_price": round(c, 2),
+                        "dear_price": round(d, 2), "gain": round(gain, 2), "min_spread": round(spread, 2),
+                        "loss_pct": round((1 - BATTERY_ROUND_TRIP) * 100), "cheap_from": run[0].start.isoformat(),
+                        "dear_from": min(sl.start for sl in dear).isoformat()}
         dear = cheapest_blocks(data, max(float(self.settings.get(S_BATTERY_DISCHARGE_HOURS, 3) or 3), 1.0),
                                BATTERY_MIN_BLOCK_H, most_expensive=True)
         if not dear:
