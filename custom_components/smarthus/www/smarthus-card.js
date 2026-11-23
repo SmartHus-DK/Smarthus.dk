@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.68.6";
+const SMARTHUS_CARD_VERSION = "1.68.7";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -97,7 +97,8 @@ function coverText(pc) {
   const clock = (t) => new Date(t).toLocaleTimeString("da-DK", { hour: "2-digit", minute: "2-digit" }).replace(".", ":");
   const day = (t) => { const d = new Date(t), n = new Date(); const d0 = new Date(n.getFullYear(), n.getMonth(), n.getDate());
     const diff = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - d0) / 864e5);
-    return diff <= 0 ? "i dag" : diff === 1 ? "i morgen" : d.toLocaleDateString("da-DK", { weekday: "long" }); };
+    const early = d.getHours() < 12 ? " tidlig" : "";
+    return diff <= 0 ? "i dag" : diff === 1 ? `i morgen${early}` : d.toLocaleDateString("da-DK", { weekday: "long" }) + early; };
   if (pc.state === "snow")
     return pc.now ? "Der ligger formentlig sne på solcellerne – der regnes næsten ikke med sol, før de producerer igen."
       : `Der ventes sne på solcellerne ${day(pc.from)} fra kl. ${clock(pc.from)} – der regnes næsten ikke med sol derefter, før de producerer igen.`;
@@ -240,10 +241,24 @@ function batteryWhy(a, ctx = {}) {
       items.push(`Solen forventes at give ca. ${k1(ctx.solarRemaining)} kWh resten af dagen, som også lader batteriet op til de dyre timer.`);
     return { title: "Hvorfor gemmes batteriet?", text, items };
   }
-  if (!w.planned_charge && w.state !== "charge") {
-    const text = priceTxt || "Batteriet og solen forventes at dække huset, til strømmen igen er billig – så der er ikke brug for at lade fra nettet.";
-    if (nm && !priceTxt) items.push(nm.text);
-    return { title: "Hvorfor lader batteriet ikke fra nettet?", text, items };
+  if (w.state !== "charge") {
+    // Batteriet bruges (eller solen dækker huset). Blev det ladet fra nettet i nat? Så sig det
+    const now = Date.now();
+    const q = (ctx.done || []).map((t) => +new Date(t)).filter((t) => t < now && t > now - 14 * 3600e3).sort((x, y) => x - y);
+    const night = q.length ? { from: q[0], to: q[q.length - 1] + 900e3 } : null;
+    const charged = night ? `Batteriet blev ladet fra nettet ${new Date(night.from).getHours() < 6 || new Date(night.from).getDate() !== new Date().getDate() ? "i nat" : "tidligere i dag"} kl. ${hh(new Date(night.from).toISOString())}–${hh(new Date(night.to).toISOString())}, hvor strømmen var billigst. ` : "";
+    const text = sunNow
+      ? `${charged}Solen dækker huset lige nu${sunNow.extra ? ", og overskuddet lader batteriet" : ""}.`
+      : `${charged}Lige nu koster strømmen ${kr(w.now_price)} kr/kWh, så batteriet bruges i stedet for at købe fra nettet.`;
+    const pc = a.planned_charge || w.charge_plan;
+    if (w.planned_charge && pc && pc.start && pc.kwh > 0.05) {
+      const s0 = new Date(pc.start), n0 = new Date();
+      const tomorrow = new Date(n0.getFullYear(), n0.getMonth(), n0.getDate() + 1);
+      const word = s0 >= tomorrow ? (s0.getHours() < 6 && n0.getHours() >= 18 ? "i nat " : "i morgen ") : s0.getHours() < 6 ? "i nat " : "i dag ";
+      items.push(`Næste opladning fra nettet: ${word}kl. ${hh(pc.start)}–${hh(pc.end)} (ca. ${k1(pc.kwh)} kWh${pc.avg_price != null ? `, ca. ${kr(pc.avg_price)} kr/kWh` : ""}).`);
+    } else if (priceTxt) items.push(priceTxt);
+    else if (nm && !night) items.push(nm.text);
+    return { title: sunNow ? "Solen dækker huset" : "Hvorfor bruges batteriet nu?", text, items };
   }
   if (nm && nm.past) return { title: "Hvorfor blev der ikke ladet i nat?", text: nm.text, items };
   return null;
@@ -579,7 +594,7 @@ class SmartHusCard extends HTMLElement {
     const f = this._st("sensor", "solar_forecast")?.attributes;
     const why = batteryWhy(a, {
       prices: hourPrices(this._st("sensor", "current_price")?.attributes),
-      solarRemaining: f && f.available ? f.remaining_kwh : null,
+      solarRemaining: a.forecast?.today_rest?.solar_kwh ?? (f && f.available ? f.remaining_kwh : null),
       cover: f?.panel_cover,
       done: this._st("binary_sensor", "battery_charge_now")?.attributes?.slots,
       flow: this._st("sensor", "energy_flow")?.attributes,
