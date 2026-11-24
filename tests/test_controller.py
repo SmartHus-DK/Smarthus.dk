@@ -1768,3 +1768,19 @@ def test_charge_economics_follows_planned_charge():
     assert _dt.datetime.fromisoformat(r["cheap_from"]) == night[0].start and r["cheap_price"] == 1.5
     assert _dt.datetime.fromisoformat(r["dear_from"]) > night[-1].end and r["dear_price"] == 3.5
     assert r["code"] == "ok"
+
+
+def test_stop_charge_now_does_not_keep_the_hour():
+    """Thomas 24/11 kl. 22: "Lad nu" fra kl. 21, stop kl. 22 – planen beholdt timen kl. 22 (2,53 kr) som "i gang",
+    selvom laderen kun kørte pga. "Lad nu". Bilen manglede en halv time, og kl. 03 kostede 2,18 kr."""
+    import datetime as _dt
+    c, _ = make({}, {})
+    now = _dt.datetime(2026, 11, 24, 22, 0, 5, tzinfo=c.tz)
+    cur = planner.Slot(now.replace(second=0), now.replace(second=0) + _dt.timedelta(minutes=15), 0, 2.53, 1.0)
+    c.plan.current = cur
+    c.plan.evs = {"ev": planner.EvPlan("ev", on=True)}
+    c.ev_force = {"ev": False}
+    c._ev_planned_forced = {"ev": False}
+    assert c._ev_on_slot("ev") == cur.start          # laderen kørte efter planen: timen gøres færdig
+    c._ev_planned_forced = {"ev": True}
+    assert c._ev_on_slot("ev") is None               # den kørte pga. "Lad nu": stop betyder stop

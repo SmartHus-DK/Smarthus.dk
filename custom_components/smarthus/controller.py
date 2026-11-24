@@ -1896,6 +1896,7 @@ class SmartHusController:
             _LOGGER.exception("SmartHus: kunne ikke planlægge dagens ekstra opladning")
         self._update_hotwater_demand()
         now = dt_util.utcnow()
+        self._ev_planned_forced = {c.cid: c.force for c in cars}   # hvilke biler planen lige er lavet med "Lad nu" for
         for cid, ep in self.plan.evs.items():
             past = self._ev_past.setdefault(cid, set())
             past.update(sl.start for sl in ep.slots if sl.start <= now)
@@ -2362,6 +2363,10 @@ class SmartHusController:
         prev = self.plan.evs.get(cid) if getattr(self, "plan", None) is not None else None
         cur = getattr(self.plan, "current", None) if prev is not None else None
         if prev is None or cur is None or not prev.on or self.ev_force.get(cid, False):
+            return None
+        if self.__dict__.get("_ev_planned_forced", {}).get(cid):
+            # Laderen kørte, fordi "Lad nu" var slået til – ikke efter planen. Stoppes "Lad nu", skal timen ikke
+            # gøres færdig (ellers lader bilen videre i en dyr time, selvom man har trykket stop)
             return None
         return cur.start
 
