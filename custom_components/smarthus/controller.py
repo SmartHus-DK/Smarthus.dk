@@ -2430,7 +2430,7 @@ class SmartHusController:
         if not soc:
             return None
         hit = cache.get(soc)
-        if hit and (hit[0] or time.monotonic() - hit[1] < 600):     # ikke fundet: kig igen om 10 min
+        if hit and (hit[0] or time.monotonic() - hit[1] < 60):      # ikke fundet: kig igen om et minut (fx lige efter genstart, før bilens integration er klar)
             return hit[0]
         found = None
         try:
