@@ -2404,6 +2404,63 @@ class SmartHusController:
         est = st["base"] + st["kwh"] * CHARGE_EFFICIENCY / cap * 100
         return round(min(max(rep, est), 100.0), 1)
 
+    def car_range_km(self, car: dict | None) -> float | None:
+        """Bilens rækkevidde i km – fra den valgte sensor, ellers fundet på samme enhed som bilens SoC-sensor
+        (fx Tibber, VW, Kia/Hyundai, Tesla: en afstandssensor med "range"/"rækkevidde" i navnet)."""
+        if not car:
+            return None
+        eid = car.get("range") or self._find_range_sensor(car)
+        st = self.hass.states.get(eid) if eid else None
+        if st is None:
+            return None
+        try:
+            v = float(st.state)
+        except (TypeError, ValueError):
+            return None
+        unit = (st.attributes.get("unit_of_measurement") or "km").lower()
+        if unit in ("mi", "miles"):
+            v *= 1.609344
+        elif unit == "m":
+            v /= 1000
+        return round(v) if 0 <= v < 3000 else None
+
+    def _find_range_sensor(self, car: dict) -> str | None:
+        cache = self.__dict__.setdefault("_range_found", {})
+        soc = car.get("soc")
+        if not soc:
+            return None
+        hit = cache.get(soc)
+        if hit and (hit[0] or time.monotonic() - hit[1] < 600):     # ikke fundet: kig igen om 10 min
+            return hit[0]
+        found = None
+        try:
+            from homeassistant.helpers import entity_registry as er
+            reg = er.async_get(self.hass)
+            ent = reg.async_get(soc)
+            if ent is not None and ent.device_id:
+                best = None
+                for e in er.async_entries_for_device(reg, ent.device_id):
+                    if e.domain != "sensor" or e.disabled_by:
+                        continue
+                    st = self.hass.states.get(e.entity_id)
+                    if st is None:
+                        continue
+                    unit = (st.attributes.get("unit_of_measurement") or "").lower()
+                    name = f"{e.entity_id} {e.original_name or ''} {e.name or ''}".lower()
+                    if unit not in ("km", "mi") or not any(w in name for w in ("range", "rækkevidde", "reichweite")):
+                        continue
+                    # Foretræk den elektriske rækkevidde (hybrider har også en samlet/benzin-rækkevidde)
+                    score = 2 if any(w in name for w in ("electric", "elektrisk", "ev_range", "battery")) else 1
+                    if any(w in name for w in ("fuel", "benzin", "total", "combustion", "gas")):
+                        score = 0
+                    if best is None or score > best[0]:
+                        best = (score, e.entity_id)
+                found = best[1] if best and best[0] > 0 else None
+        except Exception:  # noqa: BLE001 – må aldrig vælte styringen
+            found = None
+        cache[soc] = (found, time.monotonic())
+        return found
+
     def car_soc_reported_at(self, car: dict) -> str | None:
         """Hvornår bilen sidst sendte et nyt batteriniveau."""
         st = self.hass.states.get(car.get("soc")) if car.get("soc") else None
@@ -3080,7 +3137,7 @@ class SmartHusController:
         f["has_solar"] = bool(self.config.get(CONF_SOLAR_POWER) or self.config.get(CONF_SOLAR_ENERGY))
         f["cars"] = [{"id": c["id"], "name": c.get("name") or "Elbil", "kw": f["ev_kw"].get(c["id"]),
                       "connected": self.connected.get(c["id"], True),
-                      "soc": self._float_state(c.get("soc"))} for c in self.cars]
+                      "soc": self._float_state(c.get("soc")), "range_km": self.car_range_km(c)} for c in self.cars]
         f["hotwater_on"] = bool(self.config.get(CONF_HOTWATER_ENTITY)) and bool(
             self.plan.hotwater_on or self.hotwater_surplus) and not self.hotwater_full
         f["has_hotwater"] = bool(self.config.get(CONF_HOTWATER_ENTITY))

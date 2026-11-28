@@ -3,7 +3,7 @@
  * Følger med SmartHus-integrationen og registreres automatisk.
  * Brug:  type: custom:smarthus-card
  */
-const SMARTHUS_CARD_VERSION = "1.68.9";
+const SMARTHUS_CARD_VERSION = "1.69.0";
 
 const COLORS = {
   cheap: "#3FA88F",
@@ -429,7 +429,7 @@ const HELP = {
 
 const CAR_COLORS = [COLORS.ev, COLORS.ev2, COLORS.ev3];
 /** Batteriniveau – "ca." når det er skønnet ud fra den ladede energi (bilen har ikke meldt et nyt tal). */
-const socT = (a) => `${a.soc_estimated ? "ca. " : ""}${nf(a.soc, 0)} %`;
+const socT = (a) => `${a.soc_estimated ? "ca. " : ""}${nf(a.soc, 0)} %${a.range_km != null ? ` (${nf(a.range_km, 0)} km)` : ""}`;
 const socNote = (a) => {
   if (!a.soc_estimated || a.soc_reported == null || !a.soc_reported_at) return "";
   const t = new Date(a.soc_reported_at), now = new Date();
@@ -1720,7 +1720,15 @@ class SmartHusCard extends HTMLElement {
       let l = label(...at, off && c.soc != null ? `${c.name} · ikke tilsluttet` : c.name, val, C.ev, 14, "start");
       if (c.soc != null) {
         const [sx, sy] = P(...at);
-        l += socPill(sx + 14 + (val ? textW(val) + 6 : 0), sy + 5, c.soc);
+        const px = sx + 14 + (val ? textW(val) + 6 : 0);
+        l += socPill(px, sy + 5, c.soc);
+        if (c.range_km != null)       // rækkevidde under batteriniveauet – ved to biler ved siden af (ellers rammer den bil 2)
+          l += cars.length > 1
+            ? `<text x="${px + 28 + textW(`${nf(c.soc, 0)} %`) + 4}" y="${sy + 8.6}" class="soc-t">${nf(c.range_km, 0)} km</text>`
+            : `<text x="${px}" y="${sy + 21}" class="soc-t">${nf(c.range_km, 0)} km</text>`;
+      } else if (c.range_km != null) {
+        const [sx, sy] = P(...at);
+        l += `<text x="${sx + 14 + (val ? textW(val) + 6 : 0)}" y="${sy + 8.6}" class="soc-t">${nf(c.range_km, 0)} km</text>`;
       }
       labels += off ? `<g opacity="0.5">${l}</g>` : l;
     });

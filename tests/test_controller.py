@@ -1784,3 +1784,14 @@ def test_stop_charge_now_does_not_keep_the_hour():
     assert c._ev_on_slot("ev") == cur.start          # laderen kørte efter planen: timen gøres færdig
     c._ev_planned_forced = {"ev": True}
     assert c._ev_on_slot("ev") is None               # den kørte pga. "Lad nu": stop betyder stop
+
+
+def test_car_range_km():
+    st = {"sensor.r": State("245.4", unit_of_measurement="km"), "sensor.mi": State("100", unit_of_measurement="mi"),
+          "sensor.bad": State("unavailable", unit_of_measurement="km")}
+    c, _ = make({}, st)
+    assert c.car_range_km({"id": "ev", "range": "sensor.r"}) == 245
+    assert c.car_range_km({"id": "ev", "range": "sensor.mi"}) == 161
+    assert c.car_range_km({"id": "ev", "range": "sensor.bad"}) is None
+    assert c.car_range_km({"id": "ev"}) is None                     # ingen sensor og ingen SoC-sensor at lede ved
+    assert c.car_range_km({"id": "ev", "soc": "sensor.soc"}) is None  # intet register i testen: findes ikke

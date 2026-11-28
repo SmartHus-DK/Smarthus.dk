@@ -319,7 +319,8 @@
           "ev_easee_device": "Ladestrøm: Easee-lader – valgfri",
           "ev_power_sensor": "Ladeeffekt lige nu (W eller kW) – valgfri",
           "ev_charger_on_option": "Rullemenu: mulighed for 'lad' – kun ved rullemenu",
-          "ev_charger_off_option": "Rullemenu: mulighed for 'stop' – kun ved rullemenu"
+          "ev_charger_off_option": "Rullemenu: mulighed for 'stop' – kun ved rullemenu",
+          "ev_range_sensor": "Bilens rækkevidde (km) – valgfri"
         },
         "data_description": {
           "car_name": "Vises på kortet og i entiteternes navne, fx 'Tesla' eller 'Firmabil'.",
@@ -332,7 +333,8 @@
           "ev_plug_sensor": "Sensor fra bilens egen integration, der viser om ladekablet sidder i – fx Tesla binary_sensor.[bil]_charger, Kia/Hyundai binary_sensor.[bil]_ev_plugged_in, VW sensor.[bil]_plug_status. Deler flere biler samme lader, styrer SmartHus kun den bil, der er tilsluttet. Uden sensor vælger du den tilsluttede bil på kortet.",
           "ev_power_sensor": "Laderens effekt lige nu, fx Easee sensor.[lader]_power. Bruges til energiflowet og til at tjekke, at laderen faktisk stopper (sendes sluk igen, hvis den lader videre).",
           "ev_charger_on_option": "Styres laderen med en rullemenu (fx go-e 'Force state'), skriv den mulighed, der starter opladningen. Udfyldes automatisk for kendte ladere.",
-          "ev_charger_off_option": "Den mulighed i rullemenuen, der stopper opladningen."
+          "ev_charger_off_option": "Den mulighed i rullemenuen, der stopper opladningen.",
+          "ev_range_sensor": "Bilens rækkevidde fra bilens egen integration (fx Tibber, VW, Kia/Hyundai, Tesla). Vises ved bilen i energiflowet og på bilens kort. Uden valg findes den selv på samme enhed som bilens batteriniveau, hvis den findes."
         }
       },
       "preset": {

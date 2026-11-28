@@ -307,7 +307,8 @@
           "ev_easee_device": "Charging current: Easee charger – optional",
           "ev_power_sensor": "Charging power right now (W or kW) – optional",
           "ev_charger_on_option": "Select: option to 'charge' – select only",
-          "ev_charger_off_option": "Select: option to 'stop' – select only"
+          "ev_charger_off_option": "Select: option to 'stop' – select only",
+          "ev_range_sensor": "Car range (km) – optional"
         },
         "data_description": {
           "car_name": "Shown on the card and in entity names.",
@@ -320,7 +321,8 @@
           "ev_plug_sensor": "Sensor from the car's integration showing if the cable is plugged in. With several cars on one charger, SmartHus only controls the connected car. Without it, pick the connected car on the card.",
           "ev_power_sensor": "The charger's current power, e.g. Easee sensor.[charger]_power. Used for the energy flow and to check that the charger really stops (the stop is resent if it keeps charging).",
           "ev_charger_on_option": "If the charger is controlled with a select (e.g. go-e 'Force state'), enter the option that starts charging. Filled in automatically for known chargers.",
-          "ev_charger_off_option": "The select option that stops charging."
+          "ev_charger_off_option": "The select option that stops charging.",
+          "ev_range_sensor": "The car's range from its own integration (e.g. Tibber, VW, Kia/Hyundai, Tesla). Shown next to the car in the energy flow and on the car card. If left empty, it is found automatically on the same device as the car's battery level, if available."
         }
       },
       "preset": {

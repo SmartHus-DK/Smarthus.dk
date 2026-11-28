@@ -198,6 +198,8 @@ EASEE_DEVICE = selector.DeviceSelector(selector.DeviceSelectorConfig(integration
 CAR_EASEE_DEVICE = "ev_easee_device"
 CAR_PLUG = "ev_plug_sensor"
 CAR_POWER = "ev_power_sensor"
+CAR_RANGE = "ev_range_sensor"
+RANGE = selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor"))
 PLUG = selector.EntitySelector(selector.EntitySelectorConfig(domain=["binary_sensor", "sensor"]))
 CURRENT = selector.EntitySelector(selector.EntitySelectorConfig(domain=["number", "input_number"]))
 # Laderen tændes/slukkes med en kontakt – eller en rullemenu (fx go-e, Wattpilot, Garo)
@@ -824,6 +826,7 @@ class SmartHusOptionsFlow(OptionsFlow):
                 "easee_device": user_input.get(CAR_EASEE_DEVICE) or None,
                 "plug": user_input.get(CAR_PLUG) or None,
                 "power": user_input.get(CAR_POWER) or None,
+                "range": user_input.get(CAR_RANGE) or None,
                 **extra,
             }
             if user_input[CONF_EV_SWITCH].split(".")[0] in ("select", "input_select"):
@@ -848,6 +851,7 @@ class SmartHusOptionsFlow(OptionsFlow):
             _opt(CAR_CHARGER_ON, {CAR_CHARGER_ON: cur.get("charger_on")}, TEXT)[0]: TEXT,
             _opt(CAR_CHARGER_OFF, {CAR_CHARGER_OFF: cur.get("charger_off")}, TEXT)[0]: TEXT,
             _opt(CONF_EV_SOC, {CONF_EV_SOC: cur.get("soc")}, SOC)[0]: SOC,
+            _opt(CAR_RANGE, {CAR_RANGE: cur.get("range")}, RANGE)[0]: RANGE,
             _opt(CAR_PLUG, {CAR_PLUG: cur.get("plug")}, PLUG)[0]: PLUG,
             _opt(CAR_POWER, {CAR_POWER: cur.get("power")}, POWER)[0]: POWER,
             _opt(CONF_EV_ENERGY, {CONF_EV_ENERGY: cur.get("energy")}, ENERGY)[0]: ENERGY,
